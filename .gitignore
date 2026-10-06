@@ -1,0 +1,9 @@
+# never commit secrets or local junk
+*.env
+.env*
+secrets/
+*.key
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
