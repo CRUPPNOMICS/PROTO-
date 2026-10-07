@@ -1462,6 +1462,87 @@ function ENT.cubeFacePlane(n)
 	end
 	return planeFrom(c + out * dist, best.u, best.v), best.name
 end
+-- v2.40 INSIDE FACES (Dylan: "a cut makes a box, minus the side it started on, so you can click the inside"): the
+-- mouse is on the build but NOT on the outside of its cube (a pocket's floor / wall, a lower step) -> a panel on
+-- THAT face, at its real depth, only as big as the face really is (the pocket's own edges), not the whole cube side
+function ENT.innerFace(res)
+	if not (res and planes and planes[1].faces and planes[1].boxCF and target) then return nil end
+	local best, bd = nil, 0.7
+	for _, f in ipairs(planes[1].faces) do
+		local d = f.out:Dot(res.Normal)
+		if d > bd then best, bd = f, d end
+	end
+	if not best then return nil end
+	local n = best.out
+	local depth = (res.Position - best.o):Dot(n)
+	if depth > -0.1 then return nil end   -- (on the outside of the cube = the normal side panel)
+	local fp = ENT.cubeFacePlane(n)
+	local u, v = (fp and fp.u) or best.u, (fp and fp.v) or best.v
+	local on = res.Position
+	-- the face's real size: the pocket edges lying on this face, round the clicked spot
+	local rect
+	local parts = ENT.objParts(target) or { target }
+	ENT.prismCache = ENT.prismCache or {}
+	ENT.outlineCache = ENT.outlineCache or {}
+	for _, q in ipairs(parts) do
+		if q:IsA("BasePart") then
+			for _, ch in ipairs(q:GetChildren()) do
+				if ch.Name == "DIM_Outline" and ch:IsA("StringValue") and ENT.outKind(ch, q) == "cut" then
+					local P = ENT.prismCache[ch.Value]
+					if P == nil then
+						local data = ENT.outlineCache[ch.Value]
+						if not data then
+							local okD, r = pcall(function() return game:GetService("HttpService"):JSONDecode(ch.Value) end)
+							data = okD and r or {}
+							ENT.outlineCache[ch.Value] = data
+						end
+						P = ENT.cutPrism(data) or false
+						ENT.prismCache[ch.Value] = P
+					end
+					if P then
+						local bcf, bsz = ENT.blockOf(q)
+						if not bcf then bcf, bsz = q.CFrame, q.Size end
+						local okP, segs = pcall(ENT.pocketSegs, P, q.CFrame, bcf, bsz)
+						if okP and segs then
+							local lo, hi = V2(math.huge, math.huge), V2(-math.huge, -math.huge)
+							local cnt = 0
+							for _, sg in ipairs(segs) do
+								if math.abs((sg[1] - on):Dot(n)) < 0.06 and math.abs((sg[2] - on):Dot(n)) < 0.06 then
+									for _, w in ipairs({ sg[1], sg[2] }) do
+										local q2 = V2((w - on):Dot(u), (w - on):Dot(v))
+										lo = V2(math.min(lo.X, q2.X), math.min(lo.Y, q2.Y)) hi = V2(math.max(hi.X, q2.X), math.max(hi.Y, q2.Y))
+									end
+									cnt += 1
+								end
+							end
+							if cnt >= 2 and lo.X <= 0.05 and lo.Y <= 0.05 and hi.X >= -0.05 and hi.Y >= -0.05 and (hi.X - lo.X) > 0.05 and (hi.Y - lo.Y) > 0.05 then
+								if not rect or (hi - lo).Magnitude < (rect.hi - rect.lo).Magnitude then rect = { lo = lo, hi = hi } end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+	local o, hu, hv
+	if rect then
+		local m = (rect.lo + rect.hi) / 2
+		o = on + u * m.X + v * m.Y
+		hu, hv = (rect.hi.X - rect.lo.X) / 2, (rect.hi.Y - rect.lo.Y) / 2
+	else
+		-- (no pocket edges here - e.g. a lower step: the cube side's size, at this depth)
+		local c = planes[1].boxCF.Position
+		o = c + n * (on - c):Dot(n)
+		hu, hv = best.hu, best.hv
+	end
+	local pl = planeFrom(o + n * 0.02, u, v)
+	pl.name, pl.hu, pl.hv, pl.half, pl.isFace, pl.out, pl.inner = "Inside face", hu, hv, math.max(hu, hv), true, n, true
+	-- same face as last time = the same table (so hovering doesn't redraw every frame)
+	local L = ENT.lastInner
+	if L and (L.o - pl.o).Magnitude < 1e-3 and L.n:Dot(pl.n) > 0.999 and math.abs(L.hu - hu) < 1e-3 and math.abs(L.hv - hv) < 1e-3 then return L end
+	ENT.lastInner = pl
+	return pl
+end
 -- is part q the clicked target or another piece of the same feature?
 function ENT.sameFeature(q)
 	if not (q and target) then return false end
@@ -10285,7 +10366,10 @@ mouse.Move:Connect(function()
 	local hp = (not res) and pl or nil
 	-- v2.37: mouse on a PROTO object = the side PANEL of its cube that faces you lights up (click it = sketch there)
 	local hf = nil
-	if res and target and (mode == "planes" or mode == "mirror") and planes and planes[1].faces and ENT.objParts(target) and ENT.sameFeature(res.Instance) then
+	if res and target and mode == "planes" and planes and planes[1].faces and ENT.objParts(target) and ENT.sameFeature(res.Instance) then
+		hf = ENT.innerFace(res)
+	end
+	if (not hf) and res and target and (mode == "planes" or mode == "mirror") and planes and planes[1].faces and ENT.objParts(target) and ENT.sameFeature(res.Instance) then
 		local bd = -2
 		for _, f in ipairs(planes[1].faces) do
 			local d = f.out:Dot(res.Normal)
@@ -10464,6 +10548,12 @@ mouse.Button1Down:Connect(function()
 			Selection:Set(cur)
 		elseif target and ENT.objParts(target) and ENT.sameFeature(p) then
 			-- v2.37: a PROTO object (curved / many pieces): sketch on that side of its invisible CUBE - flat, never bent
+			local inner = ENT.innerFace(res)
+			if inner then
+				-- v2.40: the inside of a pocket / a lower step: sketch right on that face, at its real depth
+				startSketch(planeFrom(inner.o - inner.out * 0.02, inner.u, inner.v), target, "Inside face")
+				return
+			end
 			local pl, nm = ENT.cubeFacePlane(res.Normal)
 			if pl then startSketch(pl, target, nm) else startSketch(ENT.facePlane(p, res.Position, res.Normal), p, target.Name .. " face") end
 		elseif p == target then
