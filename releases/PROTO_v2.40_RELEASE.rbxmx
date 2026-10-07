@@ -6132,7 +6132,19 @@ function ENT.finishParts(inst)
 		end
 		if not ENT.opt.smallShadows and math.max(p.Size.X, p.Size.Y, p.Size.Z) < 2 then p.CastShadow = false end
 		if p:IsA("PartOperation") or p:IsA("MeshPart") then
-			pcall(function() p.CollisionFidelity = ENT.collEnum() end)
+			-- v2.40: a part with a CUT in it gets real collision - a Hull / Box filled the pocket / window back in
+			-- (you couldn't click inside it, walk through it, or have the outline tracer see it)
+			local fid = ENT.collEnum()
+			if fid ~= Enum.CollisionFidelity.PreciseConvexDecomposition then
+				local cutIn = ENT.cutting
+				if not cutIn then
+					for _, ch in ipairs(p:GetChildren()) do
+						if ch.Name == "DIM_Outline" and ch:IsA("StringValue") and ENT.outKind(ch, p) == "cut" then cutIn = true break end
+					end
+				end
+				if cutIn then fid = Enum.CollisionFidelity.Default end
+			end
+			pcall(function() p.CollisionFidelity = fid end)
 			pcall(function() p.RenderFidelity = ENT.renderFor(p) end)
 		end
 		local t = 12
