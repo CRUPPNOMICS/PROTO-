@@ -6940,15 +6940,29 @@ function ENT.edgeClick()
 				-- one cutter: everything on the corner side of the 45-degree line where the round / chamfer starts on both
 				-- faces - so both fills get their ends cut ON THAT ANGLE (in line with the new corner face), and the
 				-- corner piece between them goes
+				if isF then
+					-- ROUNDED corner: the fills stop square, exactly where the round starts on each face (a curved
+					-- piece added after the cut carries them round the bend)
+					local rf = crossR + 0.05
+					local function sz(along, wa, wb)
+						local t = { 0, 0, 0 }
+						t[k], t[a], t[b] = along, wa, wb
+						return V3(t[1], t[2], t[3])
+					end
+					cutters[#cutters + 1] = mk(sz(L, rf, rf + r), CFrame.new(edgeC + n1 * (rf / 2) + n2 * ((rf - r) / 2)))
+					cutters[#cutters + 1] = mk(sz(L, rf + r, rf), CFrame.new(edgeC + n1 * ((rf - r) / 2) + n2 * (rf / 2)))
+				end
 				local nd = (n1 + n2).Unit
 				local S = (r + crossR * 2) * 3 + 2
 				local P0 = edgeC - n1 * r   -- (on the line: r back from the corner along face 2)
-				local big = mk(V3(L, S, S), CFrame.fromMatrix(P0 + nd * (S / 2), AXV[k], nd))
+				local big = (not isF) and mk(V3(L, S, S), CFrame.fromMatrix(P0 + nd * (S / 2), AXV[k], nd)) or nil
 				-- ... but only OUTSIDE the block (inside it, the round / chamfer cutter decides - a fillet must stay round)
-				local blockBox = mk(E.size + V3(0.002, 0.002, 0.002), CFrame.new())
-				local okT, rT = pcall(function() return GeometryService:SubtractAsync(big, { blockBox }, ENT.FAST) end)
-				big.Parent, blockBox.Parent = nil, nil
-				if okT and type(rT) == "table" and rT[1] then rT[1].Parent = workspace cutters[#cutters + 1] = rT[1] end
+				if big then
+					local blockBox = mk(E.size + V3(0.002, 0.002, 0.002), CFrame.new())
+					local okT, rT = pcall(function() return GeometryService:SubtractAsync(big, { blockBox }, ENT.FAST) end)
+					big.Parent, blockBox.Parent = nil, nil
+					if okT and type(rT) == "table" and rT[1] then rT[1].Parent = workspace cutters[#cutters + 1] = rT[1] end
+				end
 			end
 		end
 		if not out then
@@ -6963,6 +6977,41 @@ function ENT.edgeClick()
 				if d.i and d.ux and d.k == k then   -- (v2.40: only fills running alongside this edge - crossing ones were cut on purpose)
 					local f = ENT.fillFromRecipe(cf, E.size, d)
 					if f then table.insert(fills, f) end
+				end
+			end
+			-- v2.40 ROUNDED corner + fills running across it: the fill WRAPS round the bend (like skirting round a
+			-- rounded wall) - short pieces stood round the curve, each one facing out from it
+			if isF and crossR > 0 then
+				local levels = {}
+				for _, d in ipairs(done) do
+					if d.i and d.ux and d.k ~= k then
+						-- which end of the cut edge this fill sits at (its corner's position along the cut edge)
+						local kd = d.k
+						local ad, bd = (kd % 3) + 1, ((kd + 1) % 3) + 1
+						local zs = (ad == k) and d.a or ((bd == k) and d.b or nil)
+						if zs then
+							local key = tostring(zs)
+							-- its "up" = whichever of its two directions runs along the cut edge (away from the floor)
+							local U, Vv = V3(d.ux, d.uy, d.uz), V3(d.vx, d.vy, d.vz)
+							local up = (math.abs(U:Dot(AXV[k])) > 0.9) and U or Vv
+							if not levels[key] then levels[key] = { z = zs * h[k], v = up, rf = d.r, f = d.t == "fillet" } end
+						end
+					end
+				end
+				local ctr = edgeC - n1 * r - n2 * r   -- the round's centre line
+				local N = 10
+				local dth = (math.pi / 2) / N
+				for _, lv in pairs(levels) do
+					for i = 0, N - 1 do
+						local th = (i + 0.5) * dth
+						local w = n1 * math.cos(th) + n2 * math.sin(th)
+						local t = -n1 * math.sin(th) + n2 * math.cos(th)
+						local base = ctr + w * r
+						base = base - AXV[k] * base:Dot(AXV[k]) + AXV[k] * lv.z
+						local len = 2 * (r + lv.rf) * math.tan(dth / 2) + 0.03
+						local seg = ENT.fillPrism(cf:PointToWorldSpace(base), cf:VectorToWorldSpace(t), cf:VectorToWorldSpace(w), cf:VectorToWorldSpace(lv.v), len, lv.rf, lv.f)
+						if seg then table.insert(fills, seg) end
+					end
 				end
 			end
 			if #fills > 0 then
