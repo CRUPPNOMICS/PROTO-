@@ -7705,27 +7705,68 @@ function ENT.pocketEdgeClick(E, p)
 	local doneList = {}
 	pcall(function() doneList = HttpService:JSONDecode(p:GetAttribute("PROTO_PocketEdges") or "[]") end)
 	local key = ENT.pocketEdgeKey(p, E)
-	for _, k in ipairs(doneList) do
-		if k == key then setStatus(nm .. ": that edge is already done. Ctrl+Z to change it.") return end
+	-- (entries: "x,y,z|r|f/c" - older ones are just "x,y,z")
+	local function doneAt(k0)
+		for _, k in ipairs(doneList) do
+			local kk, rr, tt = string.match(k, "^([^|]+)|?([^|]*)|?([^|]*)$")
+			if kk == k0 then return true, tonumber(rr), tt end
+		end
+		return false
 	end
+	if doneAt(key) then setStatus(nm .. ": that edge is already done. Ctrl+Z to change it.") return end
 	local out
 	local ok = record("PROTO " .. (isF and "Fillet" or "Chamfer") .. " pocket edge", function()
 		local mid = (E.a + E.b) / 2
 		local piece = ENT.fillPrism(mid, E.dir, E.u, E.v, L + ((E.kind == "rim") and 0.02 or 0), r, isF)
 		if not piece then error("couldn't shape it") end
+		local pieces = { piece }
+		-- v2.40 (Dylan): edges of the OPENING that meet at a corner of the hole, both done = each one is built on past
+		-- the corner and cut on the 45-degree line, so they meet like a picture frame (no notch)
+		if E.kind == "rim" then
+			local all = ENT.pocketEdges(p)
+			for _, C in ipairs({ E.a, E.b }) do
+				local t = (C - mid).Unit
+				for _, N in ipairs(all) do
+					if N ~= E and N.kind == "rim" and (N.box.ctr - E.box.ctr).Magnitude < 1e-3 and math.abs(N.dir:Dot(E.dir)) < 0.1 then
+						local nearA, nearB = (N.a - C).Magnitude < 0.02, (N.b - C).Magnitude < 0.02
+						if nearA or nearB then
+							local isDone, rN, tN = doneAt(ENT.pocketEdgeKey(p, N))
+							if isDone then
+								rN = rN or r
+								local fN = (tN == "f") or ((tN == nil or tN == "") and isF)
+								local nMid = (N.a + N.b) / 2
+								local tn = (C - nMid).Unit
+								local m = (t - tn).Unit
+								local S = (r + rN) * 10 + 4
+								local function mitred(c0, d0, u0, v0, rr, f0, keepN)
+									local x = ENT.fillPrism(c0, d0, u0, v0, rr, rr, f0)
+									if not x then return end
+									local cut = ENT.halfSpace(C, keepN, S)
+									local okM, rM = pcall(function() return GeometryService:SubtractAsync(x, { cut }, ENT.FAST) end)
+									cut.Parent, x.Parent = nil, nil
+									if okM and type(rM) == "table" and rM[1] then rM[1].Parent = workspace pieces[#pieces + 1] = rM[1] end
+								end
+								mitred(C + t * (r / 2), E.dir, E.u, E.v, r, isF, m)          -- this edge, on past the corner
+								mitred(C + tn * (rN / 2), N.dir, N.u, N.v, rN, fN, -m)      -- the other edge, on past the corner
+							end
+						end
+					end
+				end
+			end
+		end
 		local opts = { CollisionFidelity = ENT.CSG_OPTS.CollisionFidelity, RenderFidelity = Enum.RenderFidelity.Precise, SplitApart = false }
 		local okC, res = pcall(function()
-			if E.kind == "in" then return GeometryService:UnionAsync(p, { piece }, opts) end
-			return GeometryService:SubtractAsync(p, { piece }, opts)
+			if E.kind == "in" then return GeometryService:UnionAsync(p, pieces, opts) end
+			return GeometryService:SubtractAsync(p, pieces, opts)
 		end)
-		piece.Parent = nil
+		for _, x in ipairs(pieces) do x.Parent = nil end
 		if not (okC and type(res) == "table" and res[1]) then error("couldn't " .. (E.kind == "in" and "add the fill" or "cut the edge") .. " - " .. tostring(res)) end
 		out = res[1]
 		out.Name = p.Name
 		for k2, v2 in pairs(p:GetAttributes()) do pcall(function() out:SetAttribute(k2, v2) end) end
 		local rel = p:GetAttribute("PROTO_BlockRel")
 		if typeof(rel) == "CFrame" then out:SetAttribute("PROTO_BlockRel", out.CFrame:ToObjectSpace(p.CFrame * rel)) end
-		table.insert(doneList, ENT.pocketEdgeKey(out, E))
+		table.insert(doneList, ENT.pocketEdgeKey(out, E) .. "|" .. tostring(r) .. "|" .. (isF and "f" or "c"))
 		pcall(function() out:SetAttribute("PROTO_PocketEdges", HttpService:JSONEncode(doneList)) end)
 		for _, ch in ipairs(p:GetChildren()) do
 			if ch:IsA("StringValue") and (ch.Name == "DIM_Outline" or ch.Name == "DIM_Bounds") then ENT.moveDimValue(ch, p.CFrame, out.CFrame, out)
