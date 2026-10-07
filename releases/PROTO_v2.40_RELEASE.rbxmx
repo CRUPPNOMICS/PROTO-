@@ -7263,6 +7263,55 @@ function ENT.wrapPieces(cf, h, kc, n1c, n2c, rc, level, up, rf, fillet, surf)
 	ctr = ctr - AXV[kc] * ctr:Dot(AXV[kc]) + AXV[kc] * level
 	local Sz = (rc + rf) * 6 + 4
 	local wctr = cf:PointToWorldSpace(ctr)
+	-- v2.40 (Dylan: "a better cut"): a ROUND skirting goes round the bend as ONE smooth piece - a quarter disc as tall as
+	-- the skirting, with a ring of round rods (+ balls at the joins) taken out along its top outside edge = the skirting's
+	-- curve swept round the corner. No slices = no steps, seams or shards.
+	if fillet then
+		local okW, piece = pcall(function()
+			local function P(c, x, y, size, shape)
+				local q = Instance.new("Part")
+				q.Anchored, q.CanCollide, q.Transparency = true, false, 1
+				if shape then q.Shape = shape end
+				q.Size = size
+				q.CFrame = CFrame.fromMatrix(c, x, y)
+				q.Parent = workspace
+				return q
+			end
+			local W = function(v) return cf:VectorToWorldSpace(v) end
+			local R0 = rc + rf
+			local disc = P(cf:PointToWorldSpace(ctr + up * (rf / 2)), W(up), W(n1c), V3(rf, R0 * 2, R0 * 2), Enum.PartType.Cylinder)
+			local h1 = ENT.halfSpace(wctr, W(n1c), Sz)
+			local h2 = ENT.halfSpace(wctr, W(n2c), Sz)
+			local cur = disc
+			for _, hs in ipairs({ h1, h2 }) do
+				local r2 = GeometryService:IntersectAsync(cur, { hs }, ENT.FAST)
+				cur.Parent = nil
+				cur = r2[1]
+				cur.Parent = workspace
+			end
+			h1.Parent, h2.Parent = nil, nil
+			local tube = {}
+			local K = math.clamp(math.floor(R0 * 6), 16, 40)
+			local prev
+			for i = -1, K + 1 do
+				local th = (math.pi / 2) * (i / K)
+				local pt = cf:PointToWorldSpace(ctr + (n1c * math.cos(th) + n2c * math.sin(th)) * R0 + up * rf)
+				tube[#tube + 1] = P(pt, W(n1c), W(n2c), V3(rf * 2, rf * 2, rf * 2), Enum.PartType.Ball)
+				if prev then
+					local d0 = pt - prev
+					tube[#tube + 1] = P((pt + prev) / 2, d0.Unit, W(up), V3(d0.Magnitude + 0.01, rf * 2, rf * 2), Enum.PartType.Cylinder)
+				end
+				prev = pt
+			end
+			local r3 = GeometryService:SubtractAsync(cur, tube, ENT.FAST)
+			for _, x in ipairs(tube) do x.Parent = nil end
+			cur.Parent = nil
+			r3[1].Parent = workspace
+			return r3[1]
+		end)
+		if okW and piece then return { piece } end
+		print("PROTO wrap: smooth piece failed, using slices - " .. tostring(piece))
+	end
 	-- (v2.40: rays felt the block's COLLISION hull, not the drawn round = a flat slab sticking out. Now the slices stand
 	-- on the TRUE round, with a backing strip hidden inside the wall so no line shows where the drawn facets dip in)
 	local facets = {}
@@ -7821,52 +7870,20 @@ function ENT.pocketEdgeClick(E, p)
 			if not d then return nil end
 			return { r = rr or r, f = (tt == "f") or ((tt == nil or tt == "") and isF) }
 		end
-		local pieces = {}
-		if E.kind == "in" then
-			local mid = (E.a + E.b) / 2
-			local piece = ENT.fillPrism(mid, E.dir, E.u, E.v, L, r, isF)
-			if not piece then error("couldn't shape it") end
-			pieces[1] = piece
-		else
-			-- v2.40 (Dylan): ALL the done edges of the opening are (re)cut together: each one a hair bigger than the
-			-- wall (no skin left), and where two meet at a corner of the hole each is built on past the corner and cut on
-			-- the 45-degree line (picture frame)
-			local rims = {}
-			for _, N in ipairs(all) do
-				if N.kind == "rim" and sameBox(N) then
-					local I = info(N)
-					if I then rims[#rims + 1] = { N = N, r = I.r, f = I.f } end
-				end
-			end
-			for _, R in ipairs(rims) do
-				local N = R.N
-				local nMid = (N.a + N.b) / 2
-				local base = ENT.fillPrism(nMid, N.dir, N.u, N.v, (N.b - N.a).Magnitude + 0.02, R.r, R.f, 0.02)
-				if base then pieces[#pieces + 1] = base end
-				for _, C in ipairs({ N.a, N.b }) do
-					local t = (C - nMid).Unit
-					for _, Q in ipairs(rims) do
-						if Q ~= R and math.abs(Q.N.dir:Dot(N.dir)) < 0.1 and ((Q.N.a - C).Magnitude < 0.02 or (Q.N.b - C).Magnitude < 0.02) then
-							local tq = (C - (Q.N.a + Q.N.b) / 2).Unit
-							local m = (t - tq).Unit
-							local x = ENT.fillPrism(C + t * (R.r / 2), N.dir, N.u, N.v, R.r + 0.02, R.r, R.f, 0.02)
-							if x then
-								local cut = ENT.halfSpace(C, m, (R.r + Q.r) * 10 + 4)
-								local okM, rM = pcall(function() return GeometryService:SubtractAsync(x, { cut }, ENT.FAST) end)
-								cut.Parent, x.Parent = nil, nil
-								if okM and type(rM) == "table" and rM[1] then rM[1].Parent = workspace pieces[#pieces + 1] = rM[1] end
-							end
-						end
-					end
-				end
-			end
-			if #pieces == 0 then error("couldn't shape it") end
+		-- ===== v2.40 OPENING EDGES, ONE CLEAN CUT (Dylan: "a better cut, all lines touching their areas"). For each side
+		-- the cut came in through: the ring of material round the opening is put back to plain block, then ONE cutter takes
+		-- the chamfers / rounds off. A bit goes only if EVERY edge of the opening (and the front edge of every fill up a
+		-- corner) would take it - so corners meet in clean creases with no spikes, gaps or stacked cuts. =====
+		local opts = { CollisionFidelity = ENT.CSG_OPTS.CollisionFidelity, RenderFidelity = Enum.RenderFidelity.Precise, SplitApart = false }
+		local function newPart(c, x, y, size, shape)
+			local q = Instance.new("Part")
+			q.Anchored, q.CanCollide, q.Transparency = true, false, 1
+			if shape then q.Shape = shape end
+			q.Size = size
+			q.CFrame = CFrame.fromMatrix(c, x, y)
+			q.Parent = workspace
+			return q
 		end
-		-- v2.40 THREE-WAY CORNERS (Dylan: "add the cube, then cut it from the 3 incoming directions"). Where a fill up an
-		-- inside corner of the cut meets a chamfered opening: a solid block goes back in at that corner (only where there's
-		-- material - wall, floor or fill - never in the open hole), then it's cut by the three chamfers coming in: the wall
-		-- edge's, the floor edge's and the fill's own front edge. A bit only goes if ALL THREE take it (no dug-out pyramid).
-		local adds, trims = {}, {}
 		local function inter(base, list)
 			local cur = base
 			for _, w in ipairs(list) do
@@ -7878,197 +7895,156 @@ function ENT.pocketEdgeClick(E, p)
 			end
 			return cur
 		end
-		local function boxAt(c, x, y, size)
-			local q = Instance.new("Part")
-			q.Anchored, q.CanCollide, q.Transparency = true, false, 1
-			q.Size = size
-			q.CFrame = CFrame.fromMatrix(c, x, y)
-			q.Parent = workspace
-			return q
+		local function minus(base, list)
+			local okM, rM = pcall(function() return GeometryService:SubtractAsync(base, list, ENT.FAST) end)
+			if okM and type(rM) == "table" and rM[1] then base.Parent = nil rM[1].Parent = workspace return rM[1] end
+			return base
 		end
+		local B = E.box
+		local ax, half = B.ax, B.half
+		local fillsAll = {}   -- every done fill up an inside corner of this pocket
 		for _, I in ipairs(all) do
 			if I.kind == "in" and sameBox(I) then
 				local II = info(I)
-				do   -- (v2.40: also corners with NO fill - two rounded / chamfered opening edges meeting = made the same clean way)
-					local iMid = (I.a + I.b) / 2
-					for _, C in ipairs({ I.a, I.b }) do
-						local rr, U = nil, nil
-						local rimsC
-						for _, R in ipairs(all) do
-							if R.kind == "rim" and sameBox(R) and ((R.a - C).Magnitude < 0.02 or (R.b - C).Magnitude < 0.02) then
-								local RI = info(R)
-								if RI then rr = math.max(rr or 0, RI.r) U = R.depth rimsC = rimsC or {} rimsC[#rimsC + 1] = { R = R, r = RI.r, f = RI.f } end
+				if II then fillsAll[#fillsAll + 1] = { I = I, r = II.r, f = II.f } end
+			end
+		end
+		local function fillPart(F)
+			local I = F.I
+			return ENT.fillPrism((I.a + I.b) / 2, I.dir, I.u, I.v, (I.b - I.a).Magnitude, F.r, F.f)
+		end
+		local okC, res = true, { p }
+		local cur = p
+		local function swap(newp) if newp and newp ~= cur then if cur ~= p then cur.Parent = nil end cur = newp cur.Parent = workspace end end
+		-- 1) a new fill goes in
+		if E.kind == "in" then
+			local piece = fillPart({ I = E, r = r, f = isF })
+			if not piece then error("couldn't shape the fill") end
+			local okU, rU = pcall(function() return GeometryService:UnionAsync(cur, { piece }, opts) end)
+			piece.Parent = nil
+			if not (okU and type(rU) == "table" and rU[1]) then error("couldn't add the fill - " .. tostring(rU)) end
+			swap(rU[1])
+		end
+		-- 2) each open side with done edges round it: put the ring back, then one cutter
+		local pq = B.part
+		for i = 1, 3 do
+			for _, sgn in ipairs({ -1, 1 }) do
+				if B.open[i][sgn] then
+					local U = -ax[i] * sgn                          -- in from this open face
+					local Fc = B.ctr + ax[i] * (half[i] * sgn)     -- the open face's centre
+					local j, l = (i % 3) + 1, ((i + 1) % 3) + 1
+					local rims, rmax = {}, 0
+					for _, R in ipairs(all) do
+						if R.kind == "rim" and sameBox(R) and R.depth and (R.depth - U).Magnitude < 1e-3 then
+							local RI = info(R)
+							if RI then rims[#rims + 1] = { R = R, r = RI.r, f = RI.f } rmax = math.max(rmax, RI.r) end
+						end
+					end
+					if #rims > 0 then
+						local fills = {}
+						for _, F in ipairs(fillsAll) do
+							for _, C in ipairs({ F.I.a, F.I.b }) do
+								if math.abs((C - Fc):Dot(U)) < 0.02 then fills[#fills + 1] = { F = F, C = C } end
 							end
 						end
-						if rr and U and ((II and #rimsC >= 1) or #rimsC >= 2) then
-							local A, B, rI = I.u, I.v, (II and II.r or 0)   -- a = out from one wall, b = out from the other, U = in from the face
-							local Dz = rr + 0.3
-							local W = rr + rI + 0.02
-							local function cube()
-								return boxAt(C + A * ((rI - rr) / 2) + B * ((rI - rr) / 2) + U * (Dz / 2), A, B, V3(W, W, Dz))
-							end
-							-- the block, minus the open hole (out past the fill's sloped face)
-							local blk = cube()
-							-- (the hole = everything out past the fill's REAL face - its round for a fillet, its slope for a chamfer)
-							local hole = boxAt(C + A * ((rI + 2) / 2) + B * ((rI + 2) / 2) + U * (Dz / 2), A, B, V3(rI + 2, rI + 2, Dz + 0.2))
-							local fillShape = II and ENT.fillPrism(C + U * (Dz / 2), U, A, B, Dz + 0.4, rI, II.f)
-							local holeCut
-							if not II then
-								holeCut = hole   -- (no fill: the whole open corner is the hole)
-							elseif fillShape then
-								local okH, rH = pcall(function() return GeometryService:SubtractAsync(hole, { fillShape }, ENT.FAST) end)
-								fillShape.Parent = nil
-								if okH and type(rH) == "table" and rH[1] then holeCut = rH[1] holeCut.Parent = workspace end
-							end
-							if holeCut ~= hole then hole.Parent = nil end
-							if holeCut then
-								local okS, rS = pcall(function() return GeometryService:SubtractAsync(blk, { holeCut }, ENT.FAST) end)
-								holeCut.Parent = nil
-								if okS and type(rS) == "table" and rS[1] then blk.Parent = nil blk = rS[1] blk.Parent = workspace end
-							end
-							-- what the three chamfers take off together (inside the block's box)
-							local s2 = math.sqrt(2)
-							local function rem(n, k) return ENT.halfSpace(C + n * (k / n:Dot(n)), -n.Unit, (W + Dz) * 6 + 4) end
-							-- each opening edge at this corner: a CHAMFER takes off a flat slice, a FILLET (round) takes off what's
-							-- outside its round (so the corner matches the rounded edges, not flat cuts)
-							local cutters = {}
-							for _, RC in ipairs(rimsC or {}) do
-								local R, rk = RC.R, RC.r
-								if RC.f then
-									local slab = cube()
-									local front = ENT.halfSpace(C + U * rk, -U, (W + Dz) * 6 + 4)
-									local sl = inter(slab, { front })
-									slab.Parent, front.Parent = nil, nil
-									if sl then
-										local keep1 = ENT.halfSpace(C + R.wall * rk, R.wall, (W + Dz) * 6 + 4)
-										local cyl = Instance.new("Part")
-										cyl.Anchored, cyl.CanCollide, cyl.Transparency = true, false, 1
-										cyl.Shape = Enum.PartType.Cylinder
-										cyl.Size = V3((W + Dz) * 3 + 2, rk * 2, rk * 2)
-										cyl.CFrame = CFrame.fromMatrix(C + U * rk + R.wall * rk, R.dir, U)
-										cyl.Parent = workspace
-										local okR, rR = pcall(function() return GeometryService:SubtractAsync(sl, { keep1, cyl }, ENT.FAST) end)
-										keep1.Parent, cyl.Parent, sl.Parent = nil, nil, nil
-										if okR and type(rR) == "table" and rR[1] then rR[1].Parent = workspace cutters[#cutters + 1] = rR[1] end
-									end
-								else
-									cutters[#cutters + 1] = rem(U + R.wall, rk)
-								end
-							end
-							-- the fill's own front edge: flat slice for a chamfer fill; for a FILLET fill, what's outside a round
-							-- running along its curved front edge (built from short round pieces)
-							if not II then
-								-- (no fill here)
-							elseif II.f then
-								local O = C + A * rI + B * rI           -- the fill's round centre line (at the face)
-								local rho = rI + rr
-								local slab = cube()
-								local front = ENT.halfSpace(C + U * rr, -U, (W + Dz) * 6 + 4)
-								local sl = inter(slab, { front })
-								slab.Parent, front.Parent = nil, nil
-								if sl then
-									local outs = {}
-									-- far side of the round (more than rr into the fill): kept
-									local big = boxAt(O + U * (Dz / 2), A, B, V3(rho * 4 + 4, rho * 4 + 4, Dz + 2))
-									local core = Instance.new("Part")
-									core.Anchored, core.CanCollide, core.Transparency = true, false, 1
-									core.Shape = Enum.PartType.Cylinder
-									core.Size = V3(Dz + 4, rho * 2, rho * 2)
-									core.CFrame = CFrame.fromMatrix(O + U * (Dz / 2), U, A)
-									core.Parent = workspace
-									local okK, rK = pcall(function() return GeometryService:SubtractAsync(big, { core }, ENT.FAST) end)
-									big.Parent, core.Parent = nil, nil
-									if okK and type(rK) == "table" and rK[1] then rK[1].Parent = workspace outs[#outs + 1] = rK[1] end
-									-- the round itself: a ring of short rods (+ balls at the joins) round the fill's curved front edge
-									local K = 8
-									local prev
-									for i2 = 0, K do
-										local th = math.pi + (math.pi / 2) * (i2 / K)
-										local P = O + (A * math.cos(th) + B * math.sin(th)) * rho + U * rr
-										local ball = Instance.new("Part")
-										ball.Anchored, ball.CanCollide, ball.Transparency = true, false, 1
-										ball.Shape = Enum.PartType.Ball
-										ball.Size = V3(rr * 2, rr * 2, rr * 2)
-										ball.CFrame = CFrame.new(P)
-										ball.Parent = workspace
-										outs[#outs + 1] = ball
-										if prev then
-											local d0 = P - prev
-											local rod = Instance.new("Part")
-											rod.Anchored, rod.CanCollide, rod.Transparency = true, false, 1
-											rod.Shape = Enum.PartType.Cylinder
-											rod.Size = V3(d0.Magnitude + 0.02, rr * 2, rr * 2)
-											rod.CFrame = CFrame.fromMatrix((P + prev) / 2, d0.Unit, U)
-											rod.Parent = workspace
-											outs[#outs + 1] = rod
-										end
-										prev = P
-									end
-									local okF, rF = pcall(function() return GeometryService:SubtractAsync(sl, outs, ENT.FAST) end)
-									for _, x in ipairs(outs) do x.Parent = nil end
-									sl.Parent = nil
-									if okF and type(rF) == "table" and rF[1] then rF[1].Parent = workspace cutters[#cutters + 1] = rF[1] end
-								end
-							else
-								cutters[#cutters + 1] = rem(U * s2 - A - B, rr * s2 - rI)
-							end
-							local c2 = cube()
-							local cutPiece = inter(c2, cutters)
-							c2.Parent = nil
-							for _, x in ipairs(cutters) do x.Parent = nil end
-							-- (v2.40: the corner is made as ONE finished piece on its own, then swapped in: the part's corner
-							-- box is cleared, the piece goes in - no layering cuts on cuts, which broke one corner)
-							local piece = blk
-							if cutPiece then
-								local okP, rP = pcall(function() return GeometryService:SubtractAsync(blk, { cutPiece }, ENT.FAST) end)
-								cutPiece.Parent = nil
-								if okP and type(rP) == "table" and rP[1] then blk.Parent = nil piece = rP[1] piece.Parent = workspace end
-							else
-								print("PROTO pocket: corner cut failed")
-							end
-							-- (never outside the part - a thin wall would let the corner box poke out the far side)
-							local pq = I.box.part
-							local pbox = boxAt(pq.CFrame.Position, pq.CFrame.RightVector, pq.CFrame.UpVector, pq.Size)
-							local clipped = inter(piece, { pbox })
-							pbox.Parent = nil
-							if clipped then piece.Parent = nil piece = clipped end
-							adds[#adds + 1] = piece
-							trims[#trims + 1] = cube()   -- (the corner box: cleared first)
+						local Dz = rmax + 0.25
+						local function ringBox()
+							return newPart(Fc + U * (Dz / 2 - 0.05), ax[j], ax[l], V3((half[j] + rmax + 0.15) * 2, (half[l] + rmax + 0.15) * 2, Dz))
 						end
+						local big = (half[j] + half[l] + rmax) * 6 + 10
+						-- the part's own box (nothing is ever added outside the part)
+						local pbox = newPart(pq.CFrame.Position, pq.CFrame.RightVector, pq.CFrame.UpVector, pq.Size)
+						-- (a) put the ring back: ring - the pocket's open space, + the fills
+						local ring = ringBox()
+						ring = inter(ring, { pbox }) or ring
+						local air = newPart(B.ctr, ax[1], ax[2], V3(half[1] * 2, half[2] * 2, half[3] * 2) + V3(0.002, 0.002, 0.002))
+						ring = minus(ring, { air })
+						air.Parent = nil
+						local back = { ring }
+						for _, F in ipairs(fillsAll) do local fp = fillPart(F) if fp then back[#back + 1] = fp end end
+						local okB, rB = pcall(function() return GeometryService:UnionAsync(cur, back, opts) end)
+						for _, x in ipairs(back) do x.Parent = nil end
+						if okB and type(rB) == "table" and rB[1] then swap(rB[1]) else print("PROTO pocket: putting the ring back failed - " .. tostring(rB)) end
+						-- (b) the cutter: the ring box, cut down by every edge's "keep" side
+						local cutter = ringBox()
+						local function keepCut(keepParts)
+							if not cutter then return end
+							local sl = ringBox()
+							local okK, rK = pcall(function() return GeometryService:SubtractAsync(sl, keepParts, ENT.FAST) end)
+							for _, x in ipairs(keepParts) do x.Parent = nil end
+							sl.Parent = nil
+							if okK and type(rK) == "table" and rK[1] then
+								rK[1].Parent = workspace
+								local nc = inter(cutter, { rK[1] })
+								rK[1].Parent = nil
+								if cutter then cutter.Parent = nil end
+								cutter = nc
+							end
+						end
+						for _, RC in ipairs(rims) do
+							local R, rk = RC.R, RC.r
+							local W = R.wall
+							if RC.f then
+								local hsK = ENT.halfSpace(R.a + W * rk, W, big)
+								local cyl = newPart(R.a + U * rk + W * rk, R.dir, U, V3(big, rk * 2, rk * 2), Enum.PartType.Cylinder)
+								local deep = ENT.halfSpace(R.a + U * rk, U, big)   -- (deeper than the round = kept)
+								keepCut({ hsK, cyl, deep })
+							else
+								local n = U + W
+								keepCut({ ENT.halfSpace(R.a + n * (rk / n:Dot(n)), n.Unit, big) })
+							end
+						end
+						for _, FC in ipairs(fills) do
+							local F, C = FC.F, FC.C
+							local A, Bv, rI = F.I.u, F.I.v, F.r
+							if F.f then
+								local O = C + A * rI + Bv * rI
+								local rho = rI + rmax
+								-- far into the fill (near it): kept
+								local far = newPart(O + U * (Dz / 2), A, Bv, V3(rho * 4 + 4, rho * 4 + 4, Dz + 2))
+								local core = newPart(O + U * (Dz / 2), U, A, V3(Dz + 4, rho * 2, rho * 2), Enum.PartType.Cylinder)
+								far = minus(far, { core })
+								core.Parent = nil
+								local hA = ENT.halfSpace(C + A * rI, -A, big)
+								local hB = ENT.halfSpace(C + Bv * rI, -Bv, big)
+								local far2 = inter(far, { hA, hB })
+								far.Parent, hA.Parent, hB.Parent = nil, nil, nil
+								local keeps = { ENT.halfSpace(C + U * rmax, U, big) }
+								if far2 then keeps[#keeps + 1] = far2 end
+								local K = 8
+								local prev
+								for i2 = 0, K do
+									local th = math.pi + (math.pi / 2) * (i2 / K)
+									local P = O + (A * math.cos(th) + Bv * math.sin(th)) * rho + U * rmax
+									keeps[#keeps + 1] = newPart(P, A, Bv, V3(rmax * 2, rmax * 2, rmax * 2), Enum.PartType.Ball)
+									if prev then
+										local d0 = P - prev
+										keeps[#keeps + 1] = newPart((P + prev) / 2, d0.Unit, U, V3(d0.Magnitude + 0.02, rmax * 2, rmax * 2), Enum.PartType.Cylinder)
+									end
+									prev = P
+								end
+								keepCut(keeps)
+							else
+								local s2 = math.sqrt(2)
+								local n = U * s2 - A - Bv
+								local k = rmax * s2 - rI
+								keepCut({ ENT.halfSpace(C + n * (k / n:Dot(n)), n.Unit, big) })
+							end
+						end
+						pbox.Parent = nil
+						if cutter then
+							local okS, rS = pcall(function() return GeometryService:SubtractAsync(cur, { cutter }, opts) end)
+							cutter.Parent = nil
+							if okS and type(rS) == "table" and rS[1] then swap(rS[1]) else print("PROTO pocket: the opening cut failed - " .. tostring(rS)) end
+						else
+							print("PROTO pocket: couldn't build the opening cutter")
+						end
+						print(("PROTO pocket: open side done - %d edge(s), %d fill end(s), size %.2f"):format(#rims, #fills, rmax))
 					end
 				end
 			end
 		end
-		local opts = { CollisionFidelity = ENT.CSG_OPTS.CollisionFidelity, RenderFidelity = Enum.RenderFidelity.Precise, SplitApart = false }
-		local okC, res = pcall(function()
-			if E.kind == "in" then return GeometryService:UnionAsync(p, pieces, opts) end
-			return GeometryService:SubtractAsync(p, pieces, opts)
-		end)
-		for _, x in ipairs(pieces) do x.Parent = nil end
-		local nIn, nRim, nDone = 0, 0, 0
-		for _, N in ipairs(all) do
-			if sameBox(N) then
-				if N.kind == "in" then nIn += 1 else nRim += 1 end
-				if info(N) then nDone += 1 end
-			end
-		end
-		print(("PROTO pocket: %s %s r %.2f | this pocket: %d inside edges, %d opening edges, %d done | pieces %d, corner trims %d | main op %s")
-			:format(E.kind, isF and "fillet" or "chamfer", r, nIn, nRim, nDone, #pieces, #trims, tostring(okC and type(res) == "table" and res[1] ~= nil)))
-		-- corners: clear each corner box, then put the finished corner piece in
-		if okC and type(res) == "table" and res[1] and #trims > 0 then
-			local mid0 = res[1]
-			mid0.Parent = workspace
-			local okT, rT = pcall(function() return GeometryService:SubtractAsync(mid0, trims, opts) end)
-			if okT and type(rT) == "table" and rT[1] then mid0.Parent = nil res = rT else mid0.Parent = nil print("PROTO pocket: clearing corners failed - " .. tostring(rT)) end
-		end
-		for _, x in ipairs(trims) do x.Parent = nil end
-		if okC and type(res) == "table" and res[1] and #adds > 0 then
-			local mid0 = res[1]
-			mid0.Parent = workspace
-			local okA, rA = pcall(function() return GeometryService:UnionAsync(mid0, adds, opts) end)
-			if okA and type(rA) == "table" and rA[1] then mid0.Parent = nil res = rA else mid0.Parent = nil print("PROTO pocket: corner piece failed - " .. tostring(rA)) end
-		end
-		for _, x in ipairs(adds) do x.Parent = nil end
+		if cur == p and E.kind == "rim" then okC, res = false, "nothing changed" else res = { cur } end
 		if not (okC and type(res) == "table" and res[1]) then error("couldn't " .. (E.kind == "in" and "add the fill" or "cut the edge") .. " - " .. tostring(res)) end
 		out = res[1]
 		out.Name = p.Name
