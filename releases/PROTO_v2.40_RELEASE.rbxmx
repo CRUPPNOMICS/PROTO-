@@ -5313,6 +5313,13 @@ function ENT.pocketSegs(P, cf, bcf, bsize)
 	end
 	return out
 end
+-- v2.40: how much a cut's cutter was grown sideways (saved on its outline; older cuts: worked out like cutGrow did)
+function ENT.cutGrowOf(v, q)
+	local g = v:GetAttribute("DIM_grow")
+	if type(g) == "number" then return g end
+	local z = q.Size
+	return math.clamp(math.min(z.X, z.Y, z.Z) * 0.01, 0.01, 0.05)
+end
 -- store it on the result (in the part's own space, so it moves / copies with the part)
 function ENT.attachOutline(inst, segs, kind)
 	if not inst or not segs or #segs == 0 then return end
@@ -5327,6 +5334,7 @@ function ENT.attachOutline(inst, segs, kind)
 	v.Name = "DIM_Outline"
 	v.Value = HttpService:JSONEncode(t)
 	if kind then pcall(function() v:SetAttribute("DIM_kind", kind) end) end
+	if kind == "cut" then pcall(function() v:SetAttribute("DIM_grow", ENT.cutGrow()) end) end
 	v.Parent = inst
 	pcall(function() game:GetService("CollectionService"):AddTag(v, "DIM_Outline") end)
 end
@@ -6812,6 +6820,8 @@ function ENT.pocketPanels(root)
 								end
 							end
 							local half = { (hi[1] - lo[1]) / 2, (hi[2] - lo[2]) / 2, (hi[3] - lo[3]) / 2 }
+							-- (v2.40: the real cut is a hair WIDER than its saved outline - the cutter grows so it never leaves a skin)
+							local gw = ENT.cutGrowOf(ch, q) half[1], half[2] = half[1] + gw, half[2] + gw
 							if half[1] < 0.02 or half[2] < 0.02 or half[3] < 0.02 then return end
 							local ctr = o0 + e1 * ((lo[1] + hi[1]) / 2) + e2 * ((lo[2] + hi[2]) / 2) + d * ((lo[3] + hi[3]) / 2)
 							local bh = { bsz.X / 2, bsz.Y / 2, bsz.Z / 2 }
@@ -7577,6 +7587,8 @@ function ENT.pocketBoxes(root)
 								end
 							end
 							local half = { (hi[1] - lo[1]) / 2, (hi[2] - lo[2]) / 2, (hi[3] - lo[3]) / 2 }
+							-- (v2.40: the real cut is a hair WIDER than its saved outline - the cutter grows so it never leaves a skin)
+							local gw = ENT.cutGrowOf(ch, q) half[1], half[2] = half[1] + gw, half[2] + gw
 							if half[1] < 0.02 or half[2] < 0.02 or half[3] < 0.02 then return end
 							local ctr = o0 + e1 * ((lo[1] + hi[1]) / 2) + e2 * ((lo[2] + hi[2]) / 2) + d * ((lo[3] + hi[3]) / 2)
 							local bh = { bsz.X / 2, bsz.Y / 2, bsz.Z / 2 }
