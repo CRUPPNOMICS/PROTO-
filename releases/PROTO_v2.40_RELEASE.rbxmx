@@ -8619,7 +8619,9 @@ function acceptExtrude()
 					return GeometryService:SubtractAsync(p, cutters, {
 						CollisionFidelity = Enum.CollisionFidelity.Box,
 						RenderFidelity = Enum.RenderFidelity.Automatic,
-						SplitApart = true,   -- loose crumbs come back as their own pieces, so they can be thrown away
+						-- (v2.40: NOT on a block with fillets / chamfers - its skirting pieces came back as loose bits and
+						-- were thrown away as crumbs = the corner wraps vanished)
+						SplitApart = not p:GetAttribute("PROTO_EdgesDone"),
 					})
 				end)
 				if okg and type(res) == "table" then print(("PROTO: cutting %s gave %d piece(s)"):format(p.Name, #res)) end
@@ -8687,6 +8689,20 @@ function acceptExtrude()
 						-- v2.08: keep the outlines of earlier cuts on this part, plus this cut's
 						for _, ch in ipairs(p:GetChildren()) do
 							if ch:IsA("StringValue") and ch.Name == "DIM_Outline" then ENT.moveDimValue(ch, p.CFrame, np.CFrame, np) end
+						end
+						-- v2.40: it keeps what it knows about its edges (fillets / chamfers / fills) - the block it was made
+						-- from stays where it was in the world
+						do
+							local rel = p:GetAttribute("PROTO_BlockRel")
+							local bsz = p:GetAttribute("PROTO_BlockSize")
+							if typeof(rel) == "CFrame" and typeof(bsz) == "Vector3" then
+								pcall(function()
+									np:SetAttribute("PROTO_BlockRel", np.CFrame:ToObjectSpace(p.CFrame * rel))
+									np:SetAttribute("PROTO_BlockSize", bsz)
+									local ed = p:GetAttribute("PROTO_EdgesDone")
+									if ed then np:SetAttribute("PROTO_EdgesDone", ed) end
+								end)
+							end
 						end
 						ENT.attachOutline(np, ENT.cutOutline, "cut")
 						ENT.finishParts(np)
