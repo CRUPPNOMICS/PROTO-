@@ -1463,10 +1463,10 @@ function ENT.cubeFacePlane(n)
 	return planeFrom(c + out * dist, best.u, best.v), best.name
 end
 -- v2.40: every pocket a cut made in the current build: a list of its edge lists (world segments)
-function ENT.targetPockets()
+function ENT.targetPockets(partsIn)
 	local out = {}
-	if not target then return out end
-	local parts = ENT.objParts(target) or { target }
+	if not partsIn and not target then return out end
+	local parts = partsIn or ENT.objParts(target) or { target }
 	ENT.prismCache = ENT.prismCache or {}
 	ENT.outlineCache = ENT.outlineCache or {}
 	for _, q in ipairs(parts) do
@@ -6366,15 +6366,10 @@ function ENT.shiftFaceKey(i)
 		if shiftDown() and not ctrlDown() then
 			hoverPlane, ENT.hoverFace = nil, nil
 			local hit = ENT.directHit()
-			if hit then
-				faceHover.Adornee = hit.Instance
-				faceHover.TargetSurface = ENT.normalToId(hit.Instance, hit.Normal)
-			else
-				faceHover.Adornee = nil
-			end
+			ENT.showFaceHover(hit)
 			setStatus("FACE mode (Shift held): click any face to sketch right on it. Let go of Shift = planes back.")
 		else
-			faceHover.Adornee = nil
+			ENT.showFaceHover(nil)
 			refreshStatus()
 		end
 		drawPlanes()
@@ -6382,6 +6377,72 @@ function ENT.shiftFaceKey(i)
 end
 UIS.InputBegan:Connect(function(i) ENT.shiftFaceKey(i) end)
 UIS.InputEnded:Connect(function(i) ENT.shiftFaceKey(i) end)
+-- v2.40 (Dylan: "click the inside of them"): face mode on a pocket's floor / wall lights up THAT face only (Roblox's own
+-- face highlight lights the whole side of the part's box, right over the hole)
+function ENT.showFaceHover(hit, glowOnly)
+	local G = ENT.faceGlow
+	if not G then
+		G = Instance.new("BoxHandleAdornment")
+		G.Adornee = TERRAIN
+		G.AlwaysOnTop = false
+		G.Color3 = Color3.fromRGB(80, 170, 255)
+		G.Transparency = 0.5
+		G.Visible = false
+		G.Parent = adornRoot
+		ENT.faceGlow = G
+	end
+	if glowOnly then G.Visible = false return end
+	if not hit then faceHover.Adornee = nil G.Visible = false return end
+	local p, n = hit.Instance, hit.Normal
+	local inner = nil
+	if p:IsA("BasePart") and ENT.isProto(p) then
+		pcall(function()
+			local cf, size = p.CFrame, p.Size
+			-- how far in from the side of the part's box this spot is
+			local L = cf:VectorToObjectSpace(n)
+			local ax = (math.abs(L.X) > 0.99 and 1) or (math.abs(L.Y) > 0.99 and 2) or (math.abs(L.Z) > 0.99 and 3)
+			if not ax then return end
+			local h = ({ size.X, size.Y, size.Z })[ax] / 2
+			local lp = cf:PointToObjectSpace(hit.Position)
+			local dIn = h - math.abs(({ lp.X, lp.Y, lp.Z })[ax])
+			if dIn < 0.05 then return end
+			local pl = ENT.facePlane(p, hit.Position, n)
+			local u, v = pl.u, pl.v
+			local on = hit.Position
+			local rect
+			for _, segs in ipairs(ENT.targetPockets(ENT.objParts(p) or { p })) do
+				local lo, hi = V2(math.huge, math.huge), V2(-math.huge, -math.huge)
+				local cnt = 0
+				for _, sg in ipairs(segs) do
+					if math.abs((sg[1] - on):Dot(n)) < 0.06 and math.abs((sg[2] - on):Dot(n)) < 0.06 then
+						for _, w in ipairs({ sg[1], sg[2] }) do
+							local q2 = V2((w - on):Dot(u), (w - on):Dot(v))
+							lo = V2(math.min(lo.X, q2.X), math.min(lo.Y, q2.Y)) hi = V2(math.max(hi.X, q2.X), math.max(hi.Y, q2.Y))
+						end
+						cnt += 1
+					end
+				end
+				if cnt >= 2 and lo.X <= 0.05 and lo.Y <= 0.05 and hi.X >= -0.05 and hi.Y >= -0.05 and hi.X - lo.X > 0.05 and hi.Y - lo.Y > 0.05 then
+					if not rect or (hi - lo).Magnitude < (rect.hi - rect.lo).Magnitude then rect = { lo = lo, hi = hi } end
+				end
+			end
+			if rect then
+				local m = (rect.lo + rect.hi) / 2
+				inner = { o = on + u * m.X + v * m.Y + n * 0.03, u = u, v = v, w = rect.hi.X - rect.lo.X, h = rect.hi.Y - rect.lo.Y }
+			end
+		end)
+	end
+	if inner then
+		faceHover.Adornee = nil
+		G.CFrame = CFrame.fromMatrix(inner.o, inner.u, inner.v)
+		G.Size = V3(inner.w, inner.h, 0.05)
+		G.Visible = true
+	else
+		G.Visible = false
+		faceHover.Adornee = p
+		faceHover.TargetSurface = ENT.normalToId(p, n)
+	end
+end
 function ENT.dragKey(i)
 	local k = i.KeyCode
 	if not (k == Enum.KeyCode.LeftShift or k == Enum.KeyCode.RightShift or k == Enum.KeyCode.LeftControl or k == Enum.KeyCode.RightControl) then return end
@@ -6522,6 +6583,7 @@ function ENT.uprightPlane(pl)
 	return pl
 end
 function startSketch(pl, host, name)
+	if ENT.faceGlow then ENT.faceGlow.Visible = false end
 	pl = ENT.uprightPlane(pl)
 	local half = 20
 	if host then half = math.max(host.Size.X, host.Size.Y, host.Size.Z) * 0.8 + 4 end
@@ -10484,14 +10546,10 @@ mouse.Move:Connect(function()
 		-- v2.38: Shift held = show the exact face a Shift-click will sketch on
 		local hit = ENT.directHit()
 		if hoverPlane or ENT.hoverFace then hoverPlane, ENT.hoverFace = nil, nil drawPlanes() end
-		if hit then
-			faceHover.Adornee = hit.Instance
-			faceHover.TargetSurface = ENT.normalToId(hit.Instance, hit.Normal)
-		else
-			faceHover.Adornee = nil
-		end
+		ENT.showFaceHover(hit)
 		return
 	end
+	ENT.showFaceHover(nil, true)
 	local res, pl = pick()
 	local hp = (not res) and pl or nil
 	-- v2.37: mouse on a PROTO object = the side PANEL of its cube that faces you lights up (click it = sketch there)
