@@ -7692,6 +7692,12 @@ function ENT.pocketBoxes(root)
 								end
 							end
 							out[#out + 1] = { part = q, ctr = ctr, ax = ax, half = half, open = open }
+							if ENT.pocketLogNext then
+								ENT.pocketLogNext = nil
+								local lc = q.CFrame:PointToObjectSpace(ctr)
+								print(("PROTO pocket box: %s | centre (part) %.3f, %.3f, %.3f | size %.3f x %.3f x %.3f | from the cutter's corners: %s")
+									:format(q.Name, lc.X, lc.Y, lc.Z, half[1] * 2, half[2] * 2, half[3] * 2, tostring(exact)))
+							end
 						end)
 					end
 				end
@@ -7780,6 +7786,8 @@ function ENT.pocketEdgeKey(p, E)
 end
 -- fillet / chamfer a pocket edge: inside corner = a fill added, rim = rounded / cut off
 function ENT.pocketEdgeClick(E, p)
+	ENT.pocketLogNext = true
+	ENT.pocketBoxes(p)
 	local isF = ENT.edgeTool == "fillet"
 	local nm = isF and "FILLET" or "CHAMFER"
 	local r = ENT.filletSize()
@@ -7909,7 +7917,6 @@ function ENT.pocketEdgeClick(E, p)
 								holeCut.Parent = nil
 								if okS and type(rS) == "table" and rS[1] then blk.Parent = nil blk = rS[1] blk.Parent = workspace end
 							end
-							adds[#adds + 1] = blk
 							-- what the three chamfers take off together (inside the block's box)
 							local s2 = math.sqrt(2)
 							local function rem(n, k) return ENT.halfSpace(C + n * (k / n:Dot(n)), -n.Unit, (W + Dz) * 6 + 4) end
@@ -7919,7 +7926,24 @@ function ENT.pocketEdgeClick(E, p)
 							local c2 = cube()
 							local cutPiece = inter(c2, { h1, h2, h3 })
 							c2.Parent, h1.Parent, h2.Parent, h3.Parent = nil, nil, nil, nil
-							if cutPiece then trims[#trims + 1] = cutPiece else print("PROTO pocket: corner cut failed") end
+							-- (v2.40: the corner is made as ONE finished piece on its own, then swapped in: the part's corner
+							-- box is cleared, the piece goes in - no layering cuts on cuts, which broke one corner)
+							local piece = blk
+							if cutPiece then
+								local okP, rP = pcall(function() return GeometryService:SubtractAsync(blk, { cutPiece }, ENT.FAST) end)
+								cutPiece.Parent = nil
+								if okP and type(rP) == "table" and rP[1] then blk.Parent = nil piece = rP[1] piece.Parent = workspace end
+							else
+								print("PROTO pocket: corner cut failed")
+							end
+							-- (never outside the part - a thin wall would let the corner box poke out the far side)
+							local pq = I.box.part
+							local pbox = boxAt(pq.CFrame.Position, pq.CFrame.RightVector, pq.CFrame.UpVector, pq.Size)
+							local clipped = inter(piece, { pbox })
+							pbox.Parent = nil
+							if clipped then piece.Parent = nil piece = clipped end
+							adds[#adds + 1] = piece
+							trims[#trims + 1] = cube()   -- (the corner box: cleared first)
 						end
 					end
 				end
@@ -7940,20 +7964,21 @@ function ENT.pocketEdgeClick(E, p)
 		end
 		print(("PROTO pocket: %s %s r %.2f | this pocket: %d inside edges, %d opening edges, %d done | pieces %d, corner trims %d | main op %s")
 			:format(E.kind, isF and "fillet" or "chamfer", r, nIn, nRim, nDone, #pieces, #trims, tostring(okC and type(res) == "table" and res[1] ~= nil)))
-		if okC and type(res) == "table" and res[1] and #adds > 0 then
-			local mid0 = res[1]
-			mid0.Parent = workspace
-			local okA, rA = pcall(function() return GeometryService:UnionAsync(mid0, adds, opts) end)
-			if okA and type(rA) == "table" and rA[1] then mid0.Parent = nil res = rA else mid0.Parent = nil print("PROTO pocket: corner block failed - " .. tostring(rA)) end
-		end
-		for _, x in ipairs(adds) do x.Parent = nil end
+		-- corners: clear each corner box, then put the finished corner piece in
 		if okC and type(res) == "table" and res[1] and #trims > 0 then
 			local mid0 = res[1]
 			mid0.Parent = workspace
 			local okT, rT = pcall(function() return GeometryService:SubtractAsync(mid0, trims, opts) end)
-			if okT and type(rT) == "table" and rT[1] then mid0.Parent = nil res = rT else mid0.Parent = nil print("PROTO pocket: trimming failed - " .. tostring(rT)) end
+			if okT and type(rT) == "table" and rT[1] then mid0.Parent = nil res = rT else mid0.Parent = nil print("PROTO pocket: clearing corners failed - " .. tostring(rT)) end
 		end
 		for _, x in ipairs(trims) do x.Parent = nil end
+		if okC and type(res) == "table" and res[1] and #adds > 0 then
+			local mid0 = res[1]
+			mid0.Parent = workspace
+			local okA, rA = pcall(function() return GeometryService:UnionAsync(mid0, adds, opts) end)
+			if okA and type(rA) == "table" and rA[1] then mid0.Parent = nil res = rA else mid0.Parent = nil print("PROTO pocket: corner piece failed - " .. tostring(rA)) end
+		end
+		for _, x in ipairs(adds) do x.Parent = nil end
 		if not (okC and type(res) == "table" and res[1]) then error("couldn't " .. (E.kind == "in" and "add the fill" or "cut the edge") .. " - " .. tostring(res)) end
 		out = res[1]
 		out.Name = p.Name
