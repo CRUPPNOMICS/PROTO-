@@ -6594,8 +6594,8 @@ function ENT.wrapPieces(cf, h, kc, n1c, n2c, rc, level, up, rf, fillet, surf)
 			local t0 = -n1c * math.sin(P.a0) + n2c * math.cos(P.a0)
 			local t1 = -n1c * math.sin(P.a1) + n2c * math.cos(P.a1)
 			local cuts = {}
-			if not P.first then cuts[#cuts + 1] = ENT.halfSpace(wctr, cf:VectorToWorldSpace(-t0), Sz) end
-			if not P.last then cuts[#cuts + 1] = ENT.halfSpace(wctr, cf:VectorToWorldSpace(t1), Sz) end
+			cuts[#cuts + 1] = ENT.halfSpace(wctr, cf:VectorToWorldSpace(-t0), Sz)   -- (v2.40: first / last cut square at the round start too - no ramp past the straight fill)
+			cuts[#cuts + 1] = ENT.halfSpace(wctr, cf:VectorToWorldSpace(t1), Sz)
 			if #cuts > 0 then
 				local ok, res = pcall(function() return GeometryService:SubtractAsync(seg, cuts, ENT.FAST) end)
 				for _, c in ipairs(cuts) do c.Parent = nil end
@@ -6848,7 +6848,27 @@ function ENT.fillFromRecipe(cf, size, d)
 	if ok and type(res) == "table" and res[1] then res[1].Parent = workspace return res[1] end
 	return nil
 end
+-- v2.40: a wrap round a rounded corner is remembered on the block ({w=1, k, a, b, z}) so it's only ever made once
+function ENT.hasWrap(done, kc, sa, sb, zs)
+	for _, d in ipairs(done or {}) do
+		if d.w and d.k == kc and d.a == sa and d.b == sb and d.z == zs then return true end
+	end
+	return false
+end
+-- is there an inside fill running along axis kf, sitting at the 'endAx' end with sign endSign, at level sign lvSign on axis kc?
+function ENT.otherBand(done, kf, endAx, endSign, kc, lvSign)
+	for _, d in ipairs(done or {}) do
+		if d.i and d.ux and d.k == kf then
+			local ad, bd = (kf % 3) + 1, ((kf + 1) % 3) + 1
+			local sg = { 0, 0, 0 }
+			sg[ad], sg[bd] = d.a, d.b
+			if sg[endAx] == endSign and sg[kc] == lvSign then return true end
+		end
+	end
+	return false
+end
 function ENT.edgeClick()
+	ENT.newWraps = nil
 	local hit = ENT.directHit()
 	if not hit then return end
 	local p = hit.Instance
@@ -6937,9 +6957,16 @@ function ENT.edgeClick()
 						if endSign ~= 0 and sg[faceAx] == faceSign then
 							local n1c, n2c = AXV[ac] * d.a, AXV[bc] * d.b
 							local up = (math.abs(lu:Dot(AXV[kc])) > 0.9) and lu or lv
-							local level = ((a == kc) and E.sa or E.sb) * h[kc]
+							local lvSign = (a == kc) and E.sa or E.sb
+							local level = lvSign * h[kc]
 							if endSign < 0 then s0 = -h[k] + d.r else s1 = h[k] - d.r end
-							wraps[#wraps + 1] = { cf = cf, kc = kc, n1c = n1c, n2c = n2c, rc = d.r, level = level, up = up }
+							-- v2.40 (Dylan: "only when it sees the other 2" / "it makes 2"): the wrap goes in ONCE per rounded
+							-- corner + level, and only when the fill on the OTHER face is there too
+							if ENT.otherBand(doneP, faceAx, k, endSign, kc, lvSign) and not ENT.hasWrap(doneP, kc, d.a, d.b, lvSign) then
+								wraps[#wraps + 1] = { cf = cf, kc = kc, n1c = n1c, n2c = n2c, rc = d.r, level = level, up = up }
+								ENT.newWraps = ENT.newWraps or {}
+								table.insert(ENT.newWraps, { w = 1, k = kc, a = d.a, b = d.b, z = lvSign })
+							end
 						end
 					end
 				end
@@ -7180,11 +7207,18 @@ function ENT.edgeClick()
 							-- its "up" = whichever of its two directions runs along the cut edge (away from the floor)
 							local U, Vv = V3(d.ux, d.uy, d.uz), V3(d.vx, d.vy, d.vz)
 							local up = (math.abs(U:Dot(AXV[k])) > 0.9) and U or Vv
-							if not levels[key] then levels[key] = { z = zs * h[k], v = up, rf = d.r, f = d.t == "fillet" } end
+							if not levels[key] then levels[key] = { z = zs * h[k], v = up, rf = d.r, f = d.t == "fillet", runs = {} } end
+							levels[key].runs[kd] = true
 						end
 					end
 				end
 				for _, lv in pairs(levels) do
+					local zs = (lv.z >= 0) and 1 or -1
+					-- (only when BOTH faces have their fill at this level, and never twice)
+					if not (lv.runs[a] and lv.runs[b]) then continue end
+					if ENT.hasWrap(done, k, E.sa, E.sb, zs) then continue end
+					ENT.newWraps = ENT.newWraps or {}
+					table.insert(ENT.newWraps, { w = 1, k = k, a = E.sa, b = E.sb, z = zs })
 					out.Parent = workspace   -- (so its rounded wall can be felt with rays)
 					local okW, pcs = pcall(ENT.wrapPieces, cf, h, k, n1, n2, r, lv.z, lv.v, lv.rf, lv.f, out)
 					if okW and pcs then for _, x in ipairs(pcs) do table.insert(fills, x) end end
@@ -7211,6 +7245,8 @@ function ENT.edgeClick()
 			rec.vx, rec.vy, rec.vz = rd(vl.X), rd(vl.Y), rd(vl.Z)
 		end
 		table.insert(done, rec)
+		for _, wr in ipairs(ENT.newWraps or {}) do table.insert(done, wr) end
+		ENT.newWraps = nil
 		pcall(function() out:SetAttribute("PROTO_EdgesDone", HttpService:JSONEncode(done)) end)
 		for _, ch in ipairs(p:GetChildren()) do
 			if ch:IsA("StringValue") and (ch.Name == "DIM_Outline" or ch.Name == "DIM_Bounds") then ENT.moveDimValue(ch, p.CFrame, out.CFrame, out)
