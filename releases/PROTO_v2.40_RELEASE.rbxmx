@@ -4990,6 +4990,29 @@ function ENT.attachOutline(inst, segs, kind)
 	v.Parent = inst
 	pcall(function() game:GetService("CollectionService"):AddTag(v, "DIM_Outline") end)
 end
+-- v2.40: copy a saved outline / bounds value onto a NEW part (after a union / subtract). The points are stored in
+-- the part's own space - the new part sits / turns differently, so they're moved across through the world
+-- (copying them as-is left slanted "ghost" construction lines next to filleted / cut parts)
+function ENT.moveDimValue(v, fromCF, toCF, into)
+	local c = v:Clone()
+	local ok, data = pcall(function() return HttpService:JSONDecode(v.Value) end)
+	if ok and type(data) == "table" then
+		local function mv(x, y, z)
+			local w = fromCF:PointToWorldSpace(V3(x, y, z))
+			local l = toCF:PointToObjectSpace(w)
+			return math.floor(l.X * 1000 + 0.5) / 1000, math.floor(l.Y * 1000 + 0.5) / 1000, math.floor(l.Z * 1000 + 0.5) / 1000
+		end
+		for _, q in ipairs(data) do
+			if type(q) == "table" and #q >= 3 then
+				q[1], q[2], q[3] = mv(q[1], q[2], q[3])
+				if #q >= 6 then q[4], q[5], q[6] = mv(q[4], q[5], q[6]) end
+			end
+		end
+		pcall(function() c.Value = HttpService:JSONEncode(data) end)
+	end
+	c.Parent = into
+	return c
+end
 -- every real edge near the sketch, flattened onto it: the host part's box edges + saved cut / extrude outlines
 function ENT.computeRefLines()
 	if not sk then return end
@@ -6933,7 +6956,10 @@ function ENT.edgeClick()
 		end
 		table.insert(done, rec)
 		pcall(function() out:SetAttribute("PROTO_EdgesDone", HttpService:JSONEncode(done)) end)
-		for _, ch in ipairs(p:GetChildren()) do if ch:IsA("StringValue") and ch.Name:sub(1, 4) == "DIM_" then ch:Clone().Parent = out end end
+		for _, ch in ipairs(p:GetChildren()) do
+			if ch:IsA("StringValue") and (ch.Name == "DIM_Outline" or ch.Name == "DIM_Bounds") then ENT.moveDimValue(ch, p.CFrame, out.CFrame, out)
+			elseif ch:IsA("StringValue") and ch.Name:sub(1, 4) == "DIM_" then ch:Clone().Parent = out end
+		end
 		pcall(function() out.UsePartColor = true end)
 		out.Anchored = p.Anchored
 		out.Parent = p.Parent
@@ -8235,7 +8261,7 @@ function acceptExtrude()
 						np.Parent = p.Parent
 						-- v2.08: keep the outlines of earlier cuts on this part, plus this cut's
 						for _, ch in ipairs(p:GetChildren()) do
-							if ch:IsA("StringValue") and ch.Name == "DIM_Outline" then ch:Clone().Parent = np end
+							if ch:IsA("StringValue") and ch.Name == "DIM_Outline" then ENT.moveDimValue(ch, p.CFrame, np.CFrame, np) end
 						end
 						ENT.attachOutline(np, ENT.cutOutline, "cut")
 						ENT.finishParts(np)
