@@ -7873,7 +7873,7 @@ function ENT.pocketEdgeClick(E, p)
 								local other
 								for _, R2 in ipairs(atC) do if R2 ~= R then other = R2 end end
 								if RI then
-									local Lz = RI.r * 2 + 0.3
+									local Lz = RI.r + math.max(RI.r, II.r) + 0.3
 									local zone = Instance.new("Part")
 									zone.Anchored, zone.CanCollide, zone.Transparency = true, false, 1
 									zone.Size = V3(Lz, II.r + 0.04, II.r + 0.04)
@@ -7890,7 +7890,18 @@ function ENT.pocketEdgeClick(E, p)
 										halfHs = ENT.halfSpace(C, (R.v - other.v).Unit, Lz * 6 + 4)
 										cutWith[2] = halfHs
 									end
-									local okT, rT = pcall(function() return GeometryService:IntersectAsync(zone, cutWith, ENT.FAST) end)
+									-- (one at a time - intersecting with several parts at once acts like a union)
+									local okT, rT = pcall(function()
+										local cur = zone
+										for _, w in ipairs(cutWith) do
+											local r2 = GeometryService:IntersectAsync(cur, { w }, ENT.FAST)
+											if cur ~= zone then cur.Parent = nil end
+											if not (r2 and r2[1]) then return {} end
+											cur = r2[1]
+											cur.Parent = workspace
+										end
+										return { cur }
+									end)
 									zone.Parent, hs.Parent = nil, nil
 									if halfHs then halfHs.Parent = nil end
 									if okT and type(rT) == "table" and rT[1] then rT[1].Parent = workspace trims[#trims + 1] = rT[1]
