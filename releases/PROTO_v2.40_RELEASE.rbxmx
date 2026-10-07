@@ -1462,6 +1462,64 @@ function ENT.cubeFacePlane(n)
 	end
 	return planeFrom(c + out * dist, best.u, best.v), best.name
 end
+-- v2.40: every pocket a cut made in the current build: a list of its edge lists (world segments)
+function ENT.targetPockets()
+	local out = {}
+	if not target then return out end
+	local parts = ENT.objParts(target) or { target }
+	ENT.prismCache = ENT.prismCache or {}
+	ENT.outlineCache = ENT.outlineCache or {}
+	for _, q in ipairs(parts) do
+		if q:IsA("BasePart") then
+			for _, ch in ipairs(q:GetChildren()) do
+				if ch.Name == "DIM_Outline" and ch:IsA("StringValue") and ENT.outKind(ch, q) == "cut" then
+					local P = ENT.prismCache[ch.Value]
+					if P == nil then
+						local data = ENT.outlineCache[ch.Value]
+						if not data then
+							local okD, r = pcall(function() return game:GetService("HttpService"):JSONDecode(ch.Value) end)
+							data = okD and r or {}
+							ENT.outlineCache[ch.Value] = data
+						end
+						P = ENT.cutPrism(data) or false
+						ENT.prismCache[ch.Value] = P
+					end
+					if P then
+						local bcf, bsz = ENT.blockOf(q)
+						if not bcf then bcf, bsz = q.CFrame, q.Size end
+						local okP, segs = pcall(ENT.pocketSegs, P, q.CFrame, bcf, bsz)
+						if okP and segs and #segs > 0 then out[#out + 1] = segs end
+					end
+				end
+			end
+		end
+	end
+	return out
+end
+-- the HOLES a cut left in a cube side panel (Dylan: "this face should be cut"): rectangles in the panel's own u / v
+function ENT.faceHoles(pl, hu, hv)
+	local holes = {}
+	for _, segs in ipairs(ENT.targetPockets()) do
+		local lo, hi = V2(math.huge, math.huge), V2(-math.huge, -math.huge)
+		local cnt = 0
+		for _, sg in ipairs(segs) do
+			if math.abs((sg[1] - pl.o):Dot(pl.n)) < 0.1 and math.abs((sg[2] - pl.o):Dot(pl.n)) < 0.1 then
+				for _, w in ipairs({ sg[1], sg[2] }) do
+					local q2 = V2((w - pl.o):Dot(pl.u), (w - pl.o):Dot(pl.v))
+					lo = V2(math.min(lo.X, q2.X), math.min(lo.Y, q2.Y)) hi = V2(math.max(hi.X, q2.X), math.max(hi.Y, q2.Y))
+				end
+				cnt += 1
+			end
+		end
+		if cnt >= 3 then
+			lo = V2(math.max(lo.X, -hu), math.max(lo.Y, -hv))
+			hi = V2(math.min(hi.X, hu), math.min(hi.Y, hv))
+			if hi.X - lo.X > 0.05 and hi.Y - lo.Y > 0.05 then holes[#holes + 1] = { lo = lo, hi = hi } end
+		end
+		if #holes >= 4 then break end
+	end
+	return holes
+end
 -- v2.40 INSIDE FACES (Dylan: "a cut makes a box, minus the side it started on, so you can click the inside"): the
 -- mouse is on the build but NOT on the outside of its cube (a pocket's floor / wall, a lower step) -> a panel on
 -- THAT face, at its real depth, only as big as the face really is (the pocket's own edges), not the whole cube side
@@ -1838,6 +1896,8 @@ end
 -- ===== drawing =====
 function drawPlanes()
 	pBegin(plLines) pBegin(axLines) pBegin(axDots)
+	ENT.holePool = ENT.holePool or {}
+	ENT.holeUsed = 0
 	local show = widget.Enabled and (mode == "planes" or mode == "mirror") and planes ~= nil and showPlanes and sk == nil
 	local live = {}
 	if show then
@@ -1855,6 +1915,49 @@ function drawPlanes()
 			local hot = (pl == hoverPlane) or (pl == ENT.hoverFace)
 			box.Transparency = hot and 0.55 or (pl.isFace and 0.9 or 0.82)
 			box.Visible = true
+			-- v2.40: a cube side with a cut through it = the panel has the HOLE in it (drawn as the pieces round it)
+			if pl.isFace and not pl.inner then
+				local okH, holes = pcall(ENT.faceHoles, pl, hu, hv)
+				if okH and holes and #holes > 0 then
+					box.Visible = false
+					local xs, ys = { -hu, hu }, { -hv, hv }
+					for _, H in ipairs(holes) do
+						table.insert(xs, H.lo.X) table.insert(xs, H.hi.X)
+						table.insert(ys, H.lo.Y) table.insert(ys, H.hi.Y)
+						local hc = { V2(H.lo.X, H.lo.Y), V2(H.hi.X, H.lo.Y), V2(H.hi.X, H.hi.Y), V2(H.lo.X, H.hi.Y) }
+						for j = 1, 4 do pLine(plLines, toWorld(pl, hc[j]), toWorld(pl, hc[j % 4 + 1]), hot and COL.sel or COL.planeEdge, 2) end
+					end
+					table.sort(xs) table.sort(ys)
+					for xi = 1, #xs - 1 do
+						for yi = 1, #ys - 1 do
+							local x0, x1, y0, y1 = xs[xi], xs[xi + 1], ys[yi], ys[yi + 1]
+							if x1 - x0 > 1e-3 and y1 - y0 > 1e-3 then
+								local cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+								local inHole = false
+								for _, H in ipairs(holes) do
+									if cx > H.lo.X and cx < H.hi.X and cy > H.lo.Y and cy < H.hi.Y then inHole = true break end
+								end
+								if not inHole then
+									ENT.holeUsed = ENT.holeUsed + 1
+									local b = ENT.holePool[ENT.holeUsed]
+									if not b then
+										b = Instance.new("BoxHandleAdornment")
+										b.Adornee = TERRAIN
+										b.AlwaysOnTop = false
+										b.Color3 = COL.plane
+										b.Parent = adornRoot
+										ENT.holePool[ENT.holeUsed] = b
+									end
+									b.CFrame = CFrame.fromMatrix(toWorld(pl, V2(cx, cy)), pl.u, pl.v)
+									b.Size = V3(x1 - x0, y1 - y0, 0.04)
+									b.Transparency = box.Transparency
+									b.Visible = true
+								end
+							end
+						end
+					end
+				end
+			end
 			tag.StudsOffsetWorldSpace = toWorld(pl, V2(-hu, hv))
 			tag.T.Text = pl.isFace and pl.name or (pl.name .. " Plane")
 			tag.Enabled = (not pl.isFace) or hot   -- face names only on the one under the mouse
@@ -1875,6 +1978,7 @@ function drawPlanes()
 		pDash(axLines, o - cf.LookVector * h, o + cf.LookVector * h, COL.axZ, 1, h / 15)
 		pDot(axDots, o, COL.sel, camDist(o) * 0.006)
 	end
+	for i = ENT.holeUsed + 1, #ENT.holePool do ENT.holePool[i].Visible = false end
 	pEnd(plLines) pEnd(axLines) pEnd(axDots)
 end
 
