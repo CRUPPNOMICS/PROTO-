@@ -6518,6 +6518,29 @@ function ENT.inFill(q)
 	end
 	return false
 end
+-- v2.40: fill pieces that WRAP round a rounded upright corner (block space): the corner's edge runs along axis kc,
+-- its two faces point out along n1c / n2c, round radius rc. The fill sits at height 'level' (along kc), grows 'up'
+-- (block-space direction) and is rf big. Returns world parts.
+function ENT.wrapPieces(cf, h, kc, n1c, n2c, rc, level, up, rf, fillet)
+	local out = {}
+	local H = V3(h[1], h[2], h[3])
+	local function absv(x) return V3(math.abs(x.X), math.abs(x.Y), math.abs(x.Z)) end
+	local edgeCc = n1c * absv(n1c):Dot(H) + n2c * absv(n2c):Dot(H)   -- the upright edge's middle (block space)
+	local ctr = edgeCc - n1c * rc - n2c * rc
+	local N = 10
+	local dth = (math.pi / 2) / N
+	for i = 0, N - 1 do
+		local th = (i + 0.5) * dth
+		local w = n1c * math.cos(th) + n2c * math.sin(th)
+		local t = -n1c * math.sin(th) + n2c * math.cos(th)
+		local base = ctr + w * rc
+		base = base - AXV[kc] * base:Dot(AXV[kc]) + AXV[kc] * level
+		local len = 2 * (rc + rf) * math.tan(dth / 2) + 0.03
+		local seg = ENT.fillPrism(cf:PointToWorldSpace(base), cf:VectorToWorldSpace(t), cf:VectorToWorldSpace(w), cf:VectorToWorldSpace(up), len, rf, fillet)
+		if seg then out[#out + 1] = seg end
+	end
+	return out
+end
 -- ===== v2.40 MITRE CORNERS (Dylan: "he cuts through him, and the same for the other guy - that's it") =====
 -- a fill prism: runs along dir from mid (length L), filling the corner square r x r that opens along u and v
 function ENT.fillPrism(mid, dir, u, v, L, r, isF)
@@ -6829,12 +6852,43 @@ function ENT.edgeClick()
 					end
 				end
 			end
+			-- v2.40 ORDER-PROOF: the upright corner at an end of this edge was ROUNDED already -> this fill stops exactly
+			-- where the round starts and wraps round the bend (same as doing it the other way round)
+			local wraps = {}
+			do
+				local doneP = {}
+				pcall(function() doneP = HttpService:JSONDecode(p:GetAttribute("PROTO_EdgesDone") or "[]") end)
+				local lu, lv = cf:VectorToObjectSpace(u), cf:VectorToObjectSpace(v)
+				for _, d in ipairs(doneP) do
+					if not d.i and d.t == "fillet" and d.k ~= k then
+						local kc = d.k
+						local ac, bc = (kc % 3) + 1, ((kc + 1) % 3) + 1
+						local sg = { 0, 0, 0 }
+						sg[ac], sg[bc] = d.a, d.b
+						-- that rounded edge must sit at one END of this edge, on the same face this fill leans on
+						local endSign = sg[k]
+						local faceAx = (a == kc) and b or a
+						local faceSign = (a == kc) and E.sb or E.sa
+						if endSign ~= 0 and sg[faceAx] == faceSign then
+							local n1c, n2c = AXV[ac] * d.a, AXV[bc] * d.b
+							local up = (math.abs(lu:Dot(AXV[kc])) > 0.9) and lu or lv
+							local level = ((a == kc) and E.sa or E.sb) * h[kc]
+							if endSign < 0 then s0 = -h[k] + d.r else s1 = h[k] - d.r end
+							wraps[#wraps + 1] = { cf = cf, kc = kc, n1c = n1c, n2c = n2c, rc = d.r, level = level, up = up }
+						end
+					end
+				end
+			end
 			E.s0, E.s1 = s0, s1
 			local mid = cf:PointToWorldSpace(edgeC + AXV[k] * ((s0 + s1) / 2))
 			local Lf = math.max(0.05, s1 - s0)
 			local fill = ENT.fillPrism(mid, dir, u, v, Lf, r, isF)
 			if not fill then error("couldn't shape the fill") end
 			local extra = {}
+			for _, W in ipairs(wraps) do
+				local okW, pcs = pcall(ENT.wrapPieces, W.cf, h, W.kc, W.n1c, W.n2c, W.rc, W.level, W.up, r, isF)
+				if okW and pcs then for _, x in ipairs(pcs) do extra[#extra + 1] = x end end
+			end
 			-- 2) THE MITRE: this fill is cut through on the 45-degree line where it meets the other one, and (outside
 			-- corners) the other one's missing bit past its end is built and cut on the same line from its side
 			for _, M in ipairs(mates) do
