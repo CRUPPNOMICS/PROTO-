@@ -6919,7 +6919,7 @@ function ENT.edgeClick()
 			for _, e in ipairs({ { -1, s0 }, { 1, s1 } }) do
 				local B, kind, C = ENT.cornerMate({ c = endPt(e[2]), dir = dir * e[1], u = u, v = v, r = r, t = tname })
 				if B then
-					mates[#mates + 1] = { B = B, kind = kind, C = C, out = dir * e[1] }
+					mates[#mates + 1] = { B = B, kind = kind, C = C, out = dir * e[1], side = e[1] }
 					if kind == "inner" and isF then
 						-- v2.40 (Dylan): two FILLETS in an inside corner - this one ENDS where the other one STARTS
 						-- (where its round leaves the wall), instead of both crossing through each other
@@ -6940,6 +6940,7 @@ function ENT.edgeClick()
 			-- v2.40 ORDER-PROOF: the upright corner at an end of this edge was ROUNDED already -> this fill stops exactly
 			-- where the round starts and wraps round the bend (same as doing it the other way round)
 			local wraps = {}
+			local roundEnd = {}
 			do
 				local doneP = {}
 				pcall(function() doneP = HttpService:JSONDecode(p:GetAttribute("PROTO_EdgesDone") or "[]") end)
@@ -6960,6 +6961,7 @@ function ENT.edgeClick()
 							local lvSign = (a == kc) and E.sa or E.sb
 							local level = lvSign * h[kc]
 							if endSign < 0 then s0 = -h[k] + d.r else s1 = h[k] - d.r end
+							roundEnd[endSign] = true   -- (that end goes round the bend - no mitre / corner piece there)
 							-- v2.40 (Dylan: "only when it sees the other 2" / "it makes 2"): the wrap goes in ONCE per rounded
 							-- corner + level, and only when the fill on the OTHER face is there too
 							if ENT.otherBand(doneP, faceAx, k, endSign, kc, lvSign) and not ENT.hasWrap(doneP, kc, d.a, d.b, lvSign) then
@@ -6977,6 +6979,7 @@ function ENT.edgeClick()
 			local fill = ENT.fillPrism(mid, dir, u, v, Lf, r, isF)
 			if not fill then error("couldn't shape the fill") end
 			local extra = {}
+			print(("PROTO fill: %s on %s k=%d span %.2f..%.2f wraps=%d roundEnds=%s/%s mates=%d"):format(tname, p:GetFullName(), k, s0, s1, #wraps, tostring(roundEnd[-1]), tostring(roundEnd[1]), #mates))
 			for _, W in ipairs(wraps) do
 				local okW, pcs = pcall(ENT.wrapPieces, W.cf, h, W.kc, W.n1c, W.n2c, W.rc, W.level, W.up, r, isF, p)
 				if okW and pcs then for _, x in ipairs(pcs) do extra[#extra + 1] = x end end
@@ -6985,6 +6988,7 @@ function ENT.edgeClick()
 			-- corners) the other one's missing bit past its end is built and cut on the same line from its side
 			for _, M in ipairs(mates) do
 				if M.skipCut then continue end
+				if roundEnd[M.side] then continue end   -- (v2.40: the other fill across a ROUNDED corner isn't a mitre mate)
 				local m = (M.out - M.B.dir).Unit   -- this fill keeps the side (p - C) . m <= 0
 				local S = r * 10 + 4
 				local cutA = ENT.halfSpace(M.C, m, S)
@@ -7005,7 +7009,7 @@ function ENT.edgeClick()
 						if okB and type(rB) == "table" and rB[1] then rB[1].Parent = workspace extra[#extra + 1] = rB[1] end
 					end
 				end
-				print(("PROTO mitre: %s %s corner at %.2f, %.2f, %.2f"):format(tname, M.kind, M.C.X, M.C.Y, M.C.Z))
+				print(("PROTO mitre: %s %s corner at %.2f, %.2f, %.2f | this dir %s | other end %s dir %s r %.2f | block %s"):format(tname, M.kind, M.C.X, M.C.Y, M.C.Z, tostring(M.out), tostring(M.B.c), tostring(M.B.dir), M.B.r, p:GetFullName()))
 			end
 			local opts = { CollisionFidelity = ENT.CSG_OPTS.CollisionFidelity, RenderFidelity = Enum.RenderFidelity.Precise, SplitApart = false }
 			-- JOIN PARTS on: the block, the fill AND the part it stands on become one solid
@@ -7220,6 +7224,7 @@ function ENT.edgeClick()
 					ENT.newWraps = ENT.newWraps or {}
 					table.insert(ENT.newWraps, { w = 1, k = k, a = E.sa, b = E.sb, z = zs })
 					out.Parent = workspace   -- (so its rounded wall can be felt with rays)
+					print(("PROTO wrap (round after fills): k=%d level %.2f rf %.2f"):format(k, lv.z, lv.rf))
 					local okW, pcs = pcall(ENT.wrapPieces, cf, h, k, n1, n2, r, lv.z, lv.v, lv.rf, lv.f, out)
 					if okW and pcs then for _, x in ipairs(pcs) do table.insert(fills, x) end end
 				end
