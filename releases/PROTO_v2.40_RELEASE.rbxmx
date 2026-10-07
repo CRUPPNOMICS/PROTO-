@@ -6864,6 +6864,17 @@ function ENT.edgeClick()
 		return
 	end
 	local isF = ENT.edgeTool == "fillet"
+	-- v2.40 (Dylan): clicking an edge that's ALREADY done does nothing (a second click re-cut it and undid the wrap)
+	do
+		local done0 = {}
+		pcall(function() done0 = HttpService:JSONDecode(p:GetAttribute("PROTO_EdgesDone") or "[]") end)
+		for _, d in ipairs(done0) do
+			if d.t and d.k == E.k and d.a == E.sa and d.b == E.sb then
+				setStatus(nm .. ": that edge is already done (" .. d.t .. " " .. fmt(d.r or 0) .. "). Ctrl+Z to change it.")
+				return
+			end
+		end
+	end
 	local out
 	local ok = record("PROTO " .. (isF and "Fillet" or "Chamfer") .. " edge", function()
 		local cf, h, k, a, b = E.cf, E.h, E.k, E.a, E.b
