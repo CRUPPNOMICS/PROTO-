@@ -5122,7 +5122,9 @@ function ENT.computeRefLines()
 		local found = workspace:GetPartBoundsInBox(CFrame.fromMatrix(pl.o, pl.u, pl.v), V3(ENT.NEAR * 2, ENT.NEAR * 2, ENT.NEAR * 2), op)
 		local parts = {}
 		for _, part in ipairs(found) do
-			if ENT.isProto(part) and part.Transparency < 1 and part.CanQuery then parts[#parts + 1] = part end
+			-- (v2.40: not blocks with fillets / chamfers - rays hit their rough COLLISION shape, not the drawn one =
+			-- wobbly doubled lines and slanted corners. Their box + saved outline are drawn instead)
+			if ENT.isProto(part) and part.Transparency < 1 and part.CanQuery and not part:GetAttribute("PROTO_EdgesDone") then parts[#parts + 1] = part end
 			if #parts >= 300 then break end
 		end
 		local sil = {}
