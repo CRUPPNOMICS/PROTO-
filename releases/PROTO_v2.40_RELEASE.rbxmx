@@ -7893,10 +7893,11 @@ function ENT.pocketEdgeClick(E, p)
 					local iMid = (I.a + I.b) / 2
 					for _, C in ipairs({ I.a, I.b }) do
 						local rr, U = nil, nil
+						local rimsC
 						for _, R in ipairs(all) do
 							if R.kind == "rim" and sameBox(R) and ((R.a - C).Magnitude < 0.02 or (R.b - C).Magnitude < 0.02) then
 								local RI = info(R)
-								if RI then rr = math.max(rr or 0, RI.r) U = R.depth end
+								if RI then rr = math.max(rr or 0, RI.r) U = R.depth rimsC = rimsC or {} rimsC[#rimsC + 1] = { R = R, r = RI.r, f = RI.f } end
 							end
 						end
 						if rr and U then
@@ -7920,12 +7921,38 @@ function ENT.pocketEdgeClick(E, p)
 							-- what the three chamfers take off together (inside the block's box)
 							local s2 = math.sqrt(2)
 							local function rem(n, k) return ENT.halfSpace(C + n * (k / n:Dot(n)), -n.Unit, (W + Dz) * 6 + 4) end
-							local h1 = rem(U - A, rr)                      -- the wall edge's chamfer
-							local h2 = rem(U - B, rr)                      -- the floor edge's chamfer
+							-- each opening edge at this corner: a CHAMFER takes off a flat slice, a FILLET (round) takes off what's
+							-- outside its round (so the corner matches the rounded edges, not flat cuts)
+							local cutters = {}
+							for _, RC in ipairs(rimsC or {}) do
+								local R, rk = RC.R, RC.r
+								if RC.f then
+									local slab = cube()
+									local front = ENT.halfSpace(C + U * rk, -U, (W + Dz) * 6 + 4)
+									local sl = inter(slab, { front })
+									slab.Parent, front.Parent = nil, nil
+									if sl then
+										local keep1 = ENT.halfSpace(C + R.wall * rk, R.wall, (W + Dz) * 6 + 4)
+										local cyl = Instance.new("Part")
+										cyl.Anchored, cyl.CanCollide, cyl.Transparency = true, false, 1
+										cyl.Shape = Enum.PartType.Cylinder
+										cyl.Size = V3((W + Dz) * 3 + 2, rk * 2, rk * 2)
+										cyl.CFrame = CFrame.fromMatrix(C + U * rk + R.wall * rk, R.dir, U)
+										cyl.Parent = workspace
+										local okR, rR = pcall(function() return GeometryService:SubtractAsync(sl, { keep1, cyl }, ENT.FAST) end)
+										keep1.Parent, cyl.Parent, sl.Parent = nil, nil, nil
+										if okR and type(rR) == "table" and rR[1] then rR[1].Parent = workspace cutters[#cutters + 1] = rR[1] end
+									end
+								else
+									cutters[#cutters + 1] = rem(U + R.wall, rk)
+								end
+							end
 							local h3 = rem(U * s2 - A - B, rr * s2 - rI)   -- the fill's own front edge
+							cutters[#cutters + 1] = h3
 							local c2 = cube()
-							local cutPiece = inter(c2, { h1, h2, h3 })
-							c2.Parent, h1.Parent, h2.Parent, h3.Parent = nil, nil, nil, nil
+							local cutPiece = inter(c2, cutters)
+							c2.Parent = nil
+							for _, x in ipairs(cutters) do x.Parent = nil end
 							-- (v2.40: the corner is made as ONE finished piece on its own, then swapped in: the part's corner
 							-- box is cleared, the piece goes in - no layering cuts on cuts, which broke one corner)
 							local piece = blk
