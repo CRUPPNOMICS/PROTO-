@@ -7852,8 +7852,9 @@ function ENT.pocketEdgeClick(E, p)
 			end
 			if #pieces == 0 then error("couldn't shape it") end
 		end
-		-- v2.40 THREE-WAY CORNERS: a fill up an inside corner of the cut that runs out to the opening is cut back by the
-		-- opening's chamfer / round there (it stuck out past it as a block)
+		-- v2.40 THREE-WAY CORNERS (Dylan): a fill up an inside corner of the cut that runs out to a chamfered / rounded
+		-- opening gets the SAME chamfer along its own front edge (where its sloped face meets the outside face) - so the
+		-- opening's chamfer runs: wall edge -> the fill's edge -> floor edge, a small 3-sided corner, nothing dug out
 		local trims = {}
 		for _, I in ipairs(all) do
 			if I.kind == "in" and sameBox(I) then
@@ -7862,52 +7863,31 @@ function ENT.pocketEdgeClick(E, p)
 					local iMid = (I.a + I.b) / 2
 					for _, C in ipairs({ I.a, I.b }) do
 						local t = (C - iMid).Unit
-						-- the opening edges that meet this fill's end (normally two - one each side of the corner)
-						local atC = {}
+						local rr, U = nil, nil
 						for _, R in ipairs(all) do
-							if R.kind == "rim" and sameBox(R) and ((R.a - C).Magnitude < 0.02 or (R.b - C).Magnitude < 0.02) then atC[#atC + 1] = R end
-						end
-						for _, R in ipairs(atC) do
-							do
+							if R.kind == "rim" and sameBox(R) and ((R.a - C).Magnitude < 0.02 or (R.b - C).Magnitude < 0.02) then
 								local RI = info(R)
-								local other
-								for _, R2 in ipairs(atC) do if R2 ~= R then other = R2 end end
-								if RI then
-									local Lz = RI.r + math.max(RI.r, II.r) + 0.3
-									local zone = Instance.new("Part")
-									zone.Anchored, zone.CanCollide, zone.Transparency = true, false, 1
-									zone.Size = V3(Lz, II.r + 0.04, II.r + 0.04)
-									zone.CFrame = CFrame.fromMatrix(C - t * (Lz / 2 - 0.15) + I.u * (II.r / 2) + I.v * (II.r / 2), I.dir, I.u)
-									zone.Parent = workspace
-									local hs
-									if RI.f then hs = ENT.halfSpace(C + R.u * RI.r, -R.u, Lz * 6 + 4)
-									else hs = ENT.halfSpace(C + R.u * RI.r, -(R.u + R.v).Unit, Lz * 6 + 4) end
-									-- (v2.40: each opening edge only trims ITS half of the fill - the side nearer its own wall - like
-									-- the picture-frame mitre; trimming the whole fill with both left gaps)
-									local cutWith = { hs }
-									local halfHs
-									if other and (R.v - other.v).Magnitude > 0.1 then
-										halfHs = ENT.halfSpace(C, (R.v - other.v).Unit, Lz * 6 + 4)
-										cutWith[2] = halfHs
-									end
-									-- (one at a time - intersecting with several parts at once acts like a union)
-									local okT, rT = pcall(function()
-										local cur = zone
-										for _, w in ipairs(cutWith) do
-											local r2 = GeometryService:IntersectAsync(cur, { w }, ENT.FAST)
-											if cur ~= zone then cur.Parent = nil end
-											if not (r2 and r2[1]) then return {} end
-											cur = r2[1]
-											cur.Parent = workspace
-										end
-										return { cur }
-									end)
-									zone.Parent, hs.Parent = nil, nil
-									if halfHs then halfHs.Parent = nil end
-									if okT and type(rT) == "table" and rT[1] then rT[1].Parent = workspace trims[#trims + 1] = rT[1]
-									else print("PROTO pocket: corner trim failed - " .. tostring(rT)) end
-								end
+								if RI then rr = math.max(rr or 0, RI.r) U = R.u end
 							end
+						end
+						if rr and U then
+							-- the fill's sloped face: a + b = rI (a, b = how far out from each wall); a chamfer of size rr on
+							-- its front edge takes off  sqrt2 * depth - a - b < rr * sqrt2 - rI
+							local s2 = math.sqrt(2)
+							local N = U * s2 - I.u - I.v
+							local k = rr * s2 - II.r
+							local P0 = C + N * (k / N:Dot(N))
+							local Lz = rr + II.r + 0.3
+							local zone = Instance.new("Part")
+							zone.Anchored, zone.CanCollide, zone.Transparency = true, false, 1
+							zone.Size = V3(Lz, II.r + 0.04, II.r + 0.04)
+							zone.CFrame = CFrame.fromMatrix(C - t * (Lz / 2 - 0.15) + I.u * (II.r / 2) + I.v * (II.r / 2), I.dir, I.u)
+							zone.Parent = workspace
+							local hs = ENT.halfSpace(P0, -N.Unit, Lz * 6 + 4)
+							local okT, rT = pcall(function() return GeometryService:IntersectAsync(zone, { hs }, ENT.FAST) end)
+							zone.Parent, hs.Parent = nil, nil
+							if okT and type(rT) == "table" and rT[1] then rT[1].Parent = workspace trims[#trims + 1] = rT[1]
+							else print("PROTO pocket: corner trim failed - " .. tostring(rT)) end
 						end
 					end
 				end
