@@ -6538,7 +6538,10 @@ function ENT.wrapPieces(cf, h, kc, n1c, n2c, rc, level, up, rf, fillet)
 		local th = (i + 0.5) * dth
 		local w = n1c * math.cos(th) + n2c * math.sin(th)
 		local t = -n1c * math.sin(th) + n2c * math.cos(th)
-		local base = ctr + w * rc
+		-- pushed IN to the curved wall a touch: the wall's curve is drawn as flat facets, and the top edge of the band
+		-- showed a dark line where it met them
+		local push = math.clamp(rf * 0.03, 0.02, 0.06)
+		local base = ctr + w * (rc - push)
 		local len = 2 * (rc + rf) * math.tan(dth / 2) * 1.6 + 0.05
 		local seg = ENT.fillPrism(cf:PointToWorldSpace(base), cf:VectorToWorldSpace(t), cf:VectorToWorldSpace(w), cf:VectorToWorldSpace(up), len, rf, fillet)
 		if seg then
