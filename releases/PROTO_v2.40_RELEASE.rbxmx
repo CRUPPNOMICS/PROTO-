@@ -7277,7 +7277,7 @@ function ENT.wrapPieces(cf, h, kc, n1c, n2c, rc, level, up, rf, fillet, surf)
 		end
 	else
 		-- (no facets found: evenly spaced slices on the true circle)
-		local N = math.clamp(math.floor((rc + rf) * 8), 16, 36)
+		local N = math.clamp(math.floor((rc + rf) * 16), 24, 64)   -- (v2.40: more, thinner slices = smoother)
 		local dth = (math.pi / 2) / N
 		for i = 0, N - 1 do
 			local th = (i + 0.5) * dth
@@ -7889,7 +7889,7 @@ function ENT.pocketEdgeClick(E, p)
 		for _, I in ipairs(all) do
 			if I.kind == "in" and sameBox(I) then
 				local II = info(I)
-				if II then
+				do   -- (v2.40: also corners with NO fill - two rounded / chamfered opening edges meeting = made the same clean way)
 					local iMid = (I.a + I.b) / 2
 					for _, C in ipairs({ I.a, I.b }) do
 						local rr, U = nil, nil
@@ -7900,8 +7900,8 @@ function ENT.pocketEdgeClick(E, p)
 								if RI then rr = math.max(rr or 0, RI.r) U = R.depth rimsC = rimsC or {} rimsC[#rimsC + 1] = { R = R, r = RI.r, f = RI.f } end
 							end
 						end
-						if rr and U then
-							local A, B, rI = I.u, I.v, II.r   -- a = out from one wall, b = out from the other, U = in from the face
+						if rr and U and ((II and #rimsC >= 1) or #rimsC >= 2) then
+							local A, B, rI = I.u, I.v, (II and II.r or 0)   -- a = out from one wall, b = out from the other, U = in from the face
 							local Dz = rr + 0.3
 							local W = rr + rI + 0.02
 							local function cube()
@@ -7911,14 +7911,16 @@ function ENT.pocketEdgeClick(E, p)
 							local blk = cube()
 							-- (the hole = everything out past the fill's REAL face - its round for a fillet, its slope for a chamfer)
 							local hole = boxAt(C + A * ((rI + 2) / 2) + B * ((rI + 2) / 2) + U * (Dz / 2), A, B, V3(rI + 2, rI + 2, Dz + 0.2))
-							local fillShape = ENT.fillPrism(C + U * (Dz / 2), U, A, B, Dz + 0.4, rI, II.f)
+							local fillShape = II and ENT.fillPrism(C + U * (Dz / 2), U, A, B, Dz + 0.4, rI, II.f)
 							local holeCut
-							if fillShape then
+							if not II then
+								holeCut = hole   -- (no fill: the whole open corner is the hole)
+							elseif fillShape then
 								local okH, rH = pcall(function() return GeometryService:SubtractAsync(hole, { fillShape }, ENT.FAST) end)
 								fillShape.Parent = nil
 								if okH and type(rH) == "table" and rH[1] then holeCut = rH[1] holeCut.Parent = workspace end
 							end
-							hole.Parent = nil
+							if holeCut ~= hole then hole.Parent = nil end
 							if holeCut then
 								local okS, rS = pcall(function() return GeometryService:SubtractAsync(blk, { holeCut }, ENT.FAST) end)
 								holeCut.Parent = nil
@@ -7955,7 +7957,9 @@ function ENT.pocketEdgeClick(E, p)
 							end
 							-- the fill's own front edge: flat slice for a chamfer fill; for a FILLET fill, what's outside a round
 							-- running along its curved front edge (built from short round pieces)
-							if II.f then
+							if not II then
+								-- (no fill here)
+							elseif II.f then
 								local O = C + A * rI + B * rI           -- the fill's round centre line (at the face)
 								local rho = rI + rr
 								local slab = cube()
