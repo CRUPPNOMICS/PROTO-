@@ -6521,47 +6521,81 @@ end
 -- v2.40: fill pieces that WRAP round a rounded upright corner (block space): the corner's edge runs along axis kc,
 -- its two faces point out along n1c / n2c, round radius rc. The fill sits at height 'level' (along kc), grows 'up'
 -- (block-space direction) and is rf big. Returns world parts.
-function ENT.wrapPieces(cf, h, kc, n1c, n2c, rc, level, up, rf, fillet)
+function ENT.wrapPieces(cf, h, kc, n1c, n2c, rc, level, up, rf, fillet, surf)
 	local out = {}
 	local H = V3(h[1], h[2], h[3])
 	local function absv(x) return V3(math.abs(x.X), math.abs(x.Y), math.abs(x.Z)) end
 	local edgeCc = n1c * absv(n1c):Dot(H) + n2c * absv(n2c):Dot(H)   -- the upright edge's middle (block space)
 	local ctr = edgeCc - n1c * rc - n2c * rc
 	ctr = ctr - AXV[kc] * ctr:Dot(AXV[kc]) + AXV[kc] * level
-	-- v2.40 tidy: more, thinner slices, each trimmed EXACTLY to its own wedge of the bend (cut on the two lines out
-	-- from the centre) - no overlaps or gaps between slices, so no seam lines, and a smoother curve
-	local N = math.clamp(math.floor((rc + rf) * 8), 16, 36)
-	local dth = (math.pi / 2) / N
 	local Sz = (rc + rf) * 6 + 4
 	local wctr = cf:PointToWorldSpace(ctr)
-	for i = 0, N - 1 do
-		local th = (i + 0.5) * dth
-		local w = n1c * math.cos(th) + n2c * math.sin(th)
-		local t = -n1c * math.sin(th) + n2c * math.cos(th)
-		-- pushed IN to the curved wall a touch: the wall's curve is drawn as flat facets, and the top edge of the band
-		-- showed a dark line where it met them
-		local push = math.clamp(rf * 0.03, 0.02, 0.06)
-		local base = ctr + w * (rc - push)
-		local len = 2 * (rc + rf) * math.tan(dth / 2) * 1.6 + 0.05
+	-- v2.40 (Dylan: "use the rounded side's own measurements"): the round is really drawn as FLAT FACETS. Feel them
+	-- with rays, then stand one slice flat on each facet - so every slice lands exactly on the wall (no line, no dig)
+	local facets = {}
+	if surf and surf.Parent then
+		local rp = RaycastParams.new()
+		rp.FilterType = Enum.RaycastFilterType.Include
+		rp.FilterDescendantsInstances = { surf }
+		local cur
+		local steps = 180
+		for i = 1, steps - 1 do
+			local th = (i / steps) * (math.pi / 2)
+			local w = n1c * math.cos(th) + n2c * math.sin(th)
+			local from = cf:PointToWorldSpace(ctr + w * (rc + rf + 1) + up * (rf + 0.1))   -- just ABOVE any fill already there
+			local res = workspace:Raycast(from, cf:VectorToWorldSpace(-w) * (rf + 1 + rc * 0.5), rp)
+			if res then
+				local nl = cf:VectorToObjectSpace(res.Normal)
+				nl = nl - AXV[kc] * nl:Dot(AXV[kc])
+				if nl.Magnitude > 0.5 then
+					nl = nl.Unit
+					local isFlat = nl:Dot(n1c) > 0.9995 or nl:Dot(n2c) > 0.9995
+					if not isFlat then
+						local d = (cf:PointToObjectSpace(res.Position) - ctr):Dot(nl)
+						if cur and cur.n:Dot(nl) > 0.9995 then
+							cur.th1 = th
+						else
+							cur = { n = nl, d = d, th0 = th, th1 = th }
+							facets[#facets + 1] = cur
+						end
+					else
+						cur = nil
+					end
+				end
+			end
+		end
+	end
+	local pieces = {}
+	if #facets >= 2 then
+		-- boundaries halfway between neighbouring facets; the first / last open out into the straight fills
+		for i, f in ipairs(facets) do
+			local a0 = (i == 1) and 0 or (facets[i - 1].th1 + f.th0) / 2
+			local a1 = (i == #facets) and (math.pi / 2) or (f.th1 + facets[i + 1].th0) / 2
+			local phi = math.atan2(f.n:Dot(n2c), f.n:Dot(n1c))
+			pieces[#pieces + 1] = { w = f.n, d = f.d, phi = phi, a0 = a0, a1 = a1, first = i == 1, last = i == #facets }
+		end
+	else
+		-- (no facets found: evenly spaced slices on the true circle)
+		local N = math.clamp(math.floor((rc + rf) * 8), 16, 36)
+		local dth = (math.pi / 2) / N
+		for i = 0, N - 1 do
+			local th = (i + 0.5) * dth
+			pieces[#pieces + 1] = { w = n1c * math.cos(th) + n2c * math.sin(th), d = rc, phi = th, a0 = i * dth, a1 = (i + 1) * dth, first = i == 0, last = i == N - 1 }
+		end
+	end
+	for _, P in ipairs(pieces) do
+		local w = P.w
+		local t = -n1c * math.sin(P.phi) + n2c * math.cos(P.phi)
+		local base = ctr + w * P.d
+		local span = math.max(math.abs(P.a1 - P.phi), math.abs(P.phi - P.a0))
+		local len = 2 * (P.d + rf) * math.tan(math.min(span, 1.2)) * 1.3 + 0.1
 		local seg = ENT.fillPrism(cf:PointToWorldSpace(base), cf:VectorToWorldSpace(t), cf:VectorToWorldSpace(w), cf:VectorToWorldSpace(up), len, rf, fillet)
 		if seg then
-			-- a thin backing strip pressed INTO the curved wall behind the slice: the wall's own curve is made of flat
-			-- facets, and the hair-thin gap between them and the straight slice showed as a dark line
-			local bk = Instance.new("Part")
-			bk.Anchored, bk.CanCollide, bk.Transparency = true, false, 1
-			bk.Size = V3(len, rf * 0.98, 0.12)
-			bk.CFrame = CFrame.fromMatrix(cf:PointToWorldSpace(base - w * 0.05 + up * (rf * 0.49)), cf:VectorToWorldSpace(t), cf:VectorToWorldSpace(up))
-			bk.Parent = workspace
-			local okB, rB = pcall(function() return GeometryService:UnionAsync(seg, { bk }, ENT.FAST) end)
-			bk.Parent = nil
-			if okB and type(rB) == "table" and rB[1] then seg.Parent = nil seg = rB[1] seg.Parent = workspace end
-			local th0, th1 = i * dth, (i + 1) * dth
-			local t0 = -n1c * math.sin(th0) + n2c * math.cos(th0)
-			local t1 = -n1c * math.sin(th1) + n2c * math.cos(th1)
-			-- the first / last slice meets a straight fill: leave its outer end square (no cut there)
+			local t0 = -n1c * math.sin(P.a0) + n2c * math.cos(P.a0)
+			local t1 = -n1c * math.sin(P.a1) + n2c * math.cos(P.a1)
 			local cuts = {}
-			if i > 0 then cuts[#cuts + 1] = ENT.halfSpace(wctr, cf:VectorToWorldSpace(-t0), Sz) end
-			if i < N - 1 then cuts[#cuts + 1] = ENT.halfSpace(wctr, cf:VectorToWorldSpace(t1), Sz) end
+			if not P.first then cuts[#cuts + 1] = ENT.halfSpace(wctr, cf:VectorToWorldSpace(-t0), Sz) end
+			if not P.last then cuts[#cuts + 1] = ENT.halfSpace(wctr, cf:VectorToWorldSpace(t1), Sz) end
 			if #cuts > 0 then
 				local ok, res = pcall(function() return GeometryService:SubtractAsync(seg, cuts, ENT.FAST) end)
 				for _, c in ipairs(cuts) do c.Parent = nil end
@@ -6917,7 +6951,7 @@ function ENT.edgeClick()
 			if not fill then error("couldn't shape the fill") end
 			local extra = {}
 			for _, W in ipairs(wraps) do
-				local okW, pcs = pcall(ENT.wrapPieces, W.cf, h, W.kc, W.n1c, W.n2c, W.rc, W.level, W.up, r, isF)
+				local okW, pcs = pcall(ENT.wrapPieces, W.cf, h, W.kc, W.n1c, W.n2c, W.rc, W.level, W.up, r, isF, p)
 				if okW and pcs then for _, x in ipairs(pcs) do extra[#extra + 1] = x end end
 			end
 			-- 2) THE MITRE: this fill is cut through on the 45-degree line where it meets the other one, and (outside
@@ -7151,7 +7185,8 @@ function ENT.edgeClick()
 					end
 				end
 				for _, lv in pairs(levels) do
-					local okW, pcs = pcall(ENT.wrapPieces, cf, h, k, n1, n2, r, lv.z, lv.v, lv.rf, lv.f)
+					out.Parent = workspace   -- (so its rounded wall can be felt with rays)
+					local okW, pcs = pcall(ENT.wrapPieces, cf, h, k, n1, n2, r, lv.z, lv.v, lv.rf, lv.f, out)
 					if okW and pcs then for _, x in ipairs(pcs) do table.insert(fills, x) end end
 				end
 			end
