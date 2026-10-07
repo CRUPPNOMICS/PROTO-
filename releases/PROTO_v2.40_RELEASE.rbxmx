@@ -7909,10 +7909,16 @@ function ENT.pocketEdgeClick(E, p)
 							end
 							-- the block, minus the open hole (out past the fill's sloped face)
 							local blk = cube()
+							-- (the hole = everything out past the fill's REAL face - its round for a fillet, its slope for a chamfer)
 							local hole = boxAt(C + A * ((rI + 2) / 2) + B * ((rI + 2) / 2) + U * (Dz / 2), A, B, V3(rI + 2, rI + 2, Dz + 0.2))
-							local beyond = ENT.halfSpace(C + A * rI, (A + B).Unit, (W + Dz) * 6 + 4)
-							local holeCut = inter(hole, { beyond })
-							hole.Parent, beyond.Parent = nil, nil
+							local fillShape = ENT.fillPrism(C + U * (Dz / 2), U, A, B, Dz + 0.4, rI, II.f)
+							local holeCut
+							if fillShape then
+								local okH, rH = pcall(function() return GeometryService:SubtractAsync(hole, { fillShape }, ENT.FAST) end)
+								fillShape.Parent = nil
+								if okH and type(rH) == "table" and rH[1] then holeCut = rH[1] holeCut.Parent = workspace end
+							end
+							hole.Parent = nil
 							if holeCut then
 								local okS, rS = pcall(function() return GeometryService:SubtractAsync(blk, { holeCut }, ENT.FAST) end)
 								holeCut.Parent = nil
@@ -7947,8 +7953,61 @@ function ENT.pocketEdgeClick(E, p)
 									cutters[#cutters + 1] = rem(U + R.wall, rk)
 								end
 							end
-							local h3 = rem(U * s2 - A - B, rr * s2 - rI)   -- the fill's own front edge
-							cutters[#cutters + 1] = h3
+							-- the fill's own front edge: flat slice for a chamfer fill; for a FILLET fill, what's outside a round
+							-- running along its curved front edge (built from short round pieces)
+							if II.f then
+								local O = C + A * rI + B * rI           -- the fill's round centre line (at the face)
+								local rho = rI + rr
+								local slab = cube()
+								local front = ENT.halfSpace(C + U * rr, -U, (W + Dz) * 6 + 4)
+								local sl = inter(slab, { front })
+								slab.Parent, front.Parent = nil, nil
+								if sl then
+									local outs = {}
+									-- far side of the round (more than rr into the fill): kept
+									local big = boxAt(O + U * (Dz / 2), A, B, V3(rho * 4 + 4, rho * 4 + 4, Dz + 2))
+									local core = Instance.new("Part")
+									core.Anchored, core.CanCollide, core.Transparency = true, false, 1
+									core.Shape = Enum.PartType.Cylinder
+									core.Size = V3(Dz + 4, rho * 2, rho * 2)
+									core.CFrame = CFrame.fromMatrix(O + U * (Dz / 2), U, A)
+									core.Parent = workspace
+									local okK, rK = pcall(function() return GeometryService:SubtractAsync(big, { core }, ENT.FAST) end)
+									big.Parent, core.Parent = nil, nil
+									if okK and type(rK) == "table" and rK[1] then rK[1].Parent = workspace outs[#outs + 1] = rK[1] end
+									-- the round itself: a ring of short rods (+ balls at the joins) round the fill's curved front edge
+									local K = 8
+									local prev
+									for i2 = 0, K do
+										local th = math.pi + (math.pi / 2) * (i2 / K)
+										local P = O + (A * math.cos(th) + B * math.sin(th)) * rho + U * rr
+										local ball = Instance.new("Part")
+										ball.Anchored, ball.CanCollide, ball.Transparency = true, false, 1
+										ball.Shape = Enum.PartType.Ball
+										ball.Size = V3(rr * 2, rr * 2, rr * 2)
+										ball.CFrame = CFrame.new(P)
+										ball.Parent = workspace
+										outs[#outs + 1] = ball
+										if prev then
+											local d0 = P - prev
+											local rod = Instance.new("Part")
+											rod.Anchored, rod.CanCollide, rod.Transparency = true, false, 1
+											rod.Shape = Enum.PartType.Cylinder
+											rod.Size = V3(d0.Magnitude + 0.02, rr * 2, rr * 2)
+											rod.CFrame = CFrame.fromMatrix((P + prev) / 2, d0.Unit, U)
+											rod.Parent = workspace
+											outs[#outs + 1] = rod
+										end
+										prev = P
+									end
+									local okF, rF = pcall(function() return GeometryService:SubtractAsync(sl, outs, ENT.FAST) end)
+									for _, x in ipairs(outs) do x.Parent = nil end
+									sl.Parent = nil
+									if okF and type(rF) == "table" and rF[1] then rF[1].Parent = workspace cutters[#cutters + 1] = rF[1] end
+								end
+							else
+								cutters[#cutters + 1] = rem(U * s2 - A - B, rr * s2 - rI)
+							end
 							local c2 = cube()
 							local cutPiece = inter(c2, cutters)
 							c2.Parent = nil
