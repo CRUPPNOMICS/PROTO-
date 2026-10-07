@@ -7023,16 +7023,27 @@ function ENT.edgeClick()
 					cutters[#cutters + 1] = mk(sz(L, rf, rf + r), CFrame.new(edgeC + n1 * (rf / 2) + n2 * ((rf - r) / 2)))
 					cutters[#cutters + 1] = mk(sz(L, rf + r, rf), CFrame.new(edgeC + n1 * ((rf - r) / 2) + n2 * (rf / 2)))
 				end
-				local nd = (n1 + n2).Unit
-				local S = (r + crossR * 2) * 3 + 2
-				local P0 = edgeC - n1 * r   -- (on the line: r back from the corner along face 2)
-				local big = (not isF) and mk(V3(L, S, S), CFrame.fromMatrix(P0 + nd * (S / 2), AXV[k], nd)) or nil
-				-- ... but only OUTSIDE the block (inside it, the round / chamfer cutter decides - a fillet must stay round)
-				if big then
+				if not isF then
+					-- CHAMFERED corner (v2.40, Dylan: "redo the one going down the new face"): the fills turn the corner
+					-- along the new slanted face. Each side's fill is cut on the half-angle line where it meets the
+					-- slanted face (22.5 degrees each side), and a new fill piece runs along the slanted face (added
+					-- after the cut, cut on the same lines from its side)
+					local S = (r + crossR * 2) * 3 + 2
+					local J1, J2 = edgeC - n2 * r, edgeC - n1 * r      -- where the chamfer starts on face 1 / face 2
+					local t2 = (n2 - n1).Unit                            -- along the slanted face, J1 -> J2
+					local b1 = (n2 + t2).Unit                            -- mitre at J1 (face 1 fill keeps (p - J1).b1 <= 0)
+					local b2 = (n1 - t2).Unit                            -- mitre at J2 (face 2 fill keeps (p - J2).b2 <= 0)
+					ENT.chamferTurn = { J1 = J1, J2 = J2, t2 = t2, b1 = b1, b2 = b2 }
 					local blockBox = mk(E.size + V3(0.002, 0.002, 0.002), CFrame.new())
-					local okT, rT = pcall(function() return GeometryService:SubtractAsync(big, { blockBox }, ENT.FAST) end)
-					big.Parent, blockBox.Parent = nil, nil
-					if okT and type(rT) == "table" and rT[1] then rT[1].Parent = workspace cutters[#cutters + 1] = rT[1] end
+					for _, M in ipairs({ { J1, b1, n1 }, { J2, b2, n2 } }) do
+						local big = mk(V3(L, S, S), CFrame.fromMatrix(M[1] + M[2] * (S / 2), AXV[k], M[2]))
+						-- only on ITS fill's side: in front of its own face (behind that face = the other fill / the block)
+						local behind = mk(V3(L, S * 2, S * 2), CFrame.fromMatrix(edgeC - M[3] * S, AXV[k], M[3]))
+						local okT, rT = pcall(function() return GeometryService:SubtractAsync(big, { blockBox, behind }, ENT.FAST) end)
+						big.Parent, behind.Parent = nil, nil
+						if okT and type(rT) == "table" and rT[1] then rT[1].Parent = workspace cutters[#cutters + 1] = rT[1] end
+					end
+					blockBox.Parent = nil
 				end
 			end
 		end
@@ -7055,6 +7066,38 @@ function ENT.edgeClick()
 				if near then
 					local f = ENT.fillFromRecipe(cf, E.size, d)
 					if f then table.insert(fills, f) end
+				end
+			end
+			-- v2.40 CHAMFERED corner + fills running across it: a fill along the slanted face, mitred to both sides
+			if (not isF) and crossR > 0 and ENT.chamferTurn then
+				local T = ENT.chamferTurn
+				ENT.chamferTurn = nil
+				local lvls = {}
+				for _, d in ipairs(done) do
+					if meetsEdge(d) then
+						local kd = d.k
+						local ad, bd = (kd % 3) + 1, ((kd + 1) % 3) + 1
+						local zs = (ad == k) and d.a or ((bd == k) and d.b or nil)
+						if zs and not lvls[tostring(zs)] then
+							local U, Vv = V3(d.ux, d.uy, d.uz), V3(d.vx, d.vy, d.vz)
+							lvls[tostring(zs)] = { z = zs * h[k], up = (math.abs(U:Dot(AXV[k])) > 0.9) and U or Vv, rf = d.r, f = d.t == "fillet" }
+						end
+					end
+				end
+				local nc = (n1 + n2).Unit
+				for _, lv in pairs(lvls) do
+					local function lev(pt) return pt - AXV[k] * pt:Dot(AXV[k]) + AXV[k] * lv.z end
+					local j1, j2 = lev(T.J1), lev(T.J2)
+					local len = (j2 - j1).Magnitude + lv.rf * 4
+					local seg = ENT.fillPrism(cf:PointToWorldSpace((j1 + j2) / 2), cf:VectorToWorldSpace(T.t2), cf:VectorToWorldSpace(nc), cf:VectorToWorldSpace(lv.up), len, lv.rf, lv.f)
+					if seg then
+						local Sz = lv.rf * 10 + 4
+						local c1 = ENT.halfSpace(cf:PointToWorldSpace(j1), cf:VectorToWorldSpace(-T.b1), Sz)
+						local c2 = ENT.halfSpace(cf:PointToWorldSpace(j2), cf:VectorToWorldSpace(-T.b2), Sz)
+						local okD, rD = pcall(function() return GeometryService:SubtractAsync(seg, { c1, c2 }, ENT.FAST) end)
+						seg.Parent, c1.Parent, c2.Parent = nil, nil, nil
+						if okD and type(rD) == "table" and rD[1] then rD[1].Parent = workspace table.insert(fills, rD[1]) end
+					end
 				end
 			end
 			-- v2.40 ROUNDED corner + fills running across it: the fill WRAPS round the bend (like skirting round a
