@@ -7045,7 +7045,14 @@ function ENT.edgeClick()
 			-- FILLS WIN: any inside-corner fills on this block go straight back in (the cut may have nicked them)
 			local fills = {}
 			for _, d in ipairs(done) do
-				if d.i and d.ux and d.k == k then   -- (v2.40: only fills running alongside this edge - crossing ones were cut on purpose)
+				-- (v2.40: only fills running alongside this edge AND close enough for the cut to have touched them -
+				-- rebuilding far-away fills from their old recipe undid later trims / wraps = the bottom broke)
+				local near = false
+				if d.i and d.ux and d.k == k then
+					if d.a == E.sa then near = 2 * h[b] <= r + (d.r or 0) + 0.1
+					elseif d.b == E.sb then near = 2 * h[a] <= r + (d.r or 0) + 0.1 end
+				end
+				if near then
 					local f = ENT.fillFromRecipe(cf, E.size, d)
 					if f then table.insert(fills, f) end
 				end
