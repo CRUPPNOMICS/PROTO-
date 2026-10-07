@@ -6941,6 +6941,12 @@ function ENT.blockOf(p)
 	if p:IsA("Part") and p.Shape == Enum.PartType.Block then return p.CFrame, p.Size end
 	local rel, sz = p:GetAttribute("PROTO_BlockRel"), p:GetAttribute("PROTO_BlockSize")
 	if typeof(rel) == "CFrame" and typeof(sz) == "Vector3" then return p.CFrame * rel, sz end
+	-- v2.40: a block cut before PROTO remembered it (no BlockRel): its own box is the block
+	if p:IsA("PartOperation") then
+		for _, ch in ipairs(p:GetChildren()) do
+			if ch.Name == "DIM_Outline" and ch:IsA("StringValue") and ENT.outKind(ch, p) == "cut" then return p.CFrame, p.Size end
+		end
+	end
 	return nil
 end
 -- the box edge nearest the mouse hit: { k = axis index along the edge, sa, sb = which side on the other 2 axes }
@@ -7265,7 +7271,7 @@ function ENT.wrapPieces(cf, h, kc, n1c, n2c, rc, level, up, rf, fillet, surf)
 end
 -- ===== v2.40 MITRE CORNERS (Dylan: "he cuts through him, and the same for the other guy - that's it") =====
 -- a fill prism: runs along dir from mid (length L), filling the corner square r x r that opens along u and v
-function ENT.fillPrism(mid, dir, u, v, L, r, isF)
+function ENT.fillPrism(mid, dir, u, v, L, r, isF, grow)
 	local function wpart(size, wcf, shape)
 		local q = Instance.new("Part")
 		q.Anchored, q.CanCollide, q.Transparency = true, false, 1
@@ -7276,7 +7282,9 @@ function ENT.fillPrism(mid, dir, u, v, L, r, isF)
 		return q
 	end
 	local function frame(c) return CFrame.fromMatrix(c, dir, u) end
-	local sq = wpart(V3(L, r, r), frame(mid + u * (r / 2) + v * (r / 2)))
+	-- (grow = a CUTTER: the square reaches a hair past both faces so no paper-thin skin is left)
+	local g = grow or 0
+	local sq = wpart(V3(L, r + g, r + g), frame(mid + u * ((r - g) / 2) + v * ((r - g) / 2)))
 	local other
 	if isF then
 		other = wpart(V3(L + 0.4, r * 2, r * 2), frame(mid + u * r + v * r), Enum.PartType.Cylinder)
@@ -7716,38 +7724,84 @@ function ENT.pocketEdgeClick(E, p)
 	if doneAt(key) then setStatus(nm .. ": that edge is already done. Ctrl+Z to change it.") return end
 	local out
 	local ok = record("PROTO " .. (isF and "Fillet" or "Chamfer") .. " pocket edge", function()
-		local mid = (E.a + E.b) / 2
-		local piece = ENT.fillPrism(mid, E.dir, E.u, E.v, L + ((E.kind == "rim") and 0.02 or 0), r, isF)
-		if not piece then error("couldn't shape it") end
-		local pieces = { piece }
-		-- v2.40 (Dylan): edges of the OPENING that meet at a corner of the hole, both done = each one is built on past
-		-- the corner and cut on the 45-degree line, so they meet like a picture frame (no notch)
-		if E.kind == "rim" then
-			local all = ENT.pocketEdges(p)
-			for _, C in ipairs({ E.a, E.b }) do
-				local t = (C - mid).Unit
-				for _, N in ipairs(all) do
-					if N ~= E and N.kind == "rim" and (N.box.ctr - E.box.ctr).Magnitude < 1e-3 and math.abs(N.dir:Dot(E.dir)) < 0.1 then
-						local nearA, nearB = (N.a - C).Magnitude < 0.02, (N.b - C).Magnitude < 0.02
-						if nearA or nearB then
-							local isDone, rN, tN = doneAt(ENT.pocketEdgeKey(p, N))
-							if isDone then
-								rN = rN or r
-								local fN = (tN == "f") or ((tN == nil or tN == "") and isF)
-								local nMid = (N.a + N.b) / 2
-								local tn = (C - nMid).Unit
-								local m = (t - tn).Unit
-								local S = (r + rN) * 10 + 4
-								local function mitred(c0, d0, u0, v0, rr, f0, keepN)
-									local x = ENT.fillPrism(c0, d0, u0, v0, rr, rr, f0)
-									if not x then return end
-									local cut = ENT.halfSpace(C, keepN, S)
-									local okM, rM = pcall(function() return GeometryService:SubtractAsync(x, { cut }, ENT.FAST) end)
-									cut.Parent, x.Parent = nil, nil
-									if okM and type(rM) == "table" and rM[1] then rM[1].Parent = workspace pieces[#pieces + 1] = rM[1] end
+		local all = ENT.pocketEdges(p)
+		local function sameBox(N) return (N.box.ctr - E.box.ctr).Magnitude < 1e-3 end
+		-- what's done on this pocket (this edge counts as done now): key -> { r, f }
+		local function info(N)
+			local k = ENT.pocketEdgeKey(p, N)
+			if k == key then return { r = r, f = isF } end
+			local d, rr, tt = doneAt(k)
+			if not d then return nil end
+			return { r = rr or r, f = (tt == "f") or ((tt == nil or tt == "") and isF) }
+		end
+		local pieces = {}
+		if E.kind == "in" then
+			local mid = (E.a + E.b) / 2
+			local piece = ENT.fillPrism(mid, E.dir, E.u, E.v, L, r, isF)
+			if not piece then error("couldn't shape it") end
+			pieces[1] = piece
+		else
+			-- v2.40 (Dylan): ALL the done edges of the opening are (re)cut together: each one a hair bigger than the
+			-- wall (no skin left), and where two meet at a corner of the hole each is built on past the corner and cut on
+			-- the 45-degree line (picture frame)
+			local rims = {}
+			for _, N in ipairs(all) do
+				if N.kind == "rim" and sameBox(N) then
+					local I = info(N)
+					if I then rims[#rims + 1] = { N = N, r = I.r, f = I.f } end
+				end
+			end
+			for _, R in ipairs(rims) do
+				local N = R.N
+				local nMid = (N.a + N.b) / 2
+				local base = ENT.fillPrism(nMid, N.dir, N.u, N.v, (N.b - N.a).Magnitude + 0.02, R.r, R.f, 0.02)
+				if base then pieces[#pieces + 1] = base end
+				for _, C in ipairs({ N.a, N.b }) do
+					local t = (C - nMid).Unit
+					for _, Q in ipairs(rims) do
+						if Q ~= R and math.abs(Q.N.dir:Dot(N.dir)) < 0.1 and ((Q.N.a - C).Magnitude < 0.02 or (Q.N.b - C).Magnitude < 0.02) then
+							local tq = (C - (Q.N.a + Q.N.b) / 2).Unit
+							local m = (t - tq).Unit
+							local x = ENT.fillPrism(C + t * (R.r / 2), N.dir, N.u, N.v, R.r + 0.02, R.r, R.f, 0.02)
+							if x then
+								local cut = ENT.halfSpace(C, m, (R.r + Q.r) * 10 + 4)
+								local okM, rM = pcall(function() return GeometryService:SubtractAsync(x, { cut }, ENT.FAST) end)
+								cut.Parent, x.Parent = nil, nil
+								if okM and type(rM) == "table" and rM[1] then rM[1].Parent = workspace pieces[#pieces + 1] = rM[1] end
+							end
+						end
+					end
+				end
+			end
+			if #pieces == 0 then error("couldn't shape it") end
+		end
+		-- v2.40 THREE-WAY CORNERS: a fill up an inside corner of the cut that runs out to the opening is cut back by the
+		-- opening's chamfer / round there (it stuck out past it as a block)
+		local trims = {}
+		for _, I in ipairs(all) do
+			if I.kind == "in" and sameBox(I) then
+				local II = info(I)
+				if II then
+					local iMid = (I.a + I.b) / 2
+					for _, C in ipairs({ I.a, I.b }) do
+						local t = (C - iMid).Unit
+						for _, R in ipairs(all) do
+							if R.kind == "rim" and sameBox(R) and ((R.a - C).Magnitude < 0.02 or (R.b - C).Magnitude < 0.02) then
+								local RI = info(R)
+								if RI then
+									local Lz = RI.r * 2 + 0.3
+									local zone = Instance.new("Part")
+									zone.Anchored, zone.CanCollide, zone.Transparency = true, false, 1
+									zone.Size = V3(Lz, II.r + 0.04, II.r + 0.04)
+									zone.CFrame = CFrame.fromMatrix(C - t * (Lz / 2 - 0.15) + I.u * (II.r / 2) + I.v * (II.r / 2), I.dir, I.u)
+									zone.Parent = workspace
+									local hs
+									if RI.f then hs = ENT.halfSpace(C + R.u * RI.r, -R.u, Lz * 6 + 4)
+									else hs = ENT.halfSpace(C + R.u * RI.r, -(R.u + R.v).Unit, Lz * 6 + 4) end
+									local okT, rT = pcall(function() return GeometryService:IntersectAsync(zone, { hs }, ENT.FAST) end)
+									zone.Parent, hs.Parent = nil, nil
+									if okT and type(rT) == "table" and rT[1] then rT[1].Parent = workspace trims[#trims + 1] = rT[1] end
 								end
-								mitred(C + t * (r / 2), E.dir, E.u, E.v, r, isF, m)          -- this edge, on past the corner
-								mitred(C + tn * (rN / 2), N.dir, N.u, N.v, rN, fN, -m)      -- the other edge, on past the corner
 							end
 						end
 					end
@@ -7760,6 +7814,13 @@ function ENT.pocketEdgeClick(E, p)
 			return GeometryService:SubtractAsync(p, pieces, opts)
 		end)
 		for _, x in ipairs(pieces) do x.Parent = nil end
+		if okC and type(res) == "table" and res[1] and #trims > 0 then
+			local mid0 = res[1]
+			mid0.Parent = workspace
+			local okT, rT = pcall(function() return GeometryService:SubtractAsync(mid0, trims, opts) end)
+			if okT and type(rT) == "table" and rT[1] then mid0.Parent = nil res = rT else mid0.Parent = nil end
+		end
+		for _, x in ipairs(trims) do x.Parent = nil end
 		if not (okC and type(res) == "table" and res[1]) then error("couldn't " .. (E.kind == "in" and "add the fill" or "cut the edge") .. " - " .. tostring(res)) end
 		out = res[1]
 		out.Name = p.Name
@@ -9525,6 +9586,12 @@ function acceptExtrude()
 									np:SetAttribute("PROTO_BlockSize", bsz)
 									local ed = p:GetAttribute("PROTO_EdgesDone")
 									if ed then np:SetAttribute("PROTO_EdgesDone", ed) end
+								end)
+							elseif p:IsA("Part") and p.Shape == Enum.PartType.Block then
+								-- (a plain block that's been cut: remember the block, so its outside edges can still be filleted)
+								pcall(function()
+									np:SetAttribute("PROTO_BlockRel", np.CFrame:ToObjectSpace(p.CFrame))
+									np:SetAttribute("PROTO_BlockSize", p.Size)
 								end)
 							end
 						end
