@@ -1899,6 +1899,8 @@ function drawPlanes()
 	ENT.holePool = ENT.holePool or {}
 	ENT.holeUsed = 0
 	local show = widget.Enabled and (mode == "planes" or mode == "mirror") and planes ~= nil and showPlanes and sk == nil
+	-- v2.40 (Dylan): Shift held in plane mode = FACE mode - the planes hide until Shift is let go
+	if show and mode == "planes" and shiftDown() and not ctrlDown() then show = false end
 	local live = {}
 	if show then
 		for _, x in ipairs(ENT.livePlanes()) do table.insert(live, x) end
@@ -6356,6 +6358,30 @@ end
 ENT.sketchClick = sketchClick
 UIS.InputBegan:Connect(function(i) ENT.dragKey(i) end)
 UIS.InputEnded:Connect(function(i) ENT.dragKey(i) end)
+-- v2.40: Shift down / up in plane mode = planes hide / come back straight away (not only when the mouse moves)
+function ENT.shiftFaceKey(i)
+	if i.KeyCode ~= Enum.KeyCode.LeftShift and i.KeyCode ~= Enum.KeyCode.RightShift then return end
+	if not (widget.Enabled and mode == "planes" and planes and not sk and not ENT.edgeTool) then return end
+	task.defer(function()
+		if shiftDown() and not ctrlDown() then
+			hoverPlane, ENT.hoverFace = nil, nil
+			local hit = ENT.directHit()
+			if hit then
+				faceHover.Adornee = hit.Instance
+				faceHover.TargetSurface = ENT.normalToId(hit.Instance, hit.Normal)
+			else
+				faceHover.Adornee = nil
+			end
+			setStatus("FACE mode (Shift held): click any face to sketch right on it. Let go of Shift = planes back.")
+		else
+			faceHover.Adornee = nil
+			refreshStatus()
+		end
+		drawPlanes()
+	end)
+end
+UIS.InputBegan:Connect(function(i) ENT.shiftFaceKey(i) end)
+UIS.InputEnded:Connect(function(i) ENT.shiftFaceKey(i) end)
 function ENT.dragKey(i)
 	local k = i.KeyCode
 	if not (k == Enum.KeyCode.LeftShift or k == Enum.KeyCode.RightShift or k == Enum.KeyCode.LeftControl or k == Enum.KeyCode.RightControl) then return end
