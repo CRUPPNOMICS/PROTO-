@@ -5334,7 +5334,17 @@ function ENT.attachOutline(inst, segs, kind)
 	v.Name = "DIM_Outline"
 	v.Value = HttpService:JSONEncode(t)
 	if kind then pcall(function() v:SetAttribute("DIM_kind", kind) end) end
-	if kind == "cut" then pcall(function() v:SetAttribute("DIM_grow", ENT.cutGrow()) end) end
+	if kind == "cut" then
+		pcall(function() v:SetAttribute("DIM_grow", ENT.cutGrow()) end)
+		if ENT.cutToolWorld then
+			local t = {}
+			for _, w in ipairs(ENT.cutToolWorld) do
+				local l = cf:PointToObjectSpace(w)
+				t[#t + 1] = { math.floor(l.X * 1000 + 0.5) / 1000, math.floor(l.Y * 1000 + 0.5) / 1000, math.floor(l.Z * 1000 + 0.5) / 1000 }
+			end
+			pcall(function() v:SetAttribute("DIM_tool", HttpService:JSONEncode(t)) end)
+		end
+	end
 	v.Parent = inst
 	pcall(function() game:GetService("CollectionService"):AddTag(v, "DIM_Outline") end)
 end
@@ -5357,6 +5367,15 @@ function ENT.moveDimValue(v, fromCF, toCF, into)
 			end
 		end
 		pcall(function() c.Value = HttpService:JSONEncode(data) end)
+		-- (the cutter's corners move across too)
+		local tj = v:GetAttribute("DIM_tool")
+		if type(tj) == "string" then
+			local okT, tp = pcall(function() return HttpService:JSONDecode(tj) end)
+			if okT and type(tp) == "table" then
+				for _, q in ipairs(tp) do if type(q) == "table" and #q >= 3 then q[1], q[2], q[3] = mv(q[1], q[2], q[3]) end end
+				pcall(function() c:SetAttribute("DIM_tool", HttpService:JSONEncode(tp)) end)
+			end
+		end
 	end
 	c.Parent = into
 	return c
@@ -6821,7 +6840,36 @@ function ENT.pocketPanels(root)
 							end
 							local half = { (hi[1] - lo[1]) / 2, (hi[2] - lo[2]) / 2, (hi[3] - lo[3]) / 2 }
 							-- (v2.40: the real cut is a hair WIDER than its saved outline - the cutter grows so it never leaves a skin)
-							local gw = ENT.cutGrowOf(ch, q) half[1], half[2] = half[1] + gw, half[2] + gw
+							-- v2.40: exact = the REAL cutter's corners (saved at cut time), clipped to the part's box
+							local exact = false
+							local tj = ch:GetAttribute("DIM_tool")
+							if type(tj) == "string" then
+								local okT, tp = pcall(function() return game:GetService("HttpService"):JSONDecode(tj) end)
+								if okT and type(tp) == "table" and #tp >= 8 then
+									local tlo, thi = { math.huge, math.huge, math.huge }, { -math.huge, -math.huge, -math.huge }
+									for _, t3 in ipairs(tp) do
+										local w = q.CFrame:PointToWorldSpace(V3(t3[1], t3[2], t3[3]))
+										for i = 1, 3 do local x = (w - o0):Dot(axes[i]) tlo[i], thi[i] = math.min(tlo[i], x), math.max(thi[i], x) end
+									end
+									local ph = bsz / 2
+									local plo, phi = { math.huge, math.huge, math.huge }, { -math.huge, -math.huge, -math.huge }
+									for _, sx in ipairs({ -1, 1 }) do for _, sy in ipairs({ -1, 1 }) do for _, sz in ipairs({ -1, 1 }) do
+										local w = (bcf * CFrame.new(ph.X * sx, ph.Y * sy, ph.Z * sz)).Position
+										for i = 1, 3 do local x = (w - o0):Dot(axes[i]) plo[i], phi[i] = math.min(plo[i], x), math.max(phi[i], x) end
+									end end end
+									local ok3 = true
+									local nlo, nhi = {}, {}
+									for i = 1, 3 do nlo[i], nhi[i] = math.max(tlo[i], plo[i]), math.min(thi[i], phi[i]) if nhi[i] - nlo[i] < 0.04 then ok3 = false end end
+									if ok3 then
+										lo, hi = nlo, nhi
+										half = { (hi[1] - lo[1]) / 2, (hi[2] - lo[2]) / 2, (hi[3] - lo[3]) / 2 }
+										exact = true
+									end
+								end
+							end
+							if not exact then
+								local gw = ENT.cutGrowOf(ch, q) half[1], half[2] = half[1] + gw, half[2] + gw
+							end
 							if half[1] < 0.02 or half[2] < 0.02 or half[3] < 0.02 then return end
 							local ctr = o0 + e1 * ((lo[1] + hi[1]) / 2) + e2 * ((lo[2] + hi[2]) / 2) + d * ((lo[3] + hi[3]) / 2)
 							local bh = { bsz.X / 2, bsz.Y / 2, bsz.Z / 2 }
@@ -7596,7 +7644,36 @@ function ENT.pocketBoxes(root)
 							end
 							local half = { (hi[1] - lo[1]) / 2, (hi[2] - lo[2]) / 2, (hi[3] - lo[3]) / 2 }
 							-- (v2.40: the real cut is a hair WIDER than its saved outline - the cutter grows so it never leaves a skin)
-							local gw = ENT.cutGrowOf(ch, q) half[1], half[2] = half[1] + gw, half[2] + gw
+								-- v2.40: exact = the REAL cutter's corners (saved at cut time), clipped to the part's box
+							local exact = false
+							local tj = ch:GetAttribute("DIM_tool")
+							if type(tj) == "string" then
+								local okT, tp = pcall(function() return game:GetService("HttpService"):JSONDecode(tj) end)
+								if okT and type(tp) == "table" and #tp >= 8 then
+									local tlo, thi = { math.huge, math.huge, math.huge }, { -math.huge, -math.huge, -math.huge }
+									for _, t3 in ipairs(tp) do
+										local w = q.CFrame:PointToWorldSpace(V3(t3[1], t3[2], t3[3]))
+										for i = 1, 3 do local x = (w - o0):Dot(ax[i]) tlo[i], thi[i] = math.min(tlo[i], x), math.max(thi[i], x) end
+									end
+									local ph = bsz / 2
+									local plo, phi = { math.huge, math.huge, math.huge }, { -math.huge, -math.huge, -math.huge }
+									for _, sx in ipairs({ -1, 1 }) do for _, sy in ipairs({ -1, 1 }) do for _, sz in ipairs({ -1, 1 }) do
+										local w = (bcf * CFrame.new(ph.X * sx, ph.Y * sy, ph.Z * sz)).Position
+										for i = 1, 3 do local x = (w - o0):Dot(ax[i]) plo[i], phi[i] = math.min(plo[i], x), math.max(phi[i], x) end
+									end end end
+									local ok3 = true
+									local nlo, nhi = {}, {}
+									for i = 1, 3 do nlo[i], nhi[i] = math.max(tlo[i], plo[i]), math.min(thi[i], phi[i]) if nhi[i] - nlo[i] < 0.04 then ok3 = false end end
+									if ok3 then
+										lo, hi = nlo, nhi
+										half = { (hi[1] - lo[1]) / 2, (hi[2] - lo[2]) / 2, (hi[3] - lo[3]) / 2 }
+										exact = true
+									end
+								end
+							end
+							if not exact then
+								local gw = ENT.cutGrowOf(ch, q) half[1], half[2] = half[1] + gw, half[2] + gw
+							end
 							if half[1] < 0.02 or half[2] < 0.02 or half[3] < 0.02 then return end
 							local ctr = o0 + e1 * ((lo[1] + hi[1]) / 2) + e2 * ((lo[2] + hi[2]) / 2) + d * ((lo[3] + hi[3]) / 2)
 							local bh = { bsz.X / 2, bsz.Y / 2, bsz.Z / 2 }
@@ -7800,7 +7877,8 @@ function ENT.pocketEdgeClick(E, p)
 									else hs = ENT.halfSpace(C + R.u * RI.r, -(R.u + R.v).Unit, Lz * 6 + 4) end
 									local okT, rT = pcall(function() return GeometryService:IntersectAsync(zone, { hs }, ENT.FAST) end)
 									zone.Parent, hs.Parent = nil, nil
-									if okT and type(rT) == "table" and rT[1] then rT[1].Parent = workspace trims[#trims + 1] = rT[1] end
+									if okT and type(rT) == "table" and rT[1] then rT[1].Parent = workspace trims[#trims + 1] = rT[1]
+									else print("PROTO pocket: corner trim failed - " .. tostring(rT)) end
 								end
 							end
 						end
@@ -7814,11 +7892,20 @@ function ENT.pocketEdgeClick(E, p)
 			return GeometryService:SubtractAsync(p, pieces, opts)
 		end)
 		for _, x in ipairs(pieces) do x.Parent = nil end
+		local nIn, nRim, nDone = 0, 0, 0
+		for _, N in ipairs(all) do
+			if sameBox(N) then
+				if N.kind == "in" then nIn += 1 else nRim += 1 end
+				if info(N) then nDone += 1 end
+			end
+		end
+		print(("PROTO pocket: %s %s r %.2f | this pocket: %d inside edges, %d opening edges, %d done | pieces %d, corner trims %d | main op %s")
+			:format(E.kind, isF and "fillet" or "chamfer", r, nIn, nRim, nDone, #pieces, #trims, tostring(okC and type(res) == "table" and res[1] ~= nil)))
 		if okC and type(res) == "table" and res[1] and #trims > 0 then
 			local mid0 = res[1]
 			mid0.Parent = workspace
 			local okT, rT = pcall(function() return GeometryService:SubtractAsync(mid0, trims, opts) end)
-			if okT and type(rT) == "table" and rT[1] then mid0.Parent = nil res = rT else mid0.Parent = nil end
+			if okT and type(rT) == "table" and rT[1] then mid0.Parent = nil res = rT else mid0.Parent = nil print("PROTO pocket: trimming failed - " .. tostring(rT)) end
 		end
 		for _, x in ipairs(trims) do x.Parent = nil end
 		if not (okC and type(res) == "table" and res[1]) then error("couldn't " .. (E.kind == "in" and "add the fill" or "cut the edge") .. " - " .. tostring(res)) end
@@ -9454,6 +9541,18 @@ function acceptExtrude()
 			local cutters = {}
 			if made:IsA("BasePart") then cutters = { made } else
 				for _, d in ipairs(made:GetDescendants()) do if d:IsA("BasePart") then table.insert(cutters, d) end end
+			end
+			-- v2.40: the REAL cutter's corners (world) - the pocket box is built from these, exact to the cut
+			ENT.cutToolWorld = nil
+			if #cutters <= 8 then
+				local pts = {}
+				for _, c in ipairs(cutters) do
+					local h = c.Size / 2
+					for _, sx in ipairs({ -1, 1 }) do for _, sy in ipairs({ -1, 1 }) do for _, sz in ipairs({ -1, 1 }) do
+						pts[#pts + 1] = (c.CFrame * CFrame.new(h.X * sx, h.Y * sy, h.Z * sz)).Position
+					end end end
+				end
+				ENT.cutToolWorld = pts
 			end
 			-- glue all the cutter pieces into one solid first: one clean cut, no seams between pieces
 			if #cutters > 1 and not ENT.usedMesh then
