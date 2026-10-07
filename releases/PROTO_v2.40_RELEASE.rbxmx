@@ -6542,6 +6542,16 @@ function ENT.wrapPieces(cf, h, kc, n1c, n2c, rc, level, up, rf, fillet)
 		local len = 2 * (rc + rf) * math.tan(dth / 2) * 1.6 + 0.05
 		local seg = ENT.fillPrism(cf:PointToWorldSpace(base), cf:VectorToWorldSpace(t), cf:VectorToWorldSpace(w), cf:VectorToWorldSpace(up), len, rf, fillet)
 		if seg then
+			-- a thin backing strip pressed INTO the curved wall behind the slice: the wall's own curve is made of flat
+			-- facets, and the hair-thin gap between them and the straight slice showed as a dark line
+			local bk = Instance.new("Part")
+			bk.Anchored, bk.CanCollide, bk.Transparency = true, false, 1
+			bk.Size = V3(len, rf * 0.98, 0.12)
+			bk.CFrame = CFrame.fromMatrix(cf:PointToWorldSpace(base - w * 0.05 + up * (rf * 0.49)), cf:VectorToWorldSpace(t), cf:VectorToWorldSpace(up))
+			bk.Parent = workspace
+			local okB, rB = pcall(function() return GeometryService:UnionAsync(seg, { bk }, ENT.FAST) end)
+			bk.Parent = nil
+			if okB and type(rB) == "table" and rB[1] then seg.Parent = nil seg = rB[1] seg.Parent = workspace end
 			local th0, th1 = i * dth, (i + 1) * dth
 			local t0 = -n1c * math.sin(th0) + n2c * math.cos(th0)
 			local t1 = -n1c * math.sin(th1) + n2c * math.cos(th1)
