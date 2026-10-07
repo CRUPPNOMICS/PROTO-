@@ -6530,41 +6530,9 @@ function ENT.wrapPieces(cf, h, kc, n1c, n2c, rc, level, up, rf, fillet, surf)
 	ctr = ctr - AXV[kc] * ctr:Dot(AXV[kc]) + AXV[kc] * level
 	local Sz = (rc + rf) * 6 + 4
 	local wctr = cf:PointToWorldSpace(ctr)
-	-- v2.40 (Dylan: "use the rounded side's own measurements"): the round is really drawn as FLAT FACETS. Feel them
-	-- with rays, then stand one slice flat on each facet - so every slice lands exactly on the wall (no line, no dig)
+	-- (v2.40: rays felt the block's COLLISION hull, not the drawn round = a flat slab sticking out. Now the slices stand
+	-- on the TRUE round, with a backing strip hidden inside the wall so no line shows where the drawn facets dip in)
 	local facets = {}
-	if surf and surf.Parent then
-		local rp = RaycastParams.new()
-		rp.FilterType = Enum.RaycastFilterType.Include
-		rp.FilterDescendantsInstances = { surf }
-		local cur
-		local steps = 180
-		for i = 1, steps - 1 do
-			local th = (i / steps) * (math.pi / 2)
-			local w = n1c * math.cos(th) + n2c * math.sin(th)
-			local from = cf:PointToWorldSpace(ctr + w * (rc + rf + 1) + up * (rf + 0.1))   -- just ABOVE any fill already there
-			local res = workspace:Raycast(from, cf:VectorToWorldSpace(-w) * (rf + 1 + rc * 0.5), rp)
-			if res then
-				local nl = cf:VectorToObjectSpace(res.Normal)
-				nl = nl - AXV[kc] * nl:Dot(AXV[kc])
-				if nl.Magnitude > 0.5 then
-					nl = nl.Unit
-					local isFlat = nl:Dot(n1c) > 0.9995 or nl:Dot(n2c) > 0.9995
-					if not isFlat then
-						local d = (cf:PointToObjectSpace(res.Position) - ctr):Dot(nl)
-						if cur and cur.n:Dot(nl) > 0.9995 then
-							cur.th1 = th
-						else
-							cur = { n = nl, d = d, th0 = th, th1 = th }
-							facets[#facets + 1] = cur
-						end
-					else
-						cur = nil
-					end
-				end
-			end
-		end
-	end
 	local pieces = {}
 	if #facets >= 2 then
 		-- boundaries halfway between neighbouring facets; the first / last open out into the straight fills
@@ -6591,6 +6559,16 @@ function ENT.wrapPieces(cf, h, kc, n1c, n2c, rc, level, up, rf, fillet, surf)
 		local len = 2 * (P.d + rf) * math.tan(math.min(span, 1.2)) * 1.3 + 0.1
 		local seg = ENT.fillPrism(cf:PointToWorldSpace(base), cf:VectorToWorldSpace(t), cf:VectorToWorldSpace(w), cf:VectorToWorldSpace(up), len, rf, fillet)
 		if seg then
+			-- backing: rf tall, reaching back INTO the wall (hidden inside the block)
+			local bk = Instance.new("Part")
+			bk.Anchored, bk.CanCollide, bk.Transparency = true, false, 1
+			local bd = math.min(0.3, rc * 0.5)
+			bk.Size = V3(len, bd, rf)
+			bk.CFrame = CFrame.fromMatrix(cf:PointToWorldSpace(base - w * (bd / 2) + up * (rf / 2)), cf:VectorToWorldSpace(t), cf:VectorToWorldSpace(w))
+			bk.Parent = workspace
+			local okJ, rJ = pcall(function() return GeometryService:UnionAsync(seg, { bk }, ENT.FAST) end)
+			bk.Parent = nil
+			if okJ and type(rJ) == "table" and rJ[1] then seg.Parent = nil seg = rJ[1] seg.Parent = workspace end
 			local t0 = -n1c * math.sin(P.a0) + n2c * math.cos(P.a0)
 			local t1 = -n1c * math.sin(P.a1) + n2c * math.cos(P.a1)
 			local cuts = {}
