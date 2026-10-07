@@ -6527,17 +6527,35 @@ function ENT.wrapPieces(cf, h, kc, n1c, n2c, rc, level, up, rf, fillet)
 	local function absv(x) return V3(math.abs(x.X), math.abs(x.Y), math.abs(x.Z)) end
 	local edgeCc = n1c * absv(n1c):Dot(H) + n2c * absv(n2c):Dot(H)   -- the upright edge's middle (block space)
 	local ctr = edgeCc - n1c * rc - n2c * rc
-	local N = 10
+	ctr = ctr - AXV[kc] * ctr:Dot(AXV[kc]) + AXV[kc] * level
+	-- v2.40 tidy: more, thinner slices, each trimmed EXACTLY to its own wedge of the bend (cut on the two lines out
+	-- from the centre) - no overlaps or gaps between slices, so no seam lines, and a smoother curve
+	local N = math.clamp(math.floor((rc + rf) * 8), 16, 36)
 	local dth = (math.pi / 2) / N
+	local Sz = (rc + rf) * 6 + 4
+	local wctr = cf:PointToWorldSpace(ctr)
 	for i = 0, N - 1 do
 		local th = (i + 0.5) * dth
 		local w = n1c * math.cos(th) + n2c * math.sin(th)
 		local t = -n1c * math.sin(th) + n2c * math.cos(th)
 		local base = ctr + w * rc
-		base = base - AXV[kc] * base:Dot(AXV[kc]) + AXV[kc] * level
-		local len = 2 * (rc + rf) * math.tan(dth / 2) + 0.03
+		local len = 2 * (rc + rf) * math.tan(dth / 2) * 1.6 + 0.05
 		local seg = ENT.fillPrism(cf:PointToWorldSpace(base), cf:VectorToWorldSpace(t), cf:VectorToWorldSpace(w), cf:VectorToWorldSpace(up), len, rf, fillet)
-		if seg then out[#out + 1] = seg end
+		if seg then
+			local th0, th1 = i * dth, (i + 1) * dth
+			local t0 = -n1c * math.sin(th0) + n2c * math.cos(th0)
+			local t1 = -n1c * math.sin(th1) + n2c * math.cos(th1)
+			-- the first / last slice meets a straight fill: leave its outer end square (no cut there)
+			local cuts = {}
+			if i > 0 then cuts[#cuts + 1] = ENT.halfSpace(wctr, cf:VectorToWorldSpace(-t0), Sz) end
+			if i < N - 1 then cuts[#cuts + 1] = ENT.halfSpace(wctr, cf:VectorToWorldSpace(t1), Sz) end
+			if #cuts > 0 then
+				local ok, res = pcall(function() return GeometryService:SubtractAsync(seg, cuts, ENT.FAST) end)
+				for _, c in ipairs(cuts) do c.Parent = nil end
+				if ok and type(res) == "table" and res[1] then seg.Parent = nil seg = res[1] seg.Parent = workspace end
+			end
+			out[#out + 1] = seg
+		end
 	end
 	return out
 end
@@ -7119,20 +7137,9 @@ function ENT.edgeClick()
 						end
 					end
 				end
-				local ctr = edgeC - n1 * r - n2 * r   -- the round's centre line
-				local N = 10
-				local dth = (math.pi / 2) / N
 				for _, lv in pairs(levels) do
-					for i = 0, N - 1 do
-						local th = (i + 0.5) * dth
-						local w = n1 * math.cos(th) + n2 * math.sin(th)
-						local t = -n1 * math.sin(th) + n2 * math.cos(th)
-						local base = ctr + w * r
-						base = base - AXV[k] * base:Dot(AXV[k]) + AXV[k] * lv.z
-						local len = 2 * (r + lv.rf) * math.tan(dth / 2) + 0.03
-						local seg = ENT.fillPrism(cf:PointToWorldSpace(base), cf:VectorToWorldSpace(t), cf:VectorToWorldSpace(w), cf:VectorToWorldSpace(lv.v), len, lv.rf, lv.f)
-						if seg then table.insert(fills, seg) end
-					end
+					local okW, pcs = pcall(ENT.wrapPieces, cf, h, k, n1, n2, r, lv.z, lv.v, lv.rf, lv.f)
+					if okW and pcs then for _, x in ipairs(pcs) do table.insert(fills, x) end end
 				end
 			end
 			if #fills > 0 then
