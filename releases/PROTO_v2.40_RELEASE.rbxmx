@@ -7719,8 +7719,10 @@ function ENT.pocketEdges(root)
 								E.kind, E.u, E.v = "in", outI, outJ
 							elseif oi then
 								E.kind, E.u, E.v = "rim", outI, -outJ
+								E.depth, E.wall = outI, -outJ   -- (in from the open face / into the wall's material)
 							else
 								E.kind, E.u, E.v = "rim", -outI, outJ
+								E.depth, E.wall = outJ, -outI
 							end
 							list[#list + 1] = E
 						end
@@ -7886,7 +7888,7 @@ function ENT.pocketEdgeClick(E, p)
 						for _, R in ipairs(all) do
 							if R.kind == "rim" and sameBox(R) and ((R.a - C).Magnitude < 0.02 or (R.b - C).Magnitude < 0.02) then
 								local RI = info(R)
-								if RI then rr = math.max(rr or 0, RI.r) U = R.u end
+								if RI then rr = math.max(rr or 0, RI.r) U = R.depth end
 							end
 						end
 						if rr and U then
