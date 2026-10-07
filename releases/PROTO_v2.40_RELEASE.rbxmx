@@ -7423,6 +7423,23 @@ function ENT.edgeStop()
 end
 function ENT.edgeHover()
 	local hit = ENT.directHit()
+	-- v2.40 POCKET EDGES first (looking into a cut)
+	ENT.pocketHot = nil
+	if hit and hit.Instance:IsA("BasePart") and ENT.isProto(hit.Instance) then
+		local okE, PE = pcall(ENT.pocketEdgePick, mouse.UnitRay, hit.Instance)
+		if okE and PE then
+			ENT.pocketHot = { E = PE, p = hit.Instance }
+			local r = ENT.filletSize() or 0
+			ENT.edgeLine.CFrame = CFrame.lookAt(PE.a, PE.b)
+			ENT.edgeLine.Length = (PE.b - PE.a).Magnitude
+			ENT.edgeLine.Visible = true
+			ENT.edgeLine.Color3 = (PE.kind == "in") and Color3.fromRGB(80, 230, 120) or Color3.fromRGB(255, 150, 30)
+			dimTag.StudsOffsetWorldSpace = (PE.a + PE.b) / 2
+			dimTag.T.Text = (ENT.edgeTool == "fillet" and "FILLET r " or "CHAMFER ") .. fmt(r) .. ((PE.kind == "in") and "  (inside the cut: fills)" or "  (edge of the opening)")
+			dimTag.Enabled = true
+			return
+		end
+	end
 	local E = hit and ENT.edgeAt(hit.Instance, hit.Position)
 	if not E then
 		ENT.edgeLine.Visible = false
@@ -7514,9 +7531,220 @@ function ENT.otherBand(done, kf, endAx, endSign, kc, lvSign)
 	end
 	return false
 end
+-- ===== v2.40 POCKET EDGES (Dylan: "fillets on the inside of the cut, using the faces"). The edges of a cut's pocket
+-- box: where two of its walls / its floor meet = an INSIDE corner (the fillet / chamfer ADDS a fill), where a wall
+-- meets the open side (the rim of the opening) = an OUTSIDE edge (it's rounded / cut off). =====
+function ENT.pocketBoxes(root)
+	local out = {}
+	if not root then return out end
+	local parts = ENT.objParts(root) or { root }
+	ENT.prismCache = ENT.prismCache or {}
+	ENT.outlineCache = ENT.outlineCache or {}
+	for _, q in ipairs(parts) do
+		if q:IsA("BasePart") then
+			for _, ch in ipairs(q:GetChildren()) do
+				if ch.Name == "DIM_Outline" and ch:IsA("StringValue") and ENT.outKind(ch, q) == "cut" then
+					local P = ENT.prismCache[ch.Value]
+					if P == nil then
+						local data = ENT.outlineCache[ch.Value]
+						if not data then
+							local okD, r = pcall(function() return game:GetService("HttpService"):JSONDecode(ch.Value) end)
+							data = okD and r or {}
+							ENT.outlineCache[ch.Value] = data
+						end
+						P = ENT.cutPrism(data) or false
+						ENT.prismCache[ch.Value] = P
+					end
+					if P and #P.ring == 4 then
+						pcall(function()
+							local bcf, bsz = ENT.blockOf(q)
+							if not bcf then bcf, bsz = q.CFrame, q.Size end
+							local segs = ENT.pocketSegs(P, q.CFrame, bcf, bsz)
+							if #segs < 3 then return end
+							local d = q.CFrame:VectorToWorldSpace(P.D).Unit
+							local e1 = q.CFrame:VectorToWorldSpace(P.ring[1].b - P.ring[1].a).Unit
+							if math.abs(e1:Dot(d)) > 0.01 then return end
+							local e2 = d:Cross(e1).Unit
+							local ax = { e1, e2, d }
+							local lo, hi = { math.huge, math.huge, math.huge }, { -math.huge, -math.huge, -math.huge }
+							local o0 = segs[1][1]
+							for _, sg in ipairs(segs) do
+								for _, w in ipairs({ sg[1], sg[2] }) do
+									for i = 1, 3 do
+										local x = (w - o0):Dot(ax[i])
+										lo[i], hi[i] = math.min(lo[i], x), math.max(hi[i], x)
+									end
+								end
+							end
+							local half = { (hi[1] - lo[1]) / 2, (hi[2] - lo[2]) / 2, (hi[3] - lo[3]) / 2 }
+							if half[1] < 0.02 or half[2] < 0.02 or half[3] < 0.02 then return end
+							local ctr = o0 + e1 * ((lo[1] + hi[1]) / 2) + e2 * ((lo[2] + hi[2]) / 2) + d * ((lo[3] + hi[3]) / 2)
+							local bh = { bsz.X / 2, bsz.Y / 2, bsz.Z / 2 }
+							local open = { {}, {}, {} }
+							for i = 1, 3 do
+								for _, s in ipairs({ -1, 1 }) do
+									local fc = ctr + ax[i] * (half[i] * s)
+									local lc = bcf:PointToObjectSpace(fc)
+									local la = bcf:VectorToObjectSpace(ax[i])
+									local L, A = { lc.X, lc.Y, lc.Z }, { la.X, la.Y, la.Z }
+									local o = false
+									for m = 1, 3 do
+										if math.abs(A[m]) > 0.99 and math.abs(L[m]) >= bh[m] - 0.03 then o = true end
+									end
+									open[i][s] = o
+								end
+							end
+							out[#out + 1] = { part = q, ctr = ctr, ax = ax, half = half, open = open }
+						end)
+					end
+				end
+			end
+		end
+	end
+	return out
+end
+-- every edge of every pocket box (world): { a, b, kind = "in" / "rim", u, v (the fill / cutter opens along these), box }
+function ENT.pocketEdges(root)
+	local list = {}
+	for _, B in ipairs(ENT.pocketBoxes(root)) do
+		local ax, half = B.ax, B.half
+		for i = 1, 3 do
+			for j = i + 1, 3 do
+				local k = 6 - i - j
+				for _, s1 in ipairs({ -1, 1 }) do
+					for _, s2 in ipairs({ -1, 1 }) do
+						local oi, oj = B.open[i][s1], B.open[j][s2]
+						if not (oi and oj) then
+							local base = B.ctr + ax[i] * (half[i] * s1) + ax[j] * (half[j] * s2)
+							local outI, outJ = -ax[i] * s1, -ax[j] * s2   -- (into the pocket from each face)
+							local E = { a = base - ax[k] * half[k], b = base + ax[k] * half[k], box = B, dir = ax[k] }
+							if not oi and not oj then
+								E.kind, E.u, E.v = "in", outI, outJ
+							elseif oi then
+								E.kind, E.u, E.v = "rim", outI, -outJ
+							else
+								E.kind, E.u, E.v = "rim", -outI, outJ
+							end
+							list[#list + 1] = E
+						end
+					end
+				end
+			end
+		end
+	end
+	return list
+end
+-- can the camera see this point through the pocket's open side(s)? (not through solid wall)
+function ENT.pocketSeen(B, ray, t)
+	local ax, half = B.ax, B.half
+	for i = 1, 3 do
+		for _, s in ipairs({ -1, 1 }) do
+			if B.open[i][s] then
+				local j, l = (i % 3) + 1, ((i + 1) % 3) + 1
+				local pl = planeFrom(B.ctr + ax[i] * (half[i] * s), ax[j], ax[l])
+				local t2, h2 = rayPlane(pl, ray)
+				if t2 and t2 <= t + 0.05 then
+					local l2 = to2D(pl, h2)
+					if math.abs(l2.X) <= half[j] + 0.05 and math.abs(l2.Y) <= half[l] + 0.05 then return true end
+				end
+			end
+		end
+	end
+	return false
+end
+-- the pocket edge nearest the mouse ray (that the camera can really see)
+function ENT.pocketEdgePick(ray, root)
+	local best, bd
+	for _, E in ipairs(ENT.pocketEdges(root)) do
+		-- closest points between the ray and the edge
+		local d1, d2 = ray.Direction, E.b - E.a
+		local r0 = ray.Origin - E.a
+		local a, b, c = d1:Dot(d1), d1:Dot(d2), d2:Dot(d2)
+		local dd, e = d1:Dot(r0), d2:Dot(r0)
+		local den = a * c - b * b
+		if den > 1e-9 then
+			local tr = (b * e - c * dd) / den
+			local te = math.clamp((a * e - b * dd) / den, 0, 1)
+			local pe = E.a + d2 * te
+			tr = math.max(0, (pe - ray.Origin):Dot(d1) / a)
+			local pr = ray.Origin + d1 * tr
+			local dist = (pr - pe).Magnitude
+			local tol = math.max(0.25, tr * 0.012)
+			if dist < tol and (not bd or dist < bd) and ENT.pocketSeen(E.box, ray, tr) then best, bd = E, dist end
+		end
+	end
+	return best
+end
+function ENT.pocketEdgeKey(p, E)
+	local m = p.CFrame:PointToObjectSpace((E.a + E.b) / 2)
+	return string.format("%.1f,%.1f,%.1f", m.X, m.Y, m.Z)
+end
+-- fillet / chamfer a pocket edge: inside corner = a fill added, rim = rounded / cut off
+function ENT.pocketEdgeClick(E, p)
+	local isF = ENT.edgeTool == "fillet"
+	local nm = isF and "FILLET" or "CHAMFER"
+	local r = ENT.filletSize()
+	if not r or r <= 0 or r ~= r then setStatus(nm .. ": type a size above 0 in the 'size' box.") return end
+	local L = (E.b - E.a).Magnitude
+	local bh = E.box.half
+	local room = math.huge
+	for i = 1, 3 do if math.abs(E.box.ax[i]:Dot(E.dir)) < 0.5 then room = math.min(room, bh[i] * 2) end end
+	if E.kind == "in" and r > room - 1e-3 then setStatus(nm .. ": too big for this pocket (" .. fmt(room) .. " studs across).") return end
+	local doneList = {}
+	pcall(function() doneList = HttpService:JSONDecode(p:GetAttribute("PROTO_PocketEdges") or "[]") end)
+	local key = ENT.pocketEdgeKey(p, E)
+	for _, k in ipairs(doneList) do
+		if k == key then setStatus(nm .. ": that edge is already done. Ctrl+Z to change it.") return end
+	end
+	local out
+	local ok = record("PROTO " .. (isF and "Fillet" or "Chamfer") .. " pocket edge", function()
+		local mid = (E.a + E.b) / 2
+		local piece = ENT.fillPrism(mid, E.dir, E.u, E.v, L + ((E.kind == "rim") and 0.02 or 0), r, isF)
+		if not piece then error("couldn't shape it") end
+		local opts = { CollisionFidelity = ENT.CSG_OPTS.CollisionFidelity, RenderFidelity = Enum.RenderFidelity.Precise, SplitApart = false }
+		local okC, res = pcall(function()
+			if E.kind == "in" then return GeometryService:UnionAsync(p, { piece }, opts) end
+			return GeometryService:SubtractAsync(p, { piece }, opts)
+		end)
+		piece.Parent = nil
+		if not (okC and type(res) == "table" and res[1]) then error("couldn't " .. (E.kind == "in" and "add the fill" or "cut the edge") .. " - " .. tostring(res)) end
+		out = res[1]
+		out.Name = p.Name
+		for k2, v2 in pairs(p:GetAttributes()) do pcall(function() out:SetAttribute(k2, v2) end) end
+		local rel = p:GetAttribute("PROTO_BlockRel")
+		if typeof(rel) == "CFrame" then out:SetAttribute("PROTO_BlockRel", out.CFrame:ToObjectSpace(p.CFrame * rel)) end
+		table.insert(doneList, ENT.pocketEdgeKey(out, E))
+		pcall(function() out:SetAttribute("PROTO_PocketEdges", HttpService:JSONEncode(doneList)) end)
+		for _, ch in ipairs(p:GetChildren()) do
+			if ch:IsA("StringValue") and (ch.Name == "DIM_Outline" or ch.Name == "DIM_Bounds") then ENT.moveDimValue(ch, p.CFrame, out.CFrame, out)
+			elseif ch:IsA("StringValue") and ch.Name:sub(1, 4) == "DIM_" then ch:Clone().Parent = out end
+		end
+		pcall(function()
+			out.UsePartColor = true
+			out.Color, out.Material = p.Color, p.Material
+			out.CollisionFidelity = p.CollisionFidelity
+		end)
+		out.Anchored = p.Anchored
+		out.Parent = p.Parent
+		p.Parent = nil   -- (never Destroy - Ctrl+Z brings it back)
+	end)
+	if ok and out then
+		if target == p then setTarget(out) end
+		ENT.pocketPanelCache = nil
+		setStatus(nm .. " done (" .. fmt(r) .. ") on the " .. (E.kind == "in" and "inside corner of the cut" or "edge of the opening") .. ". Click another edge, or Esc. Ctrl+Z undoes it.")
+	end
+end
 function ENT.edgeClick()
 	ENT.newWraps = nil
 	local hit = ENT.directHit()
+	-- v2.40: an edge of a cut's pocket under the mouse comes first
+	if ENT.pocketHot and ENT.pocketHot.p and ENT.pocketHot.p.Parent then
+		local H = ENT.pocketHot
+		ENT.pocketHot = nil
+		ENT.pocketEdgeClick(H.E, H.p)
+		ENT.edgeHover()
+		return
+	end
 	if not hit then return end
 	local p = hit.Instance
 	local E = ENT.edgeAt(p, hit.Position)
