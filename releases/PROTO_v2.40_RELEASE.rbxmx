@@ -7852,17 +7852,36 @@ function ENT.pocketEdgeClick(E, p)
 			end
 			if #pieces == 0 then error("couldn't shape it") end
 		end
-		-- v2.40 THREE-WAY CORNERS (Dylan): a fill up an inside corner of the cut that runs out to a chamfered / rounded
-		-- opening gets the SAME chamfer along its own front edge (where its sloped face meets the outside face) - so the
-		-- opening's chamfer runs: wall edge -> the fill's edge -> floor edge, a small 3-sided corner, nothing dug out
-		local trims = {}
+		-- v2.40 THREE-WAY CORNERS (Dylan: "add the cube, then cut it from the 3 incoming directions"). Where a fill up an
+		-- inside corner of the cut meets a chamfered opening: a solid block goes back in at that corner (only where there's
+		-- material - wall, floor or fill - never in the open hole), then it's cut by the three chamfers coming in: the wall
+		-- edge's, the floor edge's and the fill's own front edge. A bit only goes if ALL THREE take it (no dug-out pyramid).
+		local adds, trims = {}, {}
+		local function inter(base, list)
+			local cur = base
+			for _, w in ipairs(list) do
+				local okI, r2 = pcall(function() return GeometryService:IntersectAsync(cur, { w }, ENT.FAST) end)
+				if cur ~= base then cur.Parent = nil end
+				if not (okI and type(r2) == "table" and r2[1]) then return nil end
+				cur = r2[1]
+				cur.Parent = workspace
+			end
+			return cur
+		end
+		local function boxAt(c, x, y, size)
+			local q = Instance.new("Part")
+			q.Anchored, q.CanCollide, q.Transparency = true, false, 1
+			q.Size = size
+			q.CFrame = CFrame.fromMatrix(c, x, y)
+			q.Parent = workspace
+			return q
+		end
 		for _, I in ipairs(all) do
 			if I.kind == "in" and sameBox(I) then
 				local II = info(I)
 				if II then
 					local iMid = (I.a + I.b) / 2
 					for _, C in ipairs({ I.a, I.b }) do
-						local t = (C - iMid).Unit
 						local rr, U = nil, nil
 						for _, R in ipairs(all) do
 							if R.kind == "rim" and sameBox(R) and ((R.a - C).Magnitude < 0.02 or (R.b - C).Magnitude < 0.02) then
@@ -7871,23 +7890,34 @@ function ENT.pocketEdgeClick(E, p)
 							end
 						end
 						if rr and U then
-							-- the fill's sloped face: a + b = rI (a, b = how far out from each wall); a chamfer of size rr on
-							-- its front edge takes off  sqrt2 * depth - a - b < rr * sqrt2 - rI
+							local A, B, rI = I.u, I.v, II.r   -- a = out from one wall, b = out from the other, U = in from the face
+							local Dz = rr + 0.3
+							local W = rr + rI + 0.02
+							local function cube()
+								return boxAt(C + A * ((rI - rr) / 2) + B * ((rI - rr) / 2) + U * (Dz / 2), A, B, V3(W, W, Dz))
+							end
+							-- the block, minus the open hole (out past the fill's sloped face)
+							local blk = cube()
+							local hole = boxAt(C + A * ((rI + 2) / 2) + B * ((rI + 2) / 2) + U * (Dz / 2), A, B, V3(rI + 2, rI + 2, Dz + 0.2))
+							local beyond = ENT.halfSpace(C + A * rI, (A + B).Unit, (W + Dz) * 6 + 4)
+							local holeCut = inter(hole, { beyond })
+							hole.Parent, beyond.Parent = nil, nil
+							if holeCut then
+								local okS, rS = pcall(function() return GeometryService:SubtractAsync(blk, { holeCut }, ENT.FAST) end)
+								holeCut.Parent = nil
+								if okS and type(rS) == "table" and rS[1] then blk.Parent = nil blk = rS[1] blk.Parent = workspace end
+							end
+							adds[#adds + 1] = blk
+							-- what the three chamfers take off together (inside the block's box)
 							local s2 = math.sqrt(2)
-							local N = U * s2 - I.u - I.v
-							local k = rr * s2 - II.r
-							local P0 = C + N * (k / N:Dot(N))
-							local Lz = rr + II.r + 0.3
-							local zone = Instance.new("Part")
-							zone.Anchored, zone.CanCollide, zone.Transparency = true, false, 1
-							zone.Size = V3(Lz, II.r + 0.04, II.r + 0.04)
-							zone.CFrame = CFrame.fromMatrix(C - t * (Lz / 2 - 0.15) + I.u * (II.r / 2) + I.v * (II.r / 2), I.dir, I.u)
-							zone.Parent = workspace
-							local hs = ENT.halfSpace(P0, -N.Unit, Lz * 6 + 4)
-							local okT, rT = pcall(function() return GeometryService:IntersectAsync(zone, { hs }, ENT.FAST) end)
-							zone.Parent, hs.Parent = nil, nil
-							if okT and type(rT) == "table" and rT[1] then rT[1].Parent = workspace trims[#trims + 1] = rT[1]
-							else print("PROTO pocket: corner trim failed - " .. tostring(rT)) end
+							local function rem(n, k) return ENT.halfSpace(C + n * (k / n:Dot(n)), -n.Unit, (W + Dz) * 6 + 4) end
+							local h1 = rem(U - A, rr)                      -- the wall edge's chamfer
+							local h2 = rem(U - B, rr)                      -- the floor edge's chamfer
+							local h3 = rem(U * s2 - A - B, rr * s2 - rI)   -- the fill's own front edge
+							local c2 = cube()
+							local cutPiece = inter(c2, { h1, h2, h3 })
+							c2.Parent, h1.Parent, h2.Parent, h3.Parent = nil, nil, nil, nil
+							if cutPiece then trims[#trims + 1] = cutPiece else print("PROTO pocket: corner cut failed") end
 						end
 					end
 				end
@@ -7908,6 +7938,13 @@ function ENT.pocketEdgeClick(E, p)
 		end
 		print(("PROTO pocket: %s %s r %.2f | this pocket: %d inside edges, %d opening edges, %d done | pieces %d, corner trims %d | main op %s")
 			:format(E.kind, isF and "fillet" or "chamfer", r, nIn, nRim, nDone, #pieces, #trims, tostring(okC and type(res) == "table" and res[1] ~= nil)))
+		if okC and type(res) == "table" and res[1] and #adds > 0 then
+			local mid0 = res[1]
+			mid0.Parent = workspace
+			local okA, rA = pcall(function() return GeometryService:UnionAsync(mid0, adds, opts) end)
+			if okA and type(rA) == "table" and rA[1] then mid0.Parent = nil res = rA else mid0.Parent = nil print("PROTO pocket: corner block failed - " .. tostring(rA)) end
+		end
+		for _, x in ipairs(adds) do x.Parent = nil end
 		if okC and type(res) == "table" and res[1] and #trims > 0 then
 			local mid0 = res[1]
 			mid0.Parent = workspace
