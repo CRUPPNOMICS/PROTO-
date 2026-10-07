@@ -6929,6 +6929,26 @@ function ENT.edgeClick()
 				end
 			end
 		end
+		-- v2.40 (Dylan): a cut on an edge that runs ACROSS fills (rounding a block's upright corner, with fills round
+		-- its bottom) cuts through those fills too: the fills (and their corner piece) stop where the round starts on
+		-- each face, so nothing is left sticking into the space the round cleared. Fills running ALONGSIDE the cut
+		-- edge still win (no bites).
+		local crossR = 0
+		if not out then
+			for _, d in ipairs(done) do if d.i and d.k ~= k and d.r then crossR = math.max(crossR, d.r) end end
+			if crossR > 0 then
+				local rf = crossR + 0.05
+				local function sz(along, wa, wb)
+					local t = { 0, 0, 0 }
+					t[k], t[a], t[b] = along, wa, wb
+					return V3(t[1], t[2], t[3])
+				end
+				-- beside face 1 (out from it by the fill size), from where the round starts to past the corner
+				cutters[#cutters + 1] = mk(sz(L, rf, rf + r), CFrame.new(edgeC + n1 * (rf / 2) + n2 * ((rf - r) / 2)))
+				-- beside face 2
+				cutters[#cutters + 1] = mk(sz(L, rf + r, rf), CFrame.new(edgeC + n1 * ((rf - r) / 2) + n2 * (rf / 2)))
+			end
+		end
 		if not out then
 			local opts = { CollisionFidelity = ENT.CSG_OPTS.CollisionFidelity, RenderFidelity = Enum.RenderFidelity.Precise, SplitApart = false }
 			local okS, res = pcall(function() return GeometryService:SubtractAsync(p, cutters, opts) end)
@@ -6938,7 +6958,7 @@ function ENT.edgeClick()
 			-- FILLS WIN: any inside-corner fills on this block go straight back in (the cut may have nicked them)
 			local fills = {}
 			for _, d in ipairs(done) do
-				if d.i and d.ux then
+				if d.i and d.ux and d.k == k then   -- (v2.40: only fills running alongside this edge - crossing ones were cut on purpose)
 					local f = ENT.fillFromRecipe(cf, E.size, d)
 					if f then table.insert(fills, f) end
 				end
