@@ -6656,6 +6656,24 @@ local function pick()
 			end
 		end
 	end
+	-- v2.40 (Dylan: "I should be able to click the inside"): looking in THROUGH the hole a cut left in a side of the
+	-- box = the pocket itself is what you get (its floor / walls), not the side panel or a centre plane in the way
+	if res and planes and mode == "planes" and planes[1].faces and target and ENT.objParts(target) and ENT.sameFeature(res.Instance) then
+		for _, f in ipairs(planes[1].faces) do
+			local t, hit = rayPlane(f, ray)
+			if t and t < res.Distance then
+				local l = to2D(f, hit)
+				if math.abs(l.X) <= f.hu and math.abs(l.Y) <= f.hv then
+					local okH, holes = pcall(ENT.faceHoles, f, f.hu, f.hv)
+					if okH and holes then
+						for _, H in ipairs(holes) do
+							if l.X > H.lo.X and l.X < H.hi.X and l.Y > H.lo.Y and l.Y < H.hi.Y then return res, nil end
+						end
+					end
+				end
+			end
+		end
+	end
 	if res and bestT and bestT < res.Distance then res = nil end
 	return res, bestPl
 end
