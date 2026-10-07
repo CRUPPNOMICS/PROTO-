@@ -4973,6 +4973,112 @@ function ENT.featureSegs(list, z0, z1)
 	end
 	return out
 end
+-- ===== v2.40 POCKETS (Dylan: "a cut that cuts into a shape makes faces and lines - only where it touches the part,
+-- not in the air"). A cut's saved outline is its tool: a profile ring swept along one direction. Rebuild that
+-- (ring + sweep), then keep only what lies inside the part's box: the pocket floor, its upright corners, and the
+-- rim where its walls come out through the part's faces. =====
+function ENT.cutPrism(data)
+	if type(data) ~= "table" or #data < 3 or #data > 500 then return nil end
+	local segs = {}
+	for _, q in ipairs(data) do
+		local a, b = V3(q[1], q[2], q[3]), V3(q[4], q[5], q[6])
+		if (b - a).Magnitude > 1e-3 then segs[#segs + 1] = { a = a, b = b } end
+	end
+	-- the sweep: two equal, parallel segments offset at right angles to themselves (the same edge at both ends)
+	local votes, best, bestN = {}, nil, 0
+	local lim = math.min(#segs, 200)
+	for i = 1, lim do
+		local A = segs[i]
+		local da = A.b - A.a
+		for j = i + 1, #segs do
+			local B = segs[j]
+			local db = B.b - B.a
+			if math.abs(da.Magnitude - db.Magnitude) < 2e-3 then
+				local O
+				if (da - db).Magnitude < 2e-3 then O = B.a - A.a elseif (da + db).Magnitude < 2e-3 then O = B.b - A.a end
+				if O and O.Magnitude > 0.02 and math.abs(O.Unit:Dot(da.Unit)) < 0.01 then
+					if O.X < -1e-4 or (math.abs(O.X) <= 1e-4 and (O.Y < -1e-4 or (math.abs(O.Y) <= 1e-4 and O.Z < 0))) then O = -O end
+					local key = string.format("%.2f,%.2f,%.2f", O.X, O.Y, O.Z)
+					if not votes[key] then votes[key] = O end
+				end
+			end
+		end
+	end
+	-- (a rectangle's opposite sides look like that too - the real sweep is square to the MOST edges)
+	for _, O in pairs(votes) do
+		local u, c = O.Unit, 0
+		for _, S in ipairs(segs) do if math.abs((S.b - S.a).Unit:Dot(u)) < 0.01 then c += 1 end end
+		if c > bestN or (c == bestN and best and O.Magnitude > best.Magnitude) then bestN, best = c, O end
+	end
+	if not best then return nil end
+	local n = best.Unit
+	-- the ring = edges square to the sweep, at its low end
+	local lo, hi = math.huge, -math.huge
+	for _, S in ipairs(segs) do
+		if math.abs((S.b - S.a).Unit:Dot(n)) < 0.01 then
+			local z = S.a:Dot(n)
+			lo, hi = math.min(lo, z), math.max(hi, z)
+		end
+	end
+	if hi - lo < 0.02 then return nil end
+	local ring = {}
+	for _, S in ipairs(segs) do
+		if math.abs((S.b - S.a).Unit:Dot(n)) < 0.01 and math.abs(S.a:Dot(n) - lo) < 2e-3 then ring[#ring + 1] = S end
+	end
+	if #ring == 0 then return nil end
+	return { ring = ring, D = n * (hi - lo) }
+end
+-- the pocket's edges (world segments) for a cut tool (local to cf) inside the box bcf / bsize
+function ENT.pocketSegs(P, cf, bcf, bsize)
+	local out = {}
+	local h = { bsize.X / 2 + 0.01, bsize.Y / 2 + 0.01, bsize.Z / 2 + 0.01 }
+	local function B(p) local w = bcf:PointToObjectSpace(cf:PointToWorldSpace(p)) return { w.X, w.Y, w.Z } end
+	local function clip(a, b)
+		local t0, t1 = 0, 1
+		for i = 1, 3 do
+			local d = b[i] - a[i]
+			for _, sg in ipairs({ -1, 1 }) do
+				-- keep sg * (a + d t) <= h
+				local pp, qq = sg * d, h[i] - sg * a[i]
+				if math.abs(pp) < 1e-9 then
+					if qq < 0 then return end
+				else
+					local r = qq / pp
+					if pp < 0 then t0 = math.max(t0, r) else t1 = math.min(t1, r) end
+					if t0 > t1 - 1e-6 then return end
+				end
+			end
+		end
+		local function at(t) return bcf:PointToWorldSpace(V3(a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t)) end
+		out[#out + 1] = { at(t0), at(t1) }
+	end
+	local ups = #P.ring <= 12
+	for _, S in ipairs(P.ring) do
+		local a, b, a2, b2 = B(S.a), B(S.b), B(S.a + P.D), B(S.b + P.D)
+		clip(a, b) clip(a2, b2)
+		if ups then clip(a, a2) end
+		-- the rim: where this wall comes out through each face of the part
+		local q = { a, b, b2, a2 }
+		for i = 1, 3 do
+			for _, sg in ipairs({ -1, 1 }) do
+				local f = sg * (h[i] - 0.01)
+				local pts = {}
+				local flat = true
+				for e = 1, 4 do
+					local p1, p2 = q[e], q[e % 4 + 1]
+					local d1, d2 = p1[i] - f, p2[i] - f
+					if math.abs(d1) > 1e-4 then flat = false end
+					if (d1 > 0) ~= (d2 > 0) and math.abs(d1 - d2) > 1e-9 then
+						local t = d1 / (d1 - d2)
+						pts[#pts + 1] = { p1[1] + (p2[1] - p1[1]) * t, p1[2] + (p2[2] - p1[2]) * t, p1[3] + (p2[3] - p1[3]) * t }
+					end
+				end
+				if not flat and #pts == 2 then clip(pts[1], pts[2]) end
+			end
+		end
+	end
+	return out
+end
 -- store it on the result (in the part's own space, so it moves / copies with the part)
 function ENT.attachOutline(inst, segs, kind)
 	if not inst or not segs or #segs == 0 then return end
@@ -5233,7 +5339,25 @@ function ENT.computeRefLines()
 							end
 						end
 					end
-					if own and not flat then
+					-- v2.40 POCKET: a cut shows the pocket it makes in its part (only the bits inside the part)
+					local pocketDone = false
+					if ENT.outKind(v, inst) == "cut" and inst:IsA("BasePart") then
+						ENT.prismCache = ENT.prismCache or {}
+						local P = ENT.prismCache[v.Value]
+						if P == nil then P = ENT.cutPrism(data) or false ENT.prismCache[v.Value] = P end
+						if P then
+							local bcf, bsz = ENT.blockOf(inst)
+							if not bcf then bcf, bsz = inst.CFrame, inst.Size end
+							local okP, segsP = pcall(ENT.pocketSegs, P, cf, bcf, bsz)
+							if okP and segsP then
+								for _, sgm in ipairs(segsP) do addW(sgm[1], sgm[2], not own, own) end
+								pocketDone = true
+							end
+						end
+					end
+					if pocketDone then
+						-- (drawn above)
+					elseif own and not flat then
 						local pts2 = {}
 						for _, q in ipairs(data) do
 							pts2[#pts2 + 1] = to2D(pl, cf:PointToWorldSpace(V3(q[1], q[2], q[3])))
