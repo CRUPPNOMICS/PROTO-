@@ -1980,6 +1980,29 @@ function drawPlanes()
 		pDash(axLines, o - cf.LookVector * h, o + cf.LookVector * h, COL.axZ, 1, h / 15)
 		pDot(axDots, o, COL.sel, camDist(o) * 0.006)
 	end
+	if show and mode == "planes" and target then
+		local okP, pp = pcall(ENT.pocketPanels)
+		if okP and pp then
+			for _, pl in ipairs(pp) do
+				if pl ~= hoverPlane then
+					ENT.holeUsed = ENT.holeUsed + 1
+					local b = ENT.holePool[ENT.holeUsed]
+					if not b then
+						b = Instance.new("BoxHandleAdornment")
+						b.Adornee = TERRAIN
+						b.AlwaysOnTop = false
+						b.Color3 = COL.plane
+						b.Parent = adornRoot
+						ENT.holePool[ENT.holeUsed] = b
+					end
+					b.CFrame = CFrame.fromMatrix(pl.o, pl.u, pl.v)
+					b.Size = V3(pl.hu * 2, pl.hv * 2, 0.04)
+					b.Transparency = 0.9
+					b.Visible = true
+				end
+			end
+		end
+	end
 	for i = ENT.holeUsed + 1, #ENT.holePool do ENT.holePool[i].Visible = false end
 	pEnd(plLines) pEnd(axLines) pEnd(axDots)
 end
@@ -6647,6 +6670,128 @@ function setMode(m)
 end
 
 -- what is under the mouse: raycast hit (or nil) and the nearest plane hit
+-- ===== v2.40 POCKET BOXES (Dylan: "add a cube, a wrap box for what the thing cut, take off the face it was cut from,
+-- then I can click the inside"). Each box-shaped cut = a box round exactly what it took out of the part; the side(s)
+-- it came in through are left open; the rest (floor + walls) are clickable panels, worked out from the box itself
+-- (so it works whatever the part's collision is). =====
+function ENT.pocketPanels()
+	if not target then return {} end
+	local parts = ENT.objParts(target) or { target }
+	local key = {}
+	for _, q in ipairs(parts) do
+		if q:IsA("BasePart") then
+			for _, ch in ipairs(q:GetChildren()) do
+				if ch.Name == "DIM_Outline" and ch:IsA("StringValue") then key[#key + 1] = tostring(q.CFrame) .. #ch.Value end
+			end
+		end
+	end
+	local k = table.concat(key, "|")
+	local C = ENT.pocketPanelCache
+	if C and C.t == target and C.k == k then return C.list end
+	local list = {}
+	ENT.prismCache = ENT.prismCache or {}
+	ENT.outlineCache = ENT.outlineCache or {}
+	for _, q in ipairs(parts) do
+		if q:IsA("BasePart") then
+			for _, ch in ipairs(q:GetChildren()) do
+				if ch.Name == "DIM_Outline" and ch:IsA("StringValue") and ENT.outKind(ch, q) == "cut" then
+					local P = ENT.prismCache[ch.Value]
+					if P == nil then
+						local data = ENT.outlineCache[ch.Value]
+						if not data then
+							local okD, r = pcall(function() return game:GetService("HttpService"):JSONDecode(ch.Value) end)
+							data = okD and r or {}
+							ENT.outlineCache[ch.Value] = data
+						end
+						P = ENT.cutPrism(data) or false
+						ENT.prismCache[ch.Value] = P
+					end
+					if P and #P.ring == 4 then
+						pcall(function()
+							local bcf, bsz = ENT.blockOf(q)
+							if not bcf then bcf, bsz = q.CFrame, q.Size end
+							local segs = ENT.pocketSegs(P, q.CFrame, bcf, bsz)
+							if #segs < 3 then return end
+							local d = q.CFrame:VectorToWorldSpace(P.D).Unit
+							local e1 = q.CFrame:VectorToWorldSpace(P.ring[1].b - P.ring[1].a).Unit
+							if math.abs(e1:Dot(d)) > 0.01 then return end
+							local e2 = d:Cross(e1).Unit
+							local axes = { e1, e2, d }
+							local lo, hi = { math.huge, math.huge, math.huge }, { -math.huge, -math.huge, -math.huge }
+							local o0 = segs[1][1]
+							for _, sg in ipairs(segs) do
+								for _, w in ipairs({ sg[1], sg[2] }) do
+									for i = 1, 3 do
+										local x = (w - o0):Dot(axes[i])
+										lo[i], hi[i] = math.min(lo[i], x), math.max(hi[i], x)
+									end
+								end
+							end
+							local half = { (hi[1] - lo[1]) / 2, (hi[2] - lo[2]) / 2, (hi[3] - lo[3]) / 2 }
+							if half[1] < 0.02 or half[2] < 0.02 or half[3] < 0.02 then return end
+							local ctr = o0 + e1 * ((lo[1] + hi[1]) / 2) + e2 * ((lo[2] + hi[2]) / 2) + d * ((lo[3] + hi[3]) / 2)
+							local bh = { bsz.X / 2, bsz.Y / 2, bsz.Z / 2 }
+							local faces, opens = {}, {}
+							for i = 1, 3 do
+								for _, s in ipairs({ -1, 1 }) do
+									local a = axes[i]
+									local j, l = (i % 3) + 1, ((i + 1) % 3) + 1
+									local fc = ctr + a * (half[i] * s)
+									-- on the outside of the part = the side the cut came in through = left OPEN
+									local lc = bcf:PointToObjectSpace(fc)
+									local la = bcf:VectorToObjectSpace(a)
+									local L = { lc.X, lc.Y, lc.Z }
+									local open = false
+									for m = 1, 3 do
+										local am = ({ la.X, la.Y, la.Z })[m]
+										if math.abs(am) > 0.99 and math.abs(L[m]) >= bh[m] - 0.03 then open = true end
+									end
+									local out = -a * s   -- (facing INTO the pocket)
+									local u, v = axes[j], axes[l]
+									local hu, hv = half[j], half[l]
+									if u:Cross(v):Dot(out) < 0 then u = -u end
+									local pl = planeFrom(ctr + a * ((half[i] - 0.02) * s), u, v)
+									pl.name, pl.hu, pl.hv, pl.half, pl.isFace, pl.out, pl.pocket = "Inside face", hu, hv, math.max(hu, hv), true, out, true
+									if open then opens[#opens + 1] = planeFrom(fc, u, v) opens[#opens].hu, opens[#opens].hv = hu, hv
+									else faces[#faces + 1] = pl end
+								end
+							end
+							if #opens > 0 then
+								for _, f in ipairs(faces) do f.opens = opens list[#list + 1] = f end
+							end
+						end)
+					end
+				end
+			end
+		end
+	end
+	ENT.pocketPanelCache = { t = target, k = k, list = list }
+	return list
+end
+-- the pocket panel the mouse ray really lands on (it has to come in through the open side, not through solid wall)
+function ENT.pocketPick(ray)
+	local best, bt
+	for _, pl in ipairs(ENT.pocketPanels()) do
+		if ray.Direction:Dot(pl.out) < 0 then
+			local t, hit = rayPlane(pl, ray)
+			if t and (not bt or t < bt) then
+				local l = to2D(pl, hit)
+				if math.abs(l.X) <= pl.hu and math.abs(l.Y) <= pl.hv then
+					local through = false
+					for _, op in ipairs(pl.opens) do
+						local t2, h2 = rayPlane(op, ray)
+						if t2 and t2 <= t + 0.05 then
+							local l2 = to2D(op, h2)
+							if math.abs(l2.X) <= op.hu + 0.01 and math.abs(l2.Y) <= op.hv + 0.01 then through = true break end
+						end
+					end
+					if through then best, bt = pl, t end
+				end
+			end
+		end
+	end
+	return best, bt
+end
 local function pick()
 	local ray = mouse.UnitRay
 	local res = workspace:Raycast(ray.Origin, ray.Direction * 5000)
@@ -6668,23 +6813,10 @@ local function pick()
 			end
 		end
 	end
-	-- v2.40 (Dylan: "I should be able to click the inside"): looking in THROUGH the hole a cut left in a side of the
-	-- box = the pocket itself is what you get (its floor / walls), not the side panel or a centre plane in the way
-	if res and planes and mode == "planes" and planes[1].faces and target and ENT.objParts(target) and ENT.sameFeature(res.Instance) then
-		for _, f in ipairs(planes[1].faces) do
-			local t, hit = rayPlane(f, ray)
-			if t and t < res.Distance then
-				local l = to2D(f, hit)
-				if math.abs(l.X) <= f.hu and math.abs(l.Y) <= f.hv then
-					local okH, holes = pcall(ENT.faceHoles, f, f.hu, f.hv)
-					if okH and holes then
-						for _, H in ipairs(holes) do
-							if l.X > H.lo.X and l.X < H.hi.X and l.Y > H.lo.Y and l.Y < H.hi.Y then return res, nil end
-						end
-					end
-				end
-			end
-		end
+	-- v2.40 POCKET BOXES: looking into a cut through its open side = that pocket's floor / wall panel
+	if planes and showPlanes and not sk and mode == "planes" and target then
+		local okP, pp = pcall(ENT.pocketPick, ray)
+		if okP and pp then return nil, pp end
 	end
 	if res and bestT and bestT < res.Distance then res = nil end
 	return res, bestPl
@@ -10780,7 +10912,9 @@ mouse.Button1Down:Connect(function()
 			setTarget(p)
 		end
 	elseif pl then
-		if pl.isFace and pl.out then
+		if pl.pocket then
+			startSketch(planeFrom(pl.o - pl.out * 0.02, pl.u, pl.v), target, "Inside face")
+		elseif pl.isFace and pl.out then
 			local fp, nm = ENT.cubeFacePlane(pl.out)   -- a side of the box: flat on it, facing out
 			startSketch(fp or planeFrom(pl.o, pl.u, pl.v), target, nm or pl.name)
 		else
