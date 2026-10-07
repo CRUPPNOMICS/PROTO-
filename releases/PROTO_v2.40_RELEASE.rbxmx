@@ -7862,9 +7862,16 @@ function ENT.pocketEdgeClick(E, p)
 					local iMid = (I.a + I.b) / 2
 					for _, C in ipairs({ I.a, I.b }) do
 						local t = (C - iMid).Unit
+						-- the opening edges that meet this fill's end (normally two - one each side of the corner)
+						local atC = {}
 						for _, R in ipairs(all) do
-							if R.kind == "rim" and sameBox(R) and ((R.a - C).Magnitude < 0.02 or (R.b - C).Magnitude < 0.02) then
+							if R.kind == "rim" and sameBox(R) and ((R.a - C).Magnitude < 0.02 or (R.b - C).Magnitude < 0.02) then atC[#atC + 1] = R end
+						end
+						for _, R in ipairs(atC) do
+							do
 								local RI = info(R)
+								local other
+								for _, R2 in ipairs(atC) do if R2 ~= R then other = R2 end end
 								if RI then
 									local Lz = RI.r * 2 + 0.3
 									local zone = Instance.new("Part")
@@ -7875,8 +7882,17 @@ function ENT.pocketEdgeClick(E, p)
 									local hs
 									if RI.f then hs = ENT.halfSpace(C + R.u * RI.r, -R.u, Lz * 6 + 4)
 									else hs = ENT.halfSpace(C + R.u * RI.r, -(R.u + R.v).Unit, Lz * 6 + 4) end
-									local okT, rT = pcall(function() return GeometryService:IntersectAsync(zone, { hs }, ENT.FAST) end)
+									-- (v2.40: each opening edge only trims ITS half of the fill - the side nearer its own wall - like
+									-- the picture-frame mitre; trimming the whole fill with both left gaps)
+									local cutWith = { hs }
+									local halfHs
+									if other and (R.v - other.v).Magnitude > 0.1 then
+										halfHs = ENT.halfSpace(C, (R.v - other.v).Unit, Lz * 6 + 4)
+										cutWith[2] = halfHs
+									end
+									local okT, rT = pcall(function() return GeometryService:IntersectAsync(zone, cutWith, ENT.FAST) end)
 									zone.Parent, hs.Parent = nil, nil
+									if halfHs then halfHs.Parent = nil end
 									if okT and type(rT) == "table" and rT[1] then rT[1].Parent = workspace trims[#trims + 1] = rT[1]
 									else print("PROTO pocket: corner trim failed - " .. tostring(rT)) end
 								end
