@@ -7933,11 +7933,12 @@ function ENT.pocketEdgeClick(E, p)
 					local U = -ax[i] * sgn                          -- in from this open face
 					local Fc = B.ctr + ax[i] * (half[i] * sgn)     -- the open face's centre
 					local j, l = (i % 3) + 1, ((i + 1) % 3) + 1
-					local rims, rmax = {}, 0
+					local rims, rmax, sharp = {}, 0, {}
 					for _, R in ipairs(all) do
 						if R.kind == "rim" and sameBox(R) and R.depth and (R.depth - U).Magnitude < 1e-3 then
 							local RI = info(R)
-							if RI then rims[#rims + 1] = { R = R, r = RI.r, f = RI.f } rmax = math.max(rmax, RI.r) end
+							if RI then rims[#rims + 1] = { R = R, r = RI.r, f = RI.f } rmax = math.max(rmax, RI.r)
+							else sharp[#sharp + 1] = R end   -- (an edge of the opening that's NOT done stays sharp)
 						end
 					end
 					if #rims > 0 then
@@ -7993,6 +7994,10 @@ function ENT.pocketEdgeClick(E, p)
 								local n = U + W
 								keepCut({ ENT.halfSpace(R.a + n * (rk / n:Dot(n)), n.Unit, big) })
 							end
+						end
+						-- edges of the opening that aren't done: everything behind their wall is kept (they stay sharp)
+						for _, R in ipairs(sharp) do
+							keepCut({ ENT.halfSpace(R.a, R.wall, big) })
 						end
 						for _, FC in ipairs(fills) do
 							local F, C = FC.F, FC.C
