@@ -6933,7 +6933,7 @@ function ENT.edgeClick()
 						-- fill happened to stop - that left a tiny lip sticking out)
 						local lc = cf:PointToObjectSpace(C)
 						local tC = ({ lc.X, lc.Y, lc.Z })[k]
-						if e[1] < 0 then s0 = tC - r else s1 = tC + r end
+						if e[1] < 0 then s0 = tC else s1 = tC end   -- (v2.40: the body stops AT the corner; its bit past the corner is its own mitred piece below)
 					end
 				end
 			end
@@ -6991,23 +6991,36 @@ function ENT.edgeClick()
 				if roundEnd[M.side] then continue end   -- (v2.40: the other fill across a ROUNDED corner isn't a mitre mate)
 				local m = (M.out - M.B.dir).Unit   -- this fill keeps the side (p - C) . m <= 0
 				local S = r * 10 + 4
-				local cutA = ENT.halfSpace(M.C, m, S)
-				local okA, rA = pcall(function() return GeometryService:SubtractAsync(fill, { cutA }, ENT.FAST) end)
-				cutA.Parent = nil
-				if okA and type(rA) == "table" and rA[1] then fill.Parent = nil fill = rA[1] fill.Parent = workspace end
+				-- v2.40: a mitred corner piece = r long past the corner, cut on the 45-degree line. If the cut fails the
+				-- piece is DROPPED (an uncut piece stuck out past the corner)
+				local function mitrePiece(mid, d0, u0, v0, rr, keepN)
+					local piece = ENT.fillPrism(mid, d0, u0, v0, rr, rr, isF)
+					if not piece then return end
+					for _ = 1, 2 do
+						local cut = ENT.halfSpace(M.C, keepN, S)
+						local okC, rC = pcall(function() return GeometryService:SubtractAsync(piece, { cut }, ENT.FAST) end)
+						cut.Parent = nil
+						if okC and type(rC) == "table" and rC[1] then
+							piece.Parent = nil
+							rC[1].Parent = workspace
+							extra[#extra + 1] = rC[1]
+							return
+						end
+					end
+					piece.Parent = nil
+					print("PROTO mitre: corner piece cut failed - left out")
+				end
 				if M.kind == "outer" then
 					local B = M.B
-					-- its piece: from the TRUE corner, exactly r on past it (on its own edge line)
+					-- this fill's own piece past the corner (along its edge line), and the other one's (along its edge line)
+					mitrePiece(M.C + M.out * (r / 2), M.out, u, v, r, m)
 					local cB = B.c + B.dir * (M.C - B.c):Dot(B.dir)
-					local bMid = cB + B.dir * (B.r / 2)
-					local piece = ENT.fillPrism(bMid, B.dir, B.u, B.v, B.r, B.r, isF)
-					if piece then
-						local cutB = ENT.halfSpace(M.C, -m, S)
-						local okB, rB = pcall(function() return GeometryService:SubtractAsync(piece, { cutB }, ENT.FAST) end)
-						cutB.Parent = nil
-						piece.Parent = nil
-						if okB and type(rB) == "table" and rB[1] then rB[1].Parent = workspace extra[#extra + 1] = rB[1] end
-					end
+					mitrePiece(cB + B.dir * (B.r / 2), B.dir, B.u, B.v, B.r, -m)
+				else
+					local cutA = ENT.halfSpace(M.C, m, S)
+					local okA, rA = pcall(function() return GeometryService:SubtractAsync(fill, { cutA }, ENT.FAST) end)
+					cutA.Parent = nil
+					if okA and type(rA) == "table" and rA[1] then fill.Parent = nil fill = rA[1] fill.Parent = workspace end
 				end
 				print(("PROTO mitre: %s %s corner at %.2f, %.2f, %.2f | this dir %s | other end %s dir %s r %.2f | block %s"):format(tname, M.kind, M.C.X, M.C.Y, M.C.Z, tostring(M.out), tostring(M.B.c), tostring(M.B.dir), M.B.r, p:GetFullName()))
 			end
