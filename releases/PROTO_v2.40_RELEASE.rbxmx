@@ -6812,6 +6812,14 @@ function ENT.edgeClick()
 				local B, kind, C = ENT.cornerMate({ c = endPt(e[2]), dir = dir * e[1], u = u, v = v, r = r, t = tname })
 				if B then
 					mates[#mates + 1] = { B = B, kind = kind, C = C, out = dir * e[1] }
+					if kind == "inner" and isF then
+						-- v2.40 (Dylan): two FILLETS in an inside corner - this one ENDS where the other one STARTS
+						-- (where its round leaves the wall), instead of both crossing through each other
+						local lc = cf:PointToObjectSpace(C)
+						local tC = ({ lc.X, lc.Y, lc.Z })[k]
+						if e[1] < 0 then s0 = math.max(s0, tC + B.r) else s1 = math.min(s1, tC - B.r) end
+						mates[#mates].skipCut = true
+					end
 					if kind == "outer" then
 						-- built on to EXACTLY r past the true corner (measured from the corner, not from where this
 						-- fill happened to stop - that left a tiny lip sticking out)
@@ -6830,6 +6838,7 @@ function ENT.edgeClick()
 			-- 2) THE MITRE: this fill is cut through on the 45-degree line where it meets the other one, and (outside
 			-- corners) the other one's missing bit past its end is built and cut on the same line from its side
 			for _, M in ipairs(mates) do
+				if M.skipCut then continue end
 				local m = (M.out - M.B.dir).Unit   -- this fill keeps the side (p - C) . m <= 0
 				local S = r * 10 + 4
 				local cutA = ENT.halfSpace(M.C, m, S)
