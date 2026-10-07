@@ -7875,7 +7875,7 @@ function ENT.pocketEdgeClick(E, p)
 		-- inside corner of the cut meets a chamfered opening: a solid block goes back in at that corner (only where there's
 		-- material - wall, floor or fill - never in the open hole), then it's cut by the three chamfers coming in: the wall
 		-- edge's, the floor edge's and the fill's own front edge. A bit only goes if ALL THREE take it (no dug-out pyramid).
-		local adds, trims = {}, {}
+		local adds, trims, finals = {}, {}, {}
 		local function inter(base, list)
 			local cur = base
 			for _, w in ipairs(list) do
@@ -7916,6 +7916,11 @@ function ENT.pocketEdgeClick(E, p)
 							local function cube()
 								return boxAt(C + A * ((rI - rr) / 2) + B * ((rI - rr) / 2) + U * (Dz / 2), A, B, V3(W, W, Dz))
 							end
+							-- (v2.40: a bit BIGGER box - the finishing cut reaches a hair past the corner block's edges so no fins
+							-- are left where the corner meets the rest of the edge)
+							local function bigCube()
+								return boxAt(C + A * ((rI - rr) / 2) + B * ((rI - rr) / 2) + U * (Dz / 2), A, B, V3(W + 0.6, W + 0.6, Dz + 0.1))
+							end
 							-- the block, minus the open hole (out past the fill's sloped face)
 							local blk = cube()
 							-- (the hole = everything out past the fill's REAL face - its round for a fillet, its slope for a chamfer)
@@ -7944,7 +7949,7 @@ function ENT.pocketEdgeClick(E, p)
 							for _, RC in ipairs(rimsC or {}) do
 								local R, rk = RC.R, RC.r
 								if RC.f then
-									local slab = cube()
+									local slab = bigCube()
 									local front = ENT.halfSpace(C + U * rk, -U, (W + Dz) * 6 + 4)
 									local sl = inter(slab, { front })
 									slab.Parent, front.Parent = nil, nil
@@ -7971,7 +7976,7 @@ function ENT.pocketEdgeClick(E, p)
 							elseif II.f then
 								local O = C + A * rI + B * rI           -- the fill's round centre line (at the face)
 								local rho = rI + rr
-								local slab = cube()
+								local slab = bigCube()
 								local front = ENT.halfSpace(C + U * rr, -U, (W + Dz) * 6 + 4)
 								local sl = inter(slab, { front })
 								slab.Parent, front.Parent = nil, nil
@@ -8024,6 +8029,10 @@ function ENT.pocketEdgeClick(E, p)
 							local c2 = cube()
 							local cutPiece = inter(c2, cutters)
 							c2.Parent = nil
+							local c3 = bigCube()
+							local cutBig = inter(c3, cutters)
+							c3.Parent = nil
+							if cutBig then finals[#finals + 1] = cutBig end
 							for _, x in ipairs(cutters) do x.Parent = nil end
 							-- (v2.40: the corner is made as ONE finished piece on its own, then swapped in: the part's corner
 							-- box is cleared, the piece goes in - no layering cuts on cuts, which broke one corner)
@@ -8078,6 +8087,14 @@ function ENT.pocketEdgeClick(E, p)
 			if okA and type(rA) == "table" and rA[1] then mid0.Parent = nil res = rA else mid0.Parent = nil print("PROTO pocket: corner piece failed - " .. tostring(rA)) end
 		end
 		for _, x in ipairs(adds) do x.Parent = nil end
+		-- the finishing cut, a hair past each corner block (takes off any fin left at the join)
+		if okC and type(res) == "table" and res[1] and #finals > 0 then
+			local mid0 = res[1]
+			mid0.Parent = workspace
+			local okF, rF = pcall(function() return GeometryService:SubtractAsync(mid0, finals, opts) end)
+			if okF and type(rF) == "table" and rF[1] then mid0.Parent = nil res = rF else mid0.Parent = nil print("PROTO pocket: finishing cut failed - " .. tostring(rF)) end
+		end
+		for _, x in ipairs(finals) do x.Parent = nil end
 		if not (okC and type(res) == "table" and res[1]) then error("couldn't " .. (E.kind == "in" and "add the fill" or "cut the edge") .. " - " .. tostring(res)) end
 		out = res[1]
 		out.Name = p.Name
