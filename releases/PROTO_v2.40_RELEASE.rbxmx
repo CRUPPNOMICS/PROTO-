@@ -6401,7 +6401,7 @@ function ENT.shiftFaceKey(i)
 		if shiftDown() and not ctrlDown() then
 			hoverPlane, ENT.hoverFace = nil, nil
 			local hit = ENT.directHit()
-			ENT.showFaceHover(hit)
+			ENT.shiftPocketHover(hit)
 			setStatus("FACE mode (Shift held): click any face to sketch right on it. Let go of Shift = planes back.")
 		else
 			ENT.showFaceHover(nil)
@@ -6412,6 +6412,25 @@ function ENT.shiftFaceKey(i)
 end
 UIS.InputBegan:Connect(function(i) ENT.shiftFaceKey(i) end)
 UIS.InputEnded:Connect(function(i) ENT.shiftFaceKey(i) end)
+-- v2.40 face mode: looking into a cut through its opening = light up the pocket floor / wall from the cut's box
+-- (works whatever the part's collision is); otherwise the normal face highlight
+function ENT.shiftPocketHover(hit)
+	if hit and hit.Instance and hit.Instance:IsA("BasePart") and ENT.isProto(hit.Instance) then
+		local okP, pp = pcall(ENT.pocketPick, mouse.UnitRay, hit.Instance)
+		if okP and pp then
+			ENT.showFaceHover(nil)
+			local G = ENT.faceGlow
+			if G then
+				faceHover.Adornee = nil
+				G.CFrame = CFrame.fromMatrix(pp.o + pp.out * 0.01, pp.u, pp.v)
+				G.Size = V3(pp.hu * 2, pp.hv * 2, 0.05)
+				G.Visible = true
+			end
+			return
+		end
+	end
+	ENT.showFaceHover(hit)
+end
 -- v2.40 (Dylan: "click the inside of them"): face mode on a pocket's floor / wall lights up THAT face only (Roblox's own
 -- face highlight lights the whole side of the part's box, right over the hole)
 function ENT.showFaceHover(hit, glowOnly)
@@ -6738,9 +6757,10 @@ end
 -- then I can click the inside"). Each box-shaped cut = a box round exactly what it took out of the part; the side(s)
 -- it came in through are left open; the rest (floor + walls) are clickable panels, worked out from the box itself
 -- (so it works whatever the part's collision is). =====
-function ENT.pocketPanels()
-	if not target then return {} end
-	local parts = ENT.objParts(target) or { target }
+function ENT.pocketPanels(root)
+	root = root or target
+	if not root then return {} end
+	local parts = ENT.objParts(root) or { root }
 	local key = {}
 	for _, q in ipairs(parts) do
 		if q:IsA("BasePart") then
@@ -6751,7 +6771,7 @@ function ENT.pocketPanels()
 	end
 	local k = table.concat(key, "|")
 	local C = ENT.pocketPanelCache
-	if C and C.t == target and C.k == k then return C.list end
+	if C and C.t == root and C.k == k then return C.list end
 	local list = {}
 	ENT.prismCache = ENT.prismCache or {}
 	ENT.outlineCache = ENT.outlineCache or {}
@@ -6829,13 +6849,13 @@ function ENT.pocketPanels()
 			end
 		end
 	end
-	ENT.pocketPanelCache = { t = target, k = k, list = list }
+	ENT.pocketPanelCache = { t = root, k = k, list = list }
 	return list
 end
 -- the pocket panel the mouse ray really lands on (it has to come in through the open side, not through solid wall)
-function ENT.pocketPick(ray)
+function ENT.pocketPick(ray, root)
 	local best, bt
-	for _, pl in ipairs(ENT.pocketPanels()) do
+	for _, pl in ipairs(ENT.pocketPanels(root)) do
 		if ray.Direction:Dot(pl.out) < 0 then
 			local t, hit = rayPlane(pl, ray)
 			if t and (not bt or t < bt) then
@@ -10772,7 +10792,7 @@ mouse.Move:Connect(function()
 		-- v2.38: Shift held = show the exact face a Shift-click will sketch on
 		local hit = ENT.directHit()
 		if hoverPlane or ENT.hoverFace then hoverPlane, ENT.hoverFace = nil, nil drawPlanes() end
-		ENT.showFaceHover(hit)
+		ENT.shiftPocketHover(hit)
 		return
 	end
 	ENT.showFaceHover(nil, true)
@@ -10884,7 +10904,13 @@ mouse.Button1Down:Connect(function()
 		local hit = ENT.directHit()
 		if hit then
 			local p = hit.Instance
+			-- v2.40: looking into a cut's pocket = its floor / wall (worked out from the cut's box)
+			local okP, pp = pcall(ENT.pocketPick, mouse.UnitRay, p)
 			setTarget(p)
+			if okP and pp then
+				startSketch(planeFrom(pp.o - pp.out * 0.02, pp.u, pp.v), p, "Inside face")
+				return
+			end
 			startSketch(ENT.facePlane(p, hit.Position, hit.Normal), p, p.Name .. " face")
 			return
 		end
