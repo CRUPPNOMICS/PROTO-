@@ -6937,16 +6937,18 @@ function ENT.edgeClick()
 		if not out then
 			for _, d in ipairs(done) do if d.i and d.k ~= k and d.r then crossR = math.max(crossR, d.r) end end
 			if crossR > 0 then
-				local rf = crossR + 0.05
-				local function sz(along, wa, wb)
-					local t = { 0, 0, 0 }
-					t[k], t[a], t[b] = along, wa, wb
-					return V3(t[1], t[2], t[3])
-				end
-				-- beside face 1 (out from it by the fill size), from where the round starts to past the corner
-				cutters[#cutters + 1] = mk(sz(L, rf, rf + r), CFrame.new(edgeC + n1 * (rf / 2) + n2 * ((rf - r) / 2)))
-				-- beside face 2
-				cutters[#cutters + 1] = mk(sz(L, rf + r, rf), CFrame.new(edgeC + n1 * ((rf - r) / 2) + n2 * (rf / 2)))
+				-- one cutter: everything on the corner side of the 45-degree line where the round / chamfer starts on both
+				-- faces - so both fills get their ends cut ON THAT ANGLE (in line with the new corner face), and the
+				-- corner piece between them goes
+				local nd = (n1 + n2).Unit
+				local S = (r + crossR * 2) * 3 + 2
+				local P0 = edgeC - n1 * r   -- (on the line: r back from the corner along face 2)
+				local big = mk(V3(L, S, S), CFrame.fromMatrix(P0 + nd * (S / 2), AXV[k], nd))
+				-- ... but only OUTSIDE the block (inside it, the round / chamfer cutter decides - a fillet must stay round)
+				local blockBox = mk(E.size + V3(0.002, 0.002, 0.002), CFrame.new())
+				local okT, rT = pcall(function() return GeometryService:SubtractAsync(big, { blockBox }, ENT.FAST) end)
+				big.Parent, blockBox.Parent = nil, nil
+				if okT and type(rT) == "table" and rT[1] then rT[1].Parent = workspace cutters[#cutters + 1] = rT[1] end
 			end
 		end
 		if not out then
