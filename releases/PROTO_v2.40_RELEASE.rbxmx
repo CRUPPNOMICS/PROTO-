@@ -6988,8 +6988,25 @@ function ENT.edgeClick()
 		-- each face, so nothing is left sticking into the space the round cleared. Fills running ALONGSIDE the cut
 		-- edge still win (no bites).
 		local crossR = 0
+		-- v2.40: a fill only counts if it really MEETS this edge: it runs out from one END of this edge, along one of
+		-- this edge's two faces, and reaches the corner (rounding the TOP edge must not touch fills at the bottom)
+		local function meetsEdge(d)
+			if not (d.i and d.ux and d.r and d.k ~= k) then return false end
+			local kd = d.k
+			if kd ~= a and kd ~= b then return false end
+			local ad, bd = (kd % 3) + 1, ((kd + 1) % 3) + 1
+			local sgn = { 0, 0, 0 }
+			sgn[ad], sgn[bd] = d.a, d.b
+			if sgn[k] == 0 then return false end
+			local m = (kd == a) and b or a          -- the face axis the fill and this edge share
+			local mySign = (m == a) and E.sa or E.sb
+			if sgn[m] ~= mySign then return false end
+			local myOn = ((kd == a) and E.sa or E.sb) * h[kd]   -- where this edge sits along the fill
+			local s0, s1 = d.s0 or -h[kd], d.s1 or h[kd]
+			return myOn >= s0 - r - 0.1 and myOn <= s1 + r + 0.1
+		end
 		if not out then
-			for _, d in ipairs(done) do if d.i and d.k ~= k and d.r then crossR = math.max(crossR, d.r) end end
+			for _, d in ipairs(done) do if meetsEdge(d) then crossR = math.max(crossR, d.r) end end
 			if crossR > 0 then
 				-- one cutter: everything on the corner side of the 45-degree line where the round / chamfer starts on both
 				-- faces - so both fills get their ends cut ON THAT ANGLE (in line with the new corner face), and the
@@ -7038,7 +7055,7 @@ function ENT.edgeClick()
 			if isF and crossR > 0 then
 				local levels = {}
 				for _, d in ipairs(done) do
-					if d.i and d.ux and d.k ~= k then
+					if meetsEdge(d) then
 						-- which end of the cut edge this fill sits at (its corner's position along the cut edge)
 						local kd = d.k
 						local ad, bd = (kd % 3) + 1, ((kd + 1) % 3) + 1
