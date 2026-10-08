@@ -6899,7 +6899,7 @@ function ENT.pocketPanels(root)
 								end
 							end
 							if #opens > 0 then
-								for _, f in ipairs(faces) do f.opens = opens list[#list + 1] = f end
+								for _, f in ipairs(faces) do f.opens = opens f.box = { ctr = ctr, ax = axes, half = half } list[#list + 1] = f end
 							end
 						end)
 					end
@@ -6920,6 +6920,11 @@ function ENT.pocketPick(ray, root)
 				local l = to2D(pl, hit)
 				if math.abs(l.X) <= pl.hu and math.abs(l.Y) <= pl.hv then
 					local through = false
+					if pl.box then
+						local o = ray.Origin - pl.box.ctr
+						local A3, H3 = pl.box.ax, pl.box.half
+						if math.abs(o:Dot(A3[1])) <= H3[1] + 0.05 and math.abs(o:Dot(A3[2])) <= H3[2] + 0.05 and math.abs(o:Dot(A3[3])) <= H3[3] + 0.05 then through = true end
+					end
 					for _, op in ipairs(pl.opens) do
 						local t2, h2 = rayPlane(op, ray)
 						if t2 and t2 <= t + 0.05 then
@@ -7491,16 +7496,18 @@ function ENT.edgeHover()
 	local hit = ENT.directHit()
 	-- v2.40 POCKET EDGES first (looking into a cut)
 	ENT.pocketHot = nil
-	if hit and hit.Instance:IsA("BasePart") and ENT.isProto(hit.Instance) then
-		local okE, PE = pcall(ENT.pocketEdgePick, mouse.UnitRay, hit.Instance)
+	-- (from INSIDE a cut the mouse ray may not hit the part at all - then the picked part's cuts are checked)
+	local pRoot = (hit and hit.Instance) or (target and target:IsA("BasePart") and target) or nil
+	if pRoot and pRoot:IsA("BasePart") and ENT.isProto(pRoot) then
+		local okE, PE = pcall(ENT.pocketEdgePick, mouse.UnitRay, pRoot)
 		if not okE then print("PROTO pocket hover error: " .. tostring(PE)) end
 		if okE and PE then
-			ENT.pocketHot = { E = PE, p = hit.Instance }
+			ENT.pocketHot = { E = PE, p = pRoot }
 			local now = os.clock()
 			if not ENT.lastPocketLog or now - ENT.lastPocketLog > 1.5 then
 				ENT.lastPocketLog = now
-				local la, lb = hit.Instance.CFrame:PointToObjectSpace(PE.a), hit.Instance.CFrame:PointToObjectSpace(PE.b)
-				local lc = hit.Instance.CFrame:PointToObjectSpace(PE.box.ctr)
+				local la, lb = pRoot.CFrame:PointToObjectSpace(PE.a), pRoot.CFrame:PointToObjectSpace(PE.b)
+				local lc = pRoot.CFrame:PointToObjectSpace(PE.box.ctr)
 				print(("PROTO pocket hover: %s edge %.2f,%.2f,%.2f -> %.2f,%.2f,%.2f | box centre %.2f,%.2f,%.2f size %.2f x %.2f x %.2f")
 					:format(PE.kind, la.X, la.Y, la.Z, lb.X, lb.Y, lb.Z, lc.X, lc.Y, lc.Z, PE.box.half[1] * 2, PE.box.half[2] * 2, PE.box.half[3] * 2))
 			end
@@ -7751,6 +7758,9 @@ end
 -- can the camera see this point through the pocket's open side(s)? (not through solid wall)
 function ENT.pocketSeen(B, ray, t)
 	local ax, half = B.ax, B.half
+	-- (v2.40: the camera is INSIDE the cut = it can see every edge of it)
+	local o = ray.Origin - B.ctr
+	if math.abs(o:Dot(ax[1])) <= half[1] + 0.05 and math.abs(o:Dot(ax[2])) <= half[2] + 0.05 and math.abs(o:Dot(ax[3])) <= half[3] + 0.05 then return true end
 	for i = 1, 3 do
 		for _, s in ipairs({ -1, 1 }) do
 			if B.open[i][s] then
