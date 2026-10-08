@@ -21,6 +21,7 @@ Per-release salt: v2.39 = R239-k2n7-f5  (v2.36-v2.38 were test builds only: R236
 | PROTO_v2.43_RELEASE.rbxmx | 2026-10-08 | 2ca10b0b56583e6527abdd0e0249a40ae19e530def3d7ec6da6dcdaed9648112 |
 | PROTO_v2.44_RELEASE.rbxmx | 2026-10-08 | 798203479d41ea2faae98bd4f76146a3bbaec283df7d9beb7b4da0b62ff82e50 |
 | PROTO_v2.45_RELEASE.rbxmx | 2026-10-08 | 8793068e37ae4c1172bb97150c95195582dc03c2513e491851ca7e1da4efb8d3 |
+| PROTO_v2.46_RELEASE.rbxmx | 2026-10-08 | f01d52e383821d6c635729985074d6823d1aa3c848ccf36530037024f869625b |
 
 Per-release salt: v2.40 = R240-w89-s9
 Per-release salt: v2.41 = R241-80a-b9
@@ -28,3 +29,4 @@ Per-release salt: v2.42 = R242-cf4-57
 Per-release salt: v2.43 = R243-8cc-19
 Per-release salt: v2.44 = R244-379-8f
 Per-release salt: v2.45 = R245-1cf-34
+Per-release salt: v2.46 = R246-06a-60

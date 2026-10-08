@@ -1,6 +1,6 @@
--- PROTO v2.45  (c) 2026 Giga_gad27 - all rights reserved. Do not copy or re-upload.  (marker: DIM_V1)  - OPTIMISE: collision, detail, decor, shadows, cost readout
+-- PROTO v2.46  (c) 2026 Giga_gad27 - all rights reserved. Do not copy or re-upload.  (marker: DIM_V1)  - OPTIMISE: collision, detail, decor, shadows, cost readout
 -- =====================================================================================
--- PROTO (Sketch to Build) - Version 2.45.0 - Build 245
+-- PROTO (Sketch to Build) - Version 2.46.0 - Build 246
 -- OFFICIAL Roblox Creator Store asset 124557362882102 (the only official copy).
 -- (c) 2026 Giga_gad27 (Cruppnomics). All rights reserved. PROPRIETARY SOFTWARE.
 -- Licensed for use only. You may NOT copy, modify, redistribute, resell, sublicense,
@@ -259,10 +259,10 @@ local function mkBox(parent, default, w)
 end
 
 local U = { tools = {} }
-local DIM_VERSION = "v2.45"
+local DIM_VERSION = "v2.46"
 mkLabel(nil, "PROTO  " .. DIM_VERSION, nil, { bold = true, size = 16, col = Color3.fromRGB(0, 170, 255) })   -- v2.01: new name (Dylan)
-mkLabel(nil, "Version 2.45.0 - Build 245  |  (c) 2026 Giga_gad27 (Cruppnomics)", nil, { col = COL.grey, size = 10 })
-print("PROTO " .. DIM_VERSION .. " (Build 245) loaded")
+mkLabel(nil, "Version 2.46.0 - Build 246  |  (c) 2026 Giga_gad27 (Cruppnomics)", nil, { col = COL.grey, size = 10 })
+print("PROTO " .. DIM_VERSION .. " (Build 246) loaded")
 -- v2.14: "still in testing" warning (top + bottom of the panel)
 function ENT.warnBanner()
 	local f = Instance.new("Frame")
@@ -289,8 +289,8 @@ ENT.warnBanner()
 -- It only WARNS (never breaks anything). Local test copies ("user_...") are left alone.
 ENT.OFFICIAL_ID = "124557362882102"
 ENT.BUILD_TAG = "PRT-GG27-K7Q4-2026"
-ENT.BUILD_NUMBER = 245
-ENT.RELEASE_SALT = "R245-1cf-34"   -- changes every release (maps a leaked copy to its build)   -- fingerprint (proves a copy came from this code)
+ENT.BUILD_NUMBER = 246
+ENT.RELEASE_SALT = "R246-06a-60"   -- changes every release (maps a leaked copy to its build)   -- fingerprint (proves a copy came from this code)
 ENT.SNAP_EPS = 0.0002713               -- fingerprint
 ENT.MAX_COPIES = 500                   -- v2.36: pattern / copy-along limit (huge counts froze Studio)
 function ENT.officialCheck()
@@ -520,6 +520,11 @@ r.Visible = ENT.SHOW_MESH
 r = mkRow()
 U.extrudeBtn = mkBtn(r, "EXTRUDE", 104, function() extrude() end, COL.go)
 U.cutBtn = mkBtn(r, "CUT", 74, function() extrude(true) end, COL.warn)
+-- v2.46 (Dylan): OVERLAP - pull the drawing right through the part and keep only where they overlap
+-- (front view + side view -> a boat hull / car body / fuselage)
+U.ovBtn = mkBtn(r, "OVERLAP", 90, function() ENT.overlap() end, Color3.fromRGB(150, 90, 230))
+r = mkRow()
+U.viewsBtn = mkBtn(r, "VIEWS (front / side / top)", 200, function() ENT.mvStart() end, Color3.fromRGB(120, 70, 200))
 r = mkRow()
 ENT.cutScope = "all"
 pcall(function() ENT.cutScope = plugin:GetSetting("DIM_cutScope") or "all" end)
@@ -973,7 +978,7 @@ handles.Parent = adornRoot
 local function planeFrom(o, u, v) return { o = o, u = u, v = v, n = u:Cross(v) } end
 local function toWorld(pl, p2) return pl.o + pl.u * p2.X + pl.v * p2.Y end
 local function to2D(pl, p3) local d = p3 - pl.o return V2(d:Dot(pl.u), d:Dot(pl.v)) end
-local function W(p2) return toWorld(sk.pl, p2) end
+local function W(p2) return toWorld(ENT.plOv or sk.pl, p2) end   -- (plOv: building a saved multi-view drawing)
 local function rayPlane(pl, ray)
 	local dn = ray.Direction:Dot(pl.n)
 	if math.abs(dn) < 1e-6 then return nil end
@@ -2234,7 +2239,7 @@ function ENT.closedFill()
 	sk.fillSig, sk.fillRuns = sk.faceSig, runs
 	return runs
 end
-function ENT.gcol() return (ex and ex.cut) and COL.cut or COL.ex end
+function ENT.gcol() return (ex and ex.ov) and Color3.fromRGB(170, 100, 255) or ((ex and ex.cut) and COL.cut or COL.ex) end
 function drawSketch()
 	if sk then ENT.computeFaces() end
 	if ENT.pickUI then ENT.pickUI() end
@@ -2382,6 +2387,7 @@ function drawSketch()
 		end
 	end
 	pEnd(skLines) pEnd(skDots) pEnd(ghBoxes) pEnd(ghCyls) pEnd(fillBoxes)
+	if ENT.mvDraw then pcall(ENT.mvDraw) end   -- v2.46: the other views of a multi-view drawing
 end
 
 -- v2.43 (Dylan): a shape drawn EQUAL both ways (square, round ellipse) shows yellow + the word by the mouse
@@ -2450,7 +2456,7 @@ function drawPreview()
 			if lvE then lvTxt = "   LEVEL with " .. lvE.name:sub(1, 16) elseif lvS then lvTxt = "   start LEVEL with " .. lvS.name:sub(1, 16) end
 		end
 		dimTag.StudsOffsetWorldSpace = ball
-		dimTag.T.Text = (ex.cut and "Cut " or "Depth ") .. fmt(math.abs(ex.D)) .. (bothWays and "  both ways" or ((ex.D < 0) and "  down" or "")) .. ((math.abs(ex.S or 0) > 1e-4) and ("   start " .. fmt(ex.S)) or "") .. lvTxt
+		dimTag.T.Text = (ex.ov and "Overlap " or (ex.cut and "Cut " or "Depth ")) .. fmt(math.abs(ex.D)) .. (bothWays and "  both ways" or ((ex.D < 0) and "  down" or "")) .. ((math.abs(ex.S or 0) > 1e-4) and ("   start " .. fmt(ex.S)) or "") .. lvTxt
 		dimTag.Enabled = true
 	elseif active and sk then
 		local p, snapped, guides = mousePoint()
@@ -2667,10 +2673,11 @@ function refreshStatus()
 		end
 		return
 	end
+	if sk and ex and ex.ov then setStatus("OVERLAP: the drawing goes right through the part (drag the balls / faces to change). ACCEPT / Enter = keep ONLY where it overlaps the part you sketched on - the rest is trimmed away.  CANCEL / Esc = nothing changed.") return end
 	if sk and ex and ex.cut then setStatus("CUT: drag the big orange ball to set how deep it cuts, or type it. ACCEPT / Enter = cut it out of every part it touches.  CANCEL / Esc = nothing cut.") return end
 	if sk and ex then setStatus("EXTRUDE: drag the big orange ball to set the depth (grid snap, Shift = fine, Ctrl = free), or type it. ACCEPT / Enter = make it real.  CANCEL / Esc = nothing made.") return end
 	if sk and ENT.picking then
-		local nm = ({ cut = "CUT", extrude = "EXTRUDE", revolve = "REVOLVE", revcut = "REV CUT" })[ENT.picking] or "EXTRUDE"
+		local nm = ({ cut = "CUT", extrude = "EXTRUDE", revolve = "REVOLVE", revcut = "REV CUT", overlap = "OVERLAP" })[ENT.picking] or "EXTRUDE"
 		setStatus(nm .. ": " .. #sk.regions .. " area(s) picked. Click areas (blue), Shift-click to add / take away, then press " .. nm .. " again or Enter.  Esc = stop picking.")
 		return
 	end
@@ -9210,7 +9217,8 @@ function ENT.simplifyPoly(pts)
 	return q
 end
 local function buildShape(s, D, shift, into)
-	local pl, host = sk.pl, sk.host
+	local pl, host
+	if ENT.plOv then pl, host = ENT.plOv, ENT.hostOv else pl, host = sk.pl, sk.host end
 	if s.kind == "face" and s.src then s = s.src end   -- untouched shape: build the real rect / circle / ellipse
 	-- v2.43: split areas AND closed line shapes (a double line's inside / outside, polylines) get their in-between
 	-- points dropped; a 4-corner one is then built as ONE block (a fan of triangles left thin walls on its seams
@@ -9272,8 +9280,22 @@ local function buildShape(s, D, shift, into)
 			u.UsePartColor = true
 			u.Color, u.Material, u.MaterialVariant = cyl.Color, cyl.Material, cyl.MaterialVariant
 		end)
-		u.Size = V3(D, s.a * 2, s.b * 2)
-		u.CFrame = cf
+		-- v2.46 fix (Dylan: "somebody forgot some dimensions"): the union's OWN axes aren't always the cylinder's
+		-- (it can come back squared with the world). Stretch along whichever of its axes really is the cylinder's
+		-- length / long side / short side, and keep its own turn - else the ellipse came out as a squashed slab.
+		local rc = u.CFrame
+		local axes = { rc.RightVector, rc.UpVector, rc.LookVector }
+		local vy = pl.n:Cross(ux)
+		local want = {}
+		for k = 1, 3 do
+			local d = axes[k]
+			if math.abs(d:Dot(pl.n)) > 0.999 then want[k] = D
+			elseif math.abs(d:Dot(ux)) > 0.999 then want[k] = s.a * 2
+			elseif math.abs(d:Dot(vy)) > 0.999 then want[k] = s.b * 2 end
+		end
+		if not (want[1] and want[2] and want[3]) then u.Parent = nil return false end   -- turned some other way: use slices
+		u.Size = V3(want[1], want[2], want[3])
+		u.CFrame = rc - rc.Position + (W(s.c) + shift)
 		u.Parent = into
 		return true
 	end)() then
@@ -9969,10 +9991,11 @@ exFace.Parent = adornRoot
 local function showExtrudeButtons(on)
 	U.extrudeBtn.Visible = not on
 	U.cutBtn.Visible = not on
+	if U.ovBtn then U.ovBtn.Visible = not on end
 	U.acceptBtn.Visible = on
 	U.cancelBtn.Visible = on
 	-- v2.30: the "what does the cut hit" choice only shows while a CUT is being previewed
-	if U.scopeBtn then U.scopeBtn.Visible = (on and ex and ex.cut) and true or false end
+	if U.scopeBtn then U.scopeBtn.Visible = (on and ex and ex.cut and not ex.ov) and true or false end
 end
 function exRefresh(dragging)
 	if not ex or not sk then return end
@@ -9995,19 +10018,611 @@ function exRefresh(dragging)
 end
 
 -- EXTRUDE: hollow blue preview with a pull handle. ACCEPT = real part, CANCEL = nothing made.
+
+-- ===== v2.46 MULTI-VIEW (Dylan): pick the planes (Front / Side / Top), draw the shape on each one in turn, BUILD =
+-- each view is pulled right through and only where they ALL overlap is kept (boat hulls, cars, planes, furniture) =====
+local mvPool
+function ENT.mvStart()
+	if ex then cancelExtrude() end
+	if sk then exitSketch() end
+	if not planes then ENT.startPlanes() end
+	if not planes then setStatus("Couldn't make planes - click a part or press START first.") return end
+	local pl = {}
+	for i = 1, 3 do pl[i] = planes[i] end
+	ENT.mv = { stage = "pick", pick = { false, false, false }, planes = pl, host = target, views = {}, order = {}, at = 0 }
+	ENT.mvUI()
+	pcall(ENT.mvDraw)
+	setStatus("VIEWS: CLICK the planes you want to draw on (they go yellow - 2 or 3), then CONTINUE.")
+end
+function ENT.mvName(i) return ({ "FRONT", "SIDE", "TOP" })[i] end
+function ENT.mvPlaneIndex(i) return ({ 1, 3, 2 })[i] end   -- Front = planes[1], Side = planes[3] (Right), Top = planes[2]
+function ENT.mvStop(msg, hidePlanes)
+	ENT.mv = nil
+	if ENT.mvGui then ENT.mvGui.Enabled = false end
+	if mvPool then pBegin(mvPool) pEnd(mvPool) end
+	if hidePlanes then
+		-- v2.46 (Dylan): the planes go away once the views are built (they were left standing)
+		if sk then exitSketch() end
+		setTarget(nil)
+		planes = nil
+		hoverPlane = nil
+		drawPlanes()
+	end
+	if msg then setStatus(msg) end
+end
+-- the drawn closed shapes of the open sketch (copies)
+function ENT.mvGrab()
+	local list = {}
+	for _, sh in ipairs(sk and sk.shapes or {}) do
+		if not sh.open and not sh.guide and sh.kind ~= "point" and not sh.axis then table.insert(list, copyShape(sh)) end
+	end
+	return list
+end
+function ENT.mvOpenView(k)
+	local M = ENT.mv
+	local vi = M.order[k]
+	M.at = k
+	local pl = M.planes[ENT.mvPlaneIndex(vi)]
+	startSketch(planeFrom(pl.o, pl.u, pl.v), M.host, "View: " .. ENT.mvName(vi))
+	-- going back to a view (Back, or a failed build): its drawing comes back to edit
+	if M.views[k] and sk then
+		for _, sh in ipairs(M.views[k].shapes) do table.insert(sk.shapes, copyShape(sh)) end
+		M.views[k] = nil
+		drawSketch() rebuildFields()
+		ENT.commitSketch("Back to view")
+	end
+	M.stage = "draw"
+	ENT.mvUI()
+	setStatus(("VIEW %d/%d: draw the %s shape (closed shapes). Then %s."):format(k, #M.order, ENT.mvName(vi), k < #M.order and "NEXT" or "BUILD"))
+end
+function ENT.mvContinue()
+	local M = ENT.mv
+	if not M then return end
+	if M.stage == "pick" then
+		M.order = {}
+		for i = 1, 3 do if M.pick[i] then table.insert(M.order, i) end end
+		if #M.order < 2 then ENT.err("Pick at least 2 planes (e.g. Front + Side).") return end
+		ENT.mvOpenView(1)
+		return
+	end
+	-- save this view, go to the next one (or build)
+	if not sk then ENT.err("The sketch for this view was closed - press Views again.") ENT.mvStop() return end
+	local shapes = ENT.mvGrab()
+	if #shapes == 0 then ENT.err("Draw a CLOSED shape on this view first (Rect, Circle, or lines that join up).") return end
+	M.views[M.at] = { pl = sk.pl, shapes = shapes, name = ENT.mvName(M.order[M.at]) }
+	exitSketch()
+	if M.at < #M.order then ENT.mvOpenView(M.at + 1)
+	elseif M.how == "overlap" then ENT.mvBuild()
+	else ENT.mvBuildNet() end
+end
+function ENT.mvFinish(how)
+	if not ENT.mv then return end
+	ENT.mv.how = how
+	ENT.mvContinue()
+end
+function ENT.mvBack()
+	local M = ENT.mv
+	if not M or M.stage ~= "draw" then return end
+	if M.at <= 1 then exitSketch() M.stage = "pick" ENT.mvUI() setStatus("VIEWS: tick the planes, then CONTINUE.") return end
+	exitSketch()
+	M.views[M.at] = nil
+	ENT.mvOpenView(M.at - 1)   -- (its drawing comes back)
+end
+-- which of the session's planes is under the mouse (view index 1 Front / 2 Side / 3 Top), nearest first
+function ENT.mvPlaneAt(ray)
+	local M = ENT.mv
+	if not M then return nil end
+	local best, bt
+	for vi = 1, 3 do
+		local pl = M.planes[ENT.mvPlaneIndex(vi)]
+		if pl then
+			local t, hit = rayPlane(pl, ray)
+			if t and hit and t > 0 then
+				local hu, hv = pl.hu or pl.half or 12, pl.hv or pl.half or 12
+				local d = hit - pl.o
+				if math.abs(d:Dot(pl.u)) <= hu and math.abs(d:Dot(pl.v)) <= hv and (not bt or t < bt) then best, bt = vi, t end
+			end
+		end
+	end
+	return best
+end
+-- the views already drawn, as purple lines in 3D (so the next one can be lined up with them);
+-- the planes you picked stay showing as YELLOW frames
+function ENT.mvDraw()
+	local M = ENT.mv
+	mvPool = mvPool or newPool("BoxHandleAdornment", true)
+	pBegin(mvPool)
+	if M then
+		local cur = M.stage == "draw" and M.order[M.at]
+		for vi = 1, 3 do
+			local pl = M.planes[ENT.mvPlaneIndex(vi)]
+			if pl and M.pick[vi] and vi ~= cur then
+				local hu, hv = pl.hu or pl.half or 12, pl.hv or pl.half or 12
+				local c = { pl.o - pl.u * hu - pl.v * hv, pl.o + pl.u * hu - pl.v * hv, pl.o + pl.u * hu + pl.v * hv, pl.o - pl.u * hu + pl.v * hv }
+				for j = 1, 4 do pLine(mvPool, c[j], c[j % 4 + 1], Color3.fromRGB(255, 215, 50), M.stage == "pick" and 6 or 3) end
+				if M.stage == "pick" then
+					pLine(mvPool, c[1], c[3], Color3.fromRGB(255, 215, 50), 2)
+					pLine(mvPool, c[2], c[4], Color3.fromRGB(255, 215, 50), 2)
+				end
+			end
+		end
+		for k, v in pairs(M.views) do
+			if k ~= M.at or not sk then
+				for _, sh in ipairs(v.shapes) do
+					local okO, pts = pcall(outline, sh)
+					if okO and pts then
+						local n = #pts
+						for j = 1, n do pLine(mvPool, toWorld(v.pl, pts[j]), toWorld(v.pl, pts[j % n + 1]), Color3.fromRGB(190, 120, 255), 3) end
+					end
+				end
+			end
+		end
+	end
+	pEnd(mvPool)
+end
+function ENT.mvBuild()
+	local M = ENT.mv
+	if not M then return end
+	local views = {}
+	for k = 1, #M.order do if M.views[k] then table.insert(views, M.views[k]) end end
+	if #views < 2 then ENT.err("Need at least 2 drawn views.") return end
+	setStatus("VIEWS: building...")
+	-- every point of every view, in the world: each view is pulled through all of them (+1 stud each side)
+	local all = {}
+	for _, v in ipairs(views) do
+		for _, sh in ipairs(v.shapes) do
+			local okO, pts = pcall(outline, sh)
+			if okO and pts then for _, q in ipairs(pts) do table.insert(all, toWorld(v.pl, q)) end end
+		end
+	end
+	local rec
+	pcall(function() rec = CHS:TryBeginRecording("DIM_Views", "PROTO Views - " .. #views .. " views") end)
+	local made, err
+	local ok, e2 = pcall(function()
+		local folder = Instance.new("Folder")
+		folder.Parent = workspace
+		local solids = {}
+		for _, v in ipairs(views) do
+			local o, n = toWorld(v.pl, V2(0, 0)), v.pl.n
+			local lo, hi = math.huge, -math.huge
+			for _, P in ipairs(all) do local z = (P - o):Dot(n) lo, hi = math.min(lo, z), math.max(hi, z) end
+			lo, hi = math.min(lo, 0) - 1, math.max(hi, 0) + 1
+			local D, mid = hi - lo, (lo + hi) / 2
+			ENT.plOv, ENT.hostOv = v.pl, M.host
+			local parts = {}
+			for _, sh in ipairs(v.shapes) do
+				-- v2.46 (Dylan: "build it from the ground up"): every curved shape is built straight from its outline
+				-- (triangle pieces glued into one solid) - no stretched unions, which came out the wrong way round
+				local use = sh
+				if sh.kind ~= "rect" and sh.kind ~= "circle" then
+					local okO, pts = pcall(outline, sh)
+					if okO and pts and #pts >= 3 then use = { kind = "poly", open = false, pts = pts } end
+				end
+				local okS, sol = pcall(ENT.solidOf, use, D, n * mid, folder)
+				if okS and sol then table.insert(parts, sol)
+				else warn("PROTO views: a " .. tostring(sh.kind) .. " on " .. v.name .. " couldn't be built: " .. tostring(sol)) end
+			end
+			ENT.plOv, ENT.hostOv = nil, nil
+			if #parts == 0 then error("the " .. v.name .. " view couldn't be built") end
+			local one = parts[1]
+			if #parts > 1 then
+				local rest = {}
+				for i = 2, #parts do rest[i - 1] = parts[i] end
+				local okU, res = pcall(function() return GeometryService:UnionAsync(parts[1], rest, CSG_OPTS) end)
+				if not (okU and res and res[1]) then error("couldn't join the " .. v.name .. " shapes: " .. tostring(res)) end
+				for _, q in ipairs(parts) do q.Parent = nil end
+				one = res[1]
+				one.Parent = folder
+			end
+			table.insert(solids, one)
+			print(("PROTO views: %s view -> %s, size %s, plane normal %s, depth %.2f (from %.2f to %.2f)"):format(
+				v.name, one.ClassName, tostring(one.Size), tostring(n), D, lo, hi))
+		end
+		local base = solids[1]
+		for i = 2, #solids do
+			local okI, res = pcall(function() return GeometryService:IntersectAsync(base, { solids[i] }, CSG_OPTS) end)
+			if not (okI and type(res) == "table") then error("couldn't overlap the views: " .. tostring(res)) end
+			if not res[1] then error("the views don't overlap anywhere - draw them so they cross each other") end
+			base.Parent = nil
+			solids[i].Parent = nil
+			ENT.keepLook(res[1], base)
+			res[1].Parent = folder
+			base = res[1]
+		end
+		base.Name = "Views"
+		base.Anchored = true
+		base.Parent = ENT.buildParent(M.host)
+		folder.Parent = nil
+		ENT.finishParts(base)
+		made = ENT.wrapBuild(base, "DIM_Extrude")
+	end)
+	ENT.plOv, ENT.hostOv = nil, nil
+	if not ok then err = e2 end
+	if rec then CHS:FinishRecording(rec, ok and Enum.FinishRecordingOperation.Commit or Enum.FinishRecordingOperation.Cancel)
+	elseif ok then CHS:SetWaypoint("PROTO Views") end
+	if ok and made then
+		ENT.mvStop(nil, true)
+		Selection:Set({ made })
+		setStatus("VIEWS: built the shape from " .. #views .. " views. Ctrl+Z undoes it.")
+	else
+		warn("PROTO views: " .. tostring(err))
+		ENT.err("Views: " .. (tostring(err):gsub("^.-:%d+: ", "")))
+		ENT.mvOpenView(#M.order)   -- back on the last view, its drawing restored
+	end
+end
+-- the little bar (under the top ribbon): planes to tick + Continue, then Back / Next / Build / Cancel
+function ENT.mvUI()
+	local M = ENT.mv
+	if not ENT.mvGui then
+		local g = Instance.new("ScreenGui")
+		g.Name = "PROTO_Views"
+		g.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		g.DisplayOrder = 50
+		g.Parent = CoreGui
+		ENT.mvGui = g
+		local f = Instance.new("Frame")
+		f.Name = "Bar"
+		f.AnchorPoint = Vector2.new(0.5, 0)
+		f.Position = UDim2.new(0.5, 0, 0, 150)
+		f.Size = UDim2.fromOffset(0, 40)
+		f.AutomaticSize = Enum.AutomaticSize.X
+		f.BackgroundColor3 = Color3.fromRGB(30, 31, 37)
+		f.BorderSizePixel = 0
+		f.Parent = g
+		local cr = Instance.new("UICorner") cr.CornerRadius = UDim.new(0, 8) cr.Parent = f
+		local st = Instance.new("UIStroke") st.Color = Color3.fromRGB(150, 90, 230) st.Thickness = 2 st.Parent = f
+		local ll = Instance.new("UIListLayout") ll.FillDirection = Enum.FillDirection.Horizontal ll.VerticalAlignment = Enum.VerticalAlignment.Center ll.Padding = UDim.new(0, 6) ll.SortOrder = Enum.SortOrder.LayoutOrder ll.Parent = f
+		local pd = Instance.new("UIPadding") pd.PaddingLeft = UDim.new(0, 10) pd.PaddingRight = UDim.new(0, 10) pd.Parent = f
+		f.MouseEnter:Connect(function() ENT.overHud = true end)
+		f.MouseLeave:Connect(function() ENT.overHud = false end)
+		ENT.mvBar = f
+	end
+	local f = ENT.mvBar
+	for _, c in ipairs(f:GetChildren()) do if c:IsA("GuiObject") then c:Destroy() end end
+	if not M then ENT.mvGui.Enabled = false return end
+	ENT.mvGui.Enabled = true
+	local n = 0
+	local function lab(t)
+		n += 1
+		local l = Instance.new("TextLabel")
+		l.LayoutOrder = n
+		l.BackgroundTransparency = 1
+		l.Size = UDim2.fromOffset(0, 28)
+		l.AutomaticSize = Enum.AutomaticSize.X
+		l.Font = Enum.Font.GothamBold
+		l.TextSize = 12
+		l.TextColor3 = Color3.fromRGB(215, 190, 255)
+		l.Text = t
+		l.Parent = f
+	end
+	local function btn(t, col, fn, w)
+		n += 1
+		local b = Instance.new("TextButton")
+		b.LayoutOrder = n
+		b.Size = UDim2.fromOffset(w or 80, 28)
+		b.BackgroundColor3 = col
+		b.BorderSizePixel = 0
+		b.Font = Enum.Font.GothamBold
+		b.TextSize = 12
+		b.TextColor3 = Color3.fromRGB(255, 255, 255)
+		b.Text = t
+		local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 5) c.Parent = b
+		b.Parent = f
+		b.Activated:Connect(function()
+			local okF, er = pcall(fn)
+			if not okF then warn("PROTO views: " .. tostring(er)) end
+		end)
+		return b
+	end
+	local GREY, PUR, GRN, RED = Color3.fromRGB(60, 63, 75), Color3.fromRGB(150, 90, 230), Color3.fromRGB(40, 150, 80), Color3.fromRGB(170, 60, 55)
+	if M.stage == "pick" then
+		lab("VIEWS - draw on:")
+		for i = 1, 3 do
+			btn((M.pick[i] and "[x] " or "[ ] ") .. ENT.mvName(i), M.pick[i] and Color3.fromRGB(200, 160, 20) or GREY, function() M.pick[i] = not M.pick[i] ENT.mvUI() pcall(ENT.mvDraw) end, 84)
+		end
+		btn("CONTINUE", GRN, ENT.mvContinue, 96)
+		btn("Cancel", RED, function() ENT.mvStop("Views cancelled.") end, 70)
+	else
+		local vi = M.order[M.at]
+		lab(("VIEW %d/%d: %s"):format(M.at, #M.order, ENT.mvName(vi)))
+		btn("< Back", GREY, ENT.mvBack, 70)
+		if M.at < #M.order then btn("NEXT >", PUR, ENT.mvContinue, 90)
+		else
+			btn("BUILD (smooth net)", GRN, function() ENT.mvFinish("net") end, 150)
+			btn("Overlap (blocky)", PUR, function() ENT.mvFinish("overlap") end, 130)
+		end
+		btn("Cancel", RED, function() if sk then exitSketch() end ENT.mvStop("Views cancelled.") end, 70)
+	end
+end
+
+-- ===== v2.46 (Dylan): NET BUILD - a net of points the shape must pass through, made from the views, then made real
+-- FRONT = the cross-section shape, SIDE = top / bottom along the length, TOP = width along the length. At ~24 stations
+-- along the length the section is scaled to fit both -> rings of points -> joined into triangles -> thin wedge plates,
+-- glued into ONE part. The ends close where the outlines meet. (No intersect step: nothing gets turned the wrong way.)
+function ENT.mvBuildNet()
+	local M = ENT.mv
+	if not M then return end
+	local O = M.planes[1].o
+	-- the three directions of the planes (each view is drawn flat across one of them)
+	local AX = {}
+	for i = 1, 3 do AX[i] = M.planes[i].n.Unit end
+	AX[2] = (AX[2] - AX[1] * AX[2]:Dot(AX[1])).Unit
+	AX[3] = AX[1]:Cross(AX[2]).Unit
+	-- each drawn view -> which direction it faces (= the one it doesn't show)
+	local byAxis, nV = {}, 0
+	for k = 1, #M.order do
+		local v = M.views[k]
+		if v then
+			local bi, bd = 1, -1
+			for i = 1, 3 do local d = math.abs(v.pl.n:Dot(AX[i])) if d > bd then bi, bd = i, d end end
+			byAxis[bi] = v
+			nV += 1
+		end
+	end
+	if nV < 2 then ENT.err("Need at least 2 drawn views.") return end
+	-- v2.46 (Dylan "still kinda wrong"): the LENGTH is whichever direction the drawings are longest in (not a fixed
+	-- plane); the view looking down the length gives the cross-section, the other two give width / height along it
+	local function extentAlong(v, A)
+		local lo, hi = math.huge, -math.huge
+		for _, sh in ipairs(v.shapes) do
+			local okO, pts = pcall(outline, sh)
+			if okO and pts then for _, q in ipairs(pts) do local z = (toWorld(v.pl, q) - O):Dot(A) lo, hi = math.min(lo, z), math.max(hi, z) end end
+		end
+		return hi - lo
+	end
+	local li, best = nil, -1
+	for i = 1, 3 do
+		local e = 0
+		for j, v in pairs(byAxis) do if j ~= i then e = math.max(e, extentAlong(v, AX[i])) end end
+		if e > best then li, best = i, e end
+	end
+	local oth = {}
+	for i = 1, 3 do if i ~= li then table.insert(oth, i) end end
+	local Lax, Wax, Hax = AX[li], AX[oth[1]], AX[oth[2]]
+	-- (keep "up" as the height when it's one of the two)
+	if math.abs(AX[oth[1]].Y) > math.abs(AX[oth[2]].Y) then Wax, Hax = AX[oth[2]], AX[oth[1]] oth = { oth[2], oth[1] } end
+	local byName = {
+		FRONT = byAxis[li],          -- looks down the length: the cross-section
+		SIDE = byAxis[oth[1]],       -- shows length x height
+		TOP = byAxis[oth[2]],        -- shows length x width
+	}
+	if not (byName.SIDE or byName.TOP) then ENT.err("The net needs a view that shows the length.") return end
+	setStatus("VIEWS: building the net...")
+	print(("PROTO views net: length along view %d's direction (%.1f long); section from %s"):format(li, best, byName.FRONT and "that view" or "a round default"))
+	-- the biggest closed shape of a view, in 2D coords (a, b) = dots with the two given axes
+	local function poly2(v, A, B)
+		if not v then return nil end
+		local best, ba
+		for _, sh in ipairs(v.shapes) do
+			local okO, pts = pcall(outline, sh)
+			if okO and pts and #pts >= 3 then
+				local q = {}
+				for i, p2 in ipairs(pts) do
+					local P = toWorld(v.pl, p2) - O
+					q[i] = V2(P:Dot(A), P:Dot(B))
+				end
+				local ar = 0
+				for i = 1, #q do local a, b = q[i], q[i % #q + 1] ar += a.X * b.Y - b.X * a.Y end
+				if not ba or math.abs(ar) > ba then best, ba = q, math.abs(ar) end
+			end
+		end
+		return best
+	end
+	local side = poly2(byName.SIDE, Lax, Hax)    -- (length, height)
+	local top = poly2(byName.TOP, Lax, Wax)      -- (length, width)
+	local front = poly2(byName.FRONT, Wax, Hax)  -- (width, height)
+	local function bounds(q)
+		local lo, hi = V2(math.huge, math.huge), V2(-math.huge, -math.huge)
+		for _, p2 in ipairs(q) do lo = V2(math.min(lo.X, p2.X), math.min(lo.Y, p2.Y)) hi = V2(math.max(hi.X, p2.X), math.max(hi.Y, p2.Y)) end
+		return lo, hi
+	end
+	-- where a straight line x = const crosses an outline: lowest, highest
+	local function span(q, x)
+		local lo, hi
+		local n = #q
+		for i = 1, n do
+			local a, b = q[i], q[i % n + 1]
+			if (a.X - x) * (b.X - x) <= 0 and math.abs(b.X - a.X) > 1e-9 then
+				local y = a.Y + (b.Y - a.Y) * (x - a.X) / (b.X - a.X)
+				lo = lo and math.min(lo, y) or y
+				hi = hi and math.max(hi, y) or y
+			end
+		end
+		return lo, hi
+	end
+	-- the length the shape runs over
+	local L0, L1 = -math.huge, math.huge
+	for _, q in ipairs({ side, top }) do
+		if q then local lo, hi = bounds(q) L0, L1 = math.max(L0, lo.X), math.min(L1, hi.X) end
+	end
+	if not (L1 > L0 + 0.05) then ENT.err("The SIDE and TOP drawings don't overlap along the length - line them up.") ENT.mvOpenView(#M.order) return end
+	-- the cross-section ring (K points, anticlockwise, starting at the top), in -1..1 both ways
+	local K = 24
+	local ring = {}
+	if front then
+		local lo, hi = bounds(front)
+		local c, h = (lo + hi) / 2, (hi - lo) / 2
+		if h.X < 1e-4 or h.Y < 1e-4 then ENT.err("The FRONT drawing is flat - draw a real shape.") ENT.mvOpenView(#M.order) return end
+		local q = {}
+		for i, p2 in ipairs(front) do q[i] = V2((p2.X - c.X) / h.X, (p2.Y - c.Y) / h.Y) end
+		local ar = 0
+		for i = 1, #q do local a, b = q[i], q[i % #q + 1] ar += a.X * b.Y - b.X * a.Y end
+		if ar < 0 then local r = {} for i = #q, 1, -1 do r[#r + 1] = q[i] end q = r end
+		local st, sy = 1, -math.huge
+		for i, p2 in ipairs(q) do if p2.Y > sy then st, sy = i, p2.Y end end
+		local r2 = {}
+		for i = 0, #q - 1 do r2[#r2 + 1] = q[(st - 1 + i) % #q + 1] end
+		local cum, tot = { 0 }, 0
+		for i = 1, #r2 do tot += (r2[i % #r2 + 1] - r2[i]).Magnitude cum[i + 1] = tot end
+		local j = 1
+		for k = 0, K - 1 do
+			local d = tot * k / K
+			while cum[j + 1] < d and j < #r2 do j += 1 end
+			local seg = cum[j + 1] - cum[j]
+			local t = seg > 1e-9 and (d - cum[j]) / seg or 0
+			ring[k + 1] = r2[j]:Lerp(r2[j % #r2 + 1], t)
+		end
+	else
+		for k = 0, K - 1 do local a = PI / 2 + 2 * PI * k / K ring[k + 1] = V2(math.cos(a), math.sin(a)) end   -- no FRONT: round
+	end
+	local fLo, fHi
+	if front then fLo, fHi = bounds(front) end
+	-- stations (closer together near the ends, where the shape turns fastest)
+	local N = 24
+	local rows = {}
+	local len = L1 - L0
+	-- first pass: the spans the drawings give at every station
+	local st = {}
+	local wMax, hMax = 0, 0
+	for i = 0, N do
+		local l = L0 + len * (1 - math.cos(PI * i / N)) / 2
+		l = math.clamp(l, L0 + len * 1e-4, L1 - len * 1e-4)
+		local e = { l = l }
+		if top then e.w0, e.w1 = span(top, l) if e.w0 then wMax = math.max(wMax, e.w1 - e.w0) end end
+		if side then e.h0, e.h1 = span(side, l) if e.h0 then hMax = math.max(hMax, e.h1 - e.h0) end end
+		st[#st + 1] = e
+	end
+	-- v2.46 (Dylan: two circles came out as a pillow, not a sphere): a view that WASN'T drawn follows the ones that
+	-- were - no TOP = the width shrinks / grows in step with the height (and the other way round), so the ends close
+	local fW = front and (fHi.X - fLo.X) or (top and wMax or hMax)
+	local fH = front and (fHi.Y - fLo.Y) or (side and hMax or wMax)
+	local fWc = front and (fLo.X + fHi.X) / 2 or 0
+	local fHc = front and (fLo.Y + fHi.Y) / 2 or 0
+	for _, e in ipairs(st) do
+		local l = e.l
+		local w0, w1, h0, h1 = e.w0, e.w1, e.h0, e.h1
+		if not top and h0 and hMax > 1e-6 then
+			local hw = fW * (h1 - h0) / hMax / 2
+			w0, w1 = fWc - hw, fWc + hw
+		end
+		if not side and w0 and wMax > 1e-6 then
+			local hh = fH * (w1 - w0) / wMax / 2
+			h0, h1 = fHc - hh, fHc + hh
+		end
+		if w0 and h0 then
+			local wc, hw, hc, hh = (w0 + w1) / 2, (w1 - w0) / 2, (h0 + h1) / 2, (h1 - h0) / 2
+			local row = {}
+			for k = 1, K do
+				local r = ring[k]
+				row[k] = O + Lax * l + Wax * (wc + r.X * hw) + Hax * (hc + r.Y * hh)
+			end
+			row.c = O + Lax * l + Wax * wc + Hax * hc
+			row.size = math.max(hw, hh)
+			table.insert(rows, row)
+		end
+	end
+	if #rows < 2 then ENT.err("Couldn't find the shape along the length - check the drawings cross each other.") ENT.mvOpenView(#M.order) return end
+	local big = 0
+	for _, r in ipairs(rows) do big = math.max(big, r.size) end
+	local T = math.clamp(math.max(len, big * 2) * 0.004, 0.05, 0.2)   -- plate thickness (thin = smoother)
+	local rec
+	pcall(function() rec = CHS:TryBeginRecording("DIM_Views", "PROTO Views net - " .. nV .. " views") end)
+	local made
+	local ok, err = pcall(function()
+		local folder = Instance.new("Model")
+		folder.Name = "DIM_Extrude"
+		folder.Parent = ENT.buildParent(M.host)
+		local host = M.host
+		local function tri(a, b, c)
+			if ((b - a):Cross(c - a)).Magnitude > 1e-6 then ENT.triWedges(a, b, c, T, Vector3.zero, host, folder, { true, true, true }) end
+		end
+		for i = 1, #rows - 1 do
+			local A, B = rows[i], rows[i + 1]
+			for k = 1, K do
+				local k2 = k % K + 1
+				tri(A[k], A[k2], B[k2])
+				tri(A[k], B[k2], B[k])
+			end
+		end
+		-- blunt ends get a lid (a pointed end has already closed itself)
+		for _, R in ipairs({ rows[1], rows[#rows] }) do
+			if R.size > T * 2 then
+				for k = 1, K do tri(R.c, R[k], R[k % K + 1]) end
+			end
+		end
+		-- glue the plates into one part, a batch at a time
+		local level = {}
+		for _, c in ipairs(folder:GetChildren()) do if c:IsA("BasePart") then table.insert(level, c) end end
+		print(("PROTO views net: %d station(s) x %d points -> %d plates, %.2f thick"):format(#rows, K, #level, T))
+		local glued = true
+		while #level > 1 and glued do
+			local nxt = {}
+			for i = 1, #level, 150 do
+				local first, rest = level[i], {}
+				for j = i + 1, math.min(i + 149, #level) do rest[#rest + 1] = level[j] end
+				if #rest == 0 then nxt[#nxt + 1] = first else
+					local okU, res = pcall(function() return GeometryService:UnionAsync(first, rest, CSG_OPTS) end)
+					if okU and type(res) == "table" and res[1] then
+						res[1].Parent = folder
+						first.Parent = nil
+						for _, r in ipairs(rest) do r.Parent = nil end
+						nxt[#nxt + 1] = res[1]
+					else
+						warn("PROTO views net: couldn't glue some plates (" .. tostring(res) .. ") - kept as separate pieces")
+						glued = false
+						for _, q in ipairs(level) do nxt[#nxt + 1] = q end
+						break
+					end
+				end
+			end
+			level = nxt
+		end
+		ENT.finishParts(folder)
+		made = folder
+	end)
+	if rec then CHS:FinishRecording(rec, ok and Enum.FinishRecordingOperation.Commit or Enum.FinishRecordingOperation.Cancel)
+	elseif ok then CHS:SetWaypoint("PROTO Views net") end
+	if ok and made then
+		ENT.mvStop(nil, true)
+		Selection:Set({ made })
+		setStatus("VIEWS: built a smooth shape through your " .. nV .. " views (" .. #rows .. " stations). Ctrl+Z undoes it.")
+	else
+		warn("PROTO views net: " .. tostring(err))
+		ENT.err("Views: " .. (tostring(err):gsub("^.-:%d+: ", "")))
+		ENT.mvOpenView(#M.order)
+	end
+end
+-- v2.46: OVERLAP button
+function ENT.overlap()
+	if ex then acceptExtrude() return end
+	-- v2.46 (Dylan: "don't block me"): no part to overlap or nothing drawn yet -> the multi-view tool
+	local hasArea = false
+	if sk then pcall(ENT.computeFaces) hasArea = #closedShapes() > 0 end
+	if not (sk and sk.host and hasArea) then ENT.mvStart() return end
+	ENT.ovCall = true
+	extrude(true)
+	ENT.ovCall = nil
+end
+-- how far the part you sketched on (its whole build) reaches along the sketch normal: lowest, highest
+function ENT.hostSpan()
+	if not (sk and sk.host) then return nil end
+	local it = ENT.wholeOf(sk.host)
+	local cf, size
+	if it:IsA("Model") then cf, size = it:GetBoundingBox() else cf, size = it.CFrame, it.Size end
+	local o, n = W(V2(0, 0)), sk.pl.n
+	local h = size / 2
+	local lo, hi = math.huge, -math.huge
+	for _, sx in ipairs({ -1, 1 }) do for _, sy in ipairs({ -1, 1 }) do for _, sz in ipairs({ -1, 1 }) do
+		local z = ((cf * V3(h.X * sx, h.Y * sy, h.Z * sz)) - o):Dot(n)
+		lo, hi = math.min(lo, z), math.max(hi, z)
+	end end end
+	return lo, hi
+end
 function extrude(isCut)
 	if ex then acceptExtrude() return end
 	if isCut == nil and (ENT.picking == "revolve" or ENT.picking == "revcut") then return ENT.revolve(ENT.picking == "revcut") end
 	if not sk then setStatus("Start a sketch first (click a part, then a plane or face).") return end
 	-- leave the drawing tool: anything on the mouse is dropped, back to Select
 	if tool ~= "select" or #pend > 0 then setTool("select") end
-	if isCut == nil and ENT.picking then isCut = (ENT.picking == "cut") end
+	local ov = ENT.ovCall or (isCut == nil and ENT.picking == "overlap")
+	ENT.ovCall = nil
+	if isCut == nil and ENT.picking then isCut = (ENT.picking == "cut" or ENT.picking == "overlap") end
 	-- the picked (blue) areas go at once: Shift-click areas to add / take away
 	local regions = {}
 	if ENT.picking then for _, r in ipairs(sk.regions) do table.insert(regions, r) end end
 	ENT.computeFaces()
 	local solids = closedShapes()
-	local verb = isCut and "cut" or "extrude"
+	local verb = ov and "overlap" or (isCut and "cut" or "extrude")
 	-- a LINE was clicked (white): lines have no area, so say so loudly
 	local s0 = sk.sel
 	if #regions == 0 and s0 and table.find(sk.shapes, s0) and (s0.open or s0.guide or s0.kind == "point") then
@@ -10018,10 +10633,11 @@ function extrude(isCut)
 	if #regions == 0 then
 		if #solids == 0 then ENT.err("Nothing to " .. verb .. " - lines have no area. Draw a closed shape first (Rect, Circle, or lines that join up).") return end
 		-- several areas: now (and only now) areas can be clicked
-		ENT.picking = isCut and "cut" or "extrude"
+		ENT.picking = ov and "overlap" or (isCut and "cut" or "extrude")
 		sk.regions, sk.sel = {}, nil
 		drawSketch() rebuildFields()
-		setStatus((isCut and "CUT" or "EXTRUDE") .. ": click the area(s) to " .. (isCut and "cut" or "extrude") .. " (they go blue), Shift-click to add / take away. Then press " .. (isCut and "CUT" or "EXTRUDE") .. " again or Enter.  Esc = stop picking.")
+		local NM = ov and "OVERLAP" or (isCut and "CUT" or "EXTRUDE")
+		setStatus(NM .. ": click the area(s) to " .. verb .. " (they go blue), Shift-click to add / take away. Then press " .. NM .. " again or Enter.  Esc = stop picking.")
 		return
 	end
 	ENT.picking = nil
@@ -10078,6 +10694,16 @@ function extrude(isCut)
 	carrier.Archivable = false
 	carrier.Parent = workspace
 	ex = { list = list, regions = regions, used = used, D = D, rec = nil, carrier = carrier, lo = lo, hi = hi, c2 = sum / #list, cut = isCut == true, S = tonumber(U.startBox.Text) or 0 }
+	if ov then
+		-- OVERLAP: pulled right through the whole part you sketched on (both sides), so it trims all of it
+		ex.ov = true
+		local okZ, za, zb = pcall(ENT.hostSpan)
+		if okZ and za then
+			if bothWays then ex.S, ex.D = (za + zb) / 2, (zb - za) + 1
+			else ex.S, ex.D = za - 0.5, (zb - za) + 1 end
+			U.startBox.Text = fmt(ex.S)
+		end
+	end
 	pend = {}
 	exHandles.Adornee = nil
 	exFace.Adornee = carrier
@@ -10188,7 +10814,7 @@ function acceptExtrude()
 	ex = nil
 	endPreview(e)
 	local z0, z1 = extentZ(e.D, e.S)
-	if e.cut then
+	if e.cut and not e.ov then
 		local back = 0.05
 		-- v2.43 (Dylan): skirting / fills standing out IN FRONT of the face you sketched on (inside the cut area)
 		-- get cut too - a door cut left a strip of skirting across the doorway
@@ -10203,7 +10829,7 @@ function acceptExtrude()
 	local made, bad, cutCount, cutFails, newTarget, removedCount, crumbs
 	pcall(function() CHS:SetWaypoint("PROTO before " .. (e.cut and "cut" or "extrude")) end)
 	-- the name Studio shows for this undo step (Edit menu / Undo tooltip)
-	local what = e.cut and ("PROTO Cut - " .. #e.regions .. " area(s), " .. fmt(math.abs(z1 - z0)) .. " deep")
+	local what = e.ov and ("PROTO Overlap - " .. #e.regions .. " area(s)") or e.cut and ("PROTO Cut - " .. #e.regions .. " area(s), " .. fmt(math.abs(z1 - z0)) .. " deep")
 		or ("PROTO Extrude - " .. #e.regions .. " area(s), " .. fmt(math.abs(z1 - z0)) .. " deep")
 	pcall(function() e.rec = CHS:TryBeginRecording(e.cut and "DIM_Cut" or "DIM_Extrude", what) end)
 	if not e.rec then warn("PROTO: Studio wouldn't start an undo step (another one is still open) - using a waypoint instead") end
@@ -10265,7 +10891,15 @@ function acceptExtrude()
 			-- cut goes through it cleanly - cutting each little piece on its own left notches and lost bits
 			-- v2.44 (Dylan): a part only touched by the cutter's little extra margin (the floor the wall stands on, under a
 			-- door) is NOT cut - only parts inside the area you actually drew (shrunk by that margin) get cut
-			do
+			if e.ov then
+				-- OVERLAP: only the build you sketched on gets trimmed
+				local hw = sk.host and ENT.wholeOf(sk.host)
+				local keep = {}
+				for _, p in ipairs(targets) do
+					if hw and (p == sk.host or p == hw or p:IsDescendantOf(hw)) and p.Name ~= "DIM_Box" then table.insert(keep, p) end
+				end
+				targets = keep
+			else
 				local okC, core = pcall(ENT.cutCoreParts, e, z0, z1, params)
 				if okC and core then
 					local keep = {}
@@ -10275,7 +10909,7 @@ function acceptExtrude()
 					targets = keep
 				end
 			end
-			if ENT.cutScope == "host" and sk.host then
+			if ENT.cutScope == "host" and sk.host and not e.ov then
 				local hw = ENT.wholeOf(sk.host)
 				local keep = {}
 				for _, p in ipairs(targets) do
@@ -10295,6 +10929,14 @@ function acceptExtrude()
 				local okg, res = pcall(function()
 					-- v2.25: cut with BOX collision first (never fails); the crumbs are thrown away, then only the kept
 					-- pieces get the real collision (Hull failed on paper-thin crumbs: "Could not generate convex hull")
+					if e.ov then
+						if #cutters ~= 1 then error("the overlap shape came out in " .. #cutters .. " pieces") end
+						return GeometryService:IntersectAsync(p, cutters, {
+							CollisionFidelity = Enum.CollisionFidelity.Box,
+							RenderFidelity = Enum.RenderFidelity.Automatic,
+							SplitApart = not p:GetAttribute("PROTO_EdgesDone"),
+						})
+					end
 					return GeometryService:SubtractAsync(p, cutters, {
 						CollisionFidelity = Enum.CollisionFidelity.Box,
 						RenderFidelity = Enum.RenderFidelity.Automatic,
@@ -10313,7 +10955,7 @@ function acceptExtrude()
 						for _, np in ipairs(res) do
 							local z = np.Size
 							local v = z.X * z.Y * z.Z
-							if #res > 1 and ((v < bigV * 1e-5) or ENT.debris(np, e.regions, z0, z1, v < bigV * 0.25)) then   -- v2.36: was 2% - real small end pieces got deleted
+							if #res > 1 and ((v < bigV * 1e-5) or (not e.ov and ENT.debris(np, e.regions, z0, z1, v < bigV * 0.25))) then   -- v2.36: was 2% - real small end pieces got deleted
 								np.Parent = nil
 								crumbs += 1
 							else
@@ -10343,7 +10985,7 @@ function acceptExtrude()
 				else
 					why = "GeometryService: " .. tostring(res)
 					local okc, u = false, "skipped"
-					if not tostring(res):find("manifold") then okc, u = pcall(function() return p:SubtractAsync(cutters) end) end
+					if not tostring(res):find("manifold") then okc, u = pcall(function() if e.ov then return p:IntersectAsync(cutters) end return p:SubtractAsync(cutters) end) end
 					if okc and u then newParts = { u } else why = why .. " | SubtractAsync: " .. tostring(u) end
 				end
 				if newParts then
@@ -10389,7 +11031,7 @@ function acceptExtrude()
 								end)
 							end
 						end
-						ENT.attachOutline(np, ENT.cutOutline, "cut")
+						if not e.ov then ENT.attachOutline(np, ENT.cutOutline, "cut") end   -- (an overlap is not a pocket)
 						ENT.finishParts(np)
 						table.insert(results, np)
 					end
@@ -10414,7 +11056,7 @@ function acceptExtrude()
 	if e.rec then
 		CHS:FinishRecording(e.rec, ok and Enum.FinishRecordingOperation.Commit or Enum.FinishRecordingOperation.Cancel)
 	elseif ok then
-		CHS:SetWaypoint(e.cut and "PROTO Cut" or "PROTO Extrude")
+		CHS:SetWaypoint(e.ov and "PROTO Overlap" or (e.cut and "PROTO Cut" or "PROTO Extrude"))
 	end
 	if ok and (made or (cutCount or 0) > 0) then
 		ENT.showCost()
@@ -10427,6 +11069,13 @@ function acceptExtrude()
 	if not ok then
 		warn("PROTO: " .. tostring(err))
 		setStatus("Error: " .. tostring(err))
+	elseif e.ov then
+		if made then Selection:Set({ made }) end
+		if (cutCount or 0) == 0 then
+			setStatus("The overlap didn't touch the part you sketched on - draw it so it crosses the part." .. ((cutFails or 0) > 0 and ("  It failed - see Output.") or ""))
+		else
+			setStatus("Overlap done: kept only where the drawing and the part overlap (" .. cutCount .. " part(s) trimmed). Ctrl+Z undoes it.")
+		end
 	elseif e.cut then
 		if made then Selection:Set({ made }) end
 		if (cutCount or 0) == 0 then
@@ -11245,6 +11894,7 @@ function ENT.pickUI()
 	end
 	set(U.extrudeBtn, P == "extrude", "CLICK AREA(S)", "EXTRUDE", COL.go)
 	set(U.cutBtn, P == "cut", "CLICK AREA", "CUT", COL.warn)
+	set(U.ovBtn, P == "overlap", "CLICK AREA", "OVERLAP", Color3.fromRGB(150, 90, 230))
 	if not ENT.revAsk then
 		set(U.revBtn, P == "revolve", "PICK AREA", "REVOLVE", COL.go)
 		set(U.revCutBtn, P == "revcut", "PICK AREA", "REV CUT", COL.warn)
@@ -12149,6 +12799,19 @@ mouse.Button1Down:Connect(function()
 	-- v2.38 SHIFT-CLICK = DIRECT FACE SKETCH: straight onto the exact face under the mouse (any piece, even inside
 	-- a build group) - the centre planes, side panels and DIM_Box are ignored. (Add-to-selection is Ctrl-click.)
 	if ENT.edgeTool then ENT.edgeClick() return end   -- v2.39 3D edge fillet / chamfer
+	-- v2.46 (Dylan): VIEWS - while picking, clicking a plane picks it (goes yellow, stays showing) / unpicks it
+	if ENT.mv and ENT.mv.stage == "pick" and not sk then
+		local vi = ENT.mvPlaneAt(mouse.UnitRay)
+		if vi then
+			ENT.mv.pick[vi] = not ENT.mv.pick[vi]
+			ENT.mvUI()
+			pcall(ENT.mvDraw)
+			local n = 0
+			for i = 1, 3 do if ENT.mv.pick[i] then n += 1 end end
+			setStatus(("VIEWS: %d plane(s) picked. Click more (yellow = picked, click again = unpick), then CONTINUE."):format(n))
+		end
+		return
+	end
 	if mode == "planes" and shiftDown() and not ctrlDown() then
 		local hit = ENT.directHit()
 		if hit then
@@ -12396,6 +13059,8 @@ function ENT.icons()
 		planes = { { "p", { 3, 18, 9, 8, 25, 8, 19, 18, 3, 18 }, C.B }, { "p", { 14, 3, 14, 25 }, C.B } },
 		extrude = { { "p", { 5, 22, 5, 14, 17, 14, 17, 22, 5, 22 }, C.B }, { "p", { 5, 14, 10, 9, 22, 9, 17, 14 } }, { "l", 22, 9, 22, 17 }, { "l", 22, 17, 17, 22 }, { "l", 11, 12, 11, 2, C.O }, { "p", { 8, 5, 11, 2, 14, 5 }, C.O } },
 		cut = { { "p", { 4, 22, 4, 10, 24, 10, 24, 22, 4, 22 } }, { "f", 10, 10, 8, 6, C.R }, { "l", 14, 3, 14, 13, C.R } },
+		overlap = { { "b", 3, 9, 14, 14, C.B }, { "b", 11, 4, 14, 14, C.O }, { "f", 12, 10, 4, 12, C.W } },
+		views = { { "b", 2, 2, 11, 11, C.B }, { "b", 15, 2, 11, 11, C.O }, { "b", 2, 15, 11, 11, C.G }, { "f", 16, 16, 9, 9, C.W } },
 		revolve = { { "p", A(14, 14, 10, 5, 0, 360, 20), C.B }, { "l", 14, 2, 14, 26, C.O }, { "p", { 21, 16, 24, 14, 26, 17 }, C.O } },
 		revcut = { { "p", A(14, 14, 10, 5, 0, 360, 20), C.R }, { "l", 14, 2, 14, 26, C.O } },
 		accept = { { "p", { 5, 15, 11, 21, 23, 7 }, C.G } },
@@ -12541,6 +13206,8 @@ function ENT.ribDef()
 			{ "Build", {
 				{ "extrude", "Extrude", "Pull the picked areas into a solid", function() extrude() end, "@extrude" },
 				{ "cut", "Cut", "Cut the picked areas out of parts", function() extrude(true) end, "@cut" },
+				{ "overlap", "Overlap", "Pull the drawing right through the part and keep ONLY where they overlap (nothing drawn yet = Views)", function() ENT.overlap() end, "@overlap" },
+				{ "views", "Views", "Pick Front / Side / Top, draw the shape on each, BUILD = only where they all overlap (hulls, cars...)", function() ENT.mvStart() end, "&views" },
 				{ "revolve", "Revolve", "Spin the drawing round a centre line (early access)", function() ENT.revolve(false) end, "@revolve" },
 				{ "revcut", "Rev cut", "Spin and cut away (early access)", function() ENT.revolve(true) end, "@revcut" },
 			} },
@@ -13021,13 +13688,15 @@ function ENT.ribPaint()
 				local w = k:sub(2)
 				if w == "accept" or w == "cancel" then on = ex ~= nil
 				elseif w == "extrude" then on = (ex and not ex.cut) or ENT.picking == "extrude"
-				elseif w == "cut" then on = (ex and ex.cut) or ENT.picking == "cut"
+				elseif w == "cut" then on = (ex and ex.cut and not ex.ov) or ENT.picking == "cut"
+				elseif w == "overlap" then on = (ex and ex.ov) or ENT.picking == "overlap"
 				elseif w == "revolve" then on = ENT.picking == "revolve" or (ENT.revAsk and not ENT.revAsk.cut)
 				elseif w == "revcut" then on = ENT.picking == "revcut" or (ENT.revAsk and ENT.revAsk.cut) end
 			elseif k == "&centre" then on = mode == "mirror" and not ENT.mirrorFaces
 			elseif k == "&faces" then on = mode == "mirror" and ENT.mirrorFaces == true
 			elseif k == "&whole" then on = ENT.wholeObject == true
 			elseif k == "&ejoin" then on = ENT.edgeJoin == true
+			elseif k == "&views" then on = ENT.mv ~= nil
 			elseif k == "&efillet" then on = ENT.edgeTool == "fillet"
 			elseif k == "&echamfer" then on = ENT.edgeTool == "chamfer"
 			elseif k:sub(1, 1) == "#" then on = mode == k:sub(2)
