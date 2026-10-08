@@ -7886,6 +7886,11 @@ function ENT.pocketEdgeClick(E, p)
 		-- material - wall, floor or fill - never in the open hole), then it's cut by the three chamfers coming in: the wall
 		-- edge's, the floor edge's and the fill's own front edge. A bit only goes if ALL THREE take it (no dug-out pyramid).
 		local adds, trims, finals = {}, {}, {}
+		local function minus(base, list)
+			local okM, rM = pcall(function() return GeometryService:SubtractAsync(base, list, ENT.FAST) end)
+			if okM and type(rM) == "table" and rM[1] then base.Parent = nil rM[1].Parent = workspace return rM[1] end
+			return base
+		end
 		local function inter(base, list)
 			local cur = base
 			for _, w in ipairs(list) do
@@ -7997,7 +8002,7 @@ function ENT.pocketEdgeClick(E, p)
 									local core = Instance.new("Part")
 									core.Anchored, core.CanCollide, core.Transparency = true, false, 1
 									core.Shape = Enum.PartType.Cylinder
-									core.Size = V3(Dz + 4, rho * 2, rho * 2)
+									core.Size = V3(Dz + 4, rho * 2 + 0.12, rho * 2 + 0.12)   -- (a hair bigger than the round's path: no curved sliver left)
 									core.CFrame = CFrame.fromMatrix(O + U * (Dz / 2), U, A)
 									core.Parent = workspace
 									local okK, rK = pcall(function() return GeometryService:SubtractAsync(big, { core }, ENT.FAST) end)
@@ -8060,8 +8065,20 @@ function ENT.pocketEdgeClick(E, p)
 							local clipped = inter(piece, { pbox })
 							pbox.Parent = nil
 							if clipped then piece.Parent = nil piece = clipped end
+							-- (v2.40, Dylan: "the corner fill should end the same as it starts"): the FILL itself is never cleared
+							-- and rebuilt here - only the walls round it are. The fill stays the real fill all the way along (no
+							-- step where the corner box ends) and just gets trimmed by the finishing cut.
+							local clearBox = cube()
+							if II then
+								local fs2 = ENT.fillPrism(C + U * (Dz / 2), I.dir, I.u, I.v, Dz + 0.4, rI, II.f)
+								if fs2 then
+									clearBox = minus(clearBox, { fs2 })
+									piece = minus(piece, { fs2 })
+									fs2.Parent = nil
+								end
+							end
 							adds[#adds + 1] = piece
-							trims[#trims + 1] = cube()   -- (the corner box: cleared first)
+							trims[#trims + 1] = clearBox   -- (the corner box, minus the fill: cleared first)
 						end
 					end
 				end
