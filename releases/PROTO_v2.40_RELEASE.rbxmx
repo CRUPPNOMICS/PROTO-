@@ -7497,10 +7497,23 @@ function ENT.edgeHover()
 	-- v2.40 POCKET EDGES first (looking into a cut)
 	ENT.pocketHot = nil
 	-- (from INSIDE a cut the mouse ray may not hit the part at all - then the picked part's cuts are checked)
-	local pRoot = (hit and hit.Instance) or (target and target:IsA("BasePart") and target) or nil
-	if pRoot and pRoot:IsA("BasePart") and ENT.isProto(pRoot) then
-		local okE, PE = pcall(ENT.pocketEdgePick, mouse.UnitRay, pRoot)
-		if not okE then print("PROTO pocket hover error: " .. tostring(PE)) end
+	-- (v2.40, Dylan: "when I'm inside the cut the mouse grabs the inside of the cube I'm in"): from inside the part the
+	-- mouse ray skips it and lands on whatever is behind - so the part under the mouse AND the picked part (and the
+	-- part the camera is inside) are all tried
+	local okE, PE, pRoot = false, nil, nil
+	local tries = {}
+	if hit and hit.Instance then tries[#tries + 1] = hit.Instance end
+	if target and target:IsA("BasePart") then tries[#tries + 1] = target end
+	if ENT.lastPocketPart and ENT.lastPocketPart.Parent then tries[#tries + 1] = ENT.lastPocketPart end
+	for _, cand in ipairs(tries) do
+		if cand:IsA("BasePart") and ENT.isProto(cand) then
+			local okT, PT = pcall(ENT.pocketEdgePick, mouse.UnitRay, cand)
+			if not okT then print("PROTO pocket hover error: " .. tostring(PT)) end
+			if okT and PT then okE, PE, pRoot = true, PT, cand break end
+		end
+	end
+	if pRoot then
+		ENT.lastPocketPart = pRoot
 		if okE and PE then
 			ENT.pocketHot = { E = PE, p = pRoot }
 			local now = os.clock()
@@ -8169,6 +8182,7 @@ function ENT.pocketEdgeClick(E, p)
 	end)
 	if ok and out then
 		if target == p then setTarget(out) end
+		ENT.lastPocketPart = out
 		ENT.pocketPanelCache = nil
 		setStatus(nm .. " done (" .. fmt(r) .. ") on the " .. (E.kind == "in" and "inside corner of the cut" or "edge of the opening") .. ". Click another edge, or Esc. Ctrl+Z undoes it.")
 	end
