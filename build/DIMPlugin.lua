@@ -1,6 +1,6 @@
--- PROTO v2.44  (c) 2026 Giga_gad27 - all rights reserved. Do not copy or re-upload.  (marker: DIM_V1)  - OPTIMISE: collision, detail, decor, shadows, cost readout
+-- PROTO v2.45  (c) 2026 Giga_gad27 - all rights reserved. Do not copy or re-upload.  (marker: DIM_V1)  - OPTIMISE: collision, detail, decor, shadows, cost readout
 -- =====================================================================================
--- PROTO (Sketch to Build) - Version 2.44.0 - Build 244
+-- PROTO (Sketch to Build) - Version 2.45.0 - Build 245
 -- OFFICIAL Roblox Creator Store asset 124557362882102 (the only official copy).
 -- (c) 2026 Giga_gad27 (Cruppnomics). All rights reserved. PROPRIETARY SOFTWARE.
 -- Licensed for use only. You may NOT copy, modify, redistribute, resell, sublicense,
@@ -259,10 +259,10 @@ local function mkBox(parent, default, w)
 end
 
 local U = { tools = {} }
-local DIM_VERSION = "v2.44"
+local DIM_VERSION = "v2.45"
 mkLabel(nil, "PROTO  " .. DIM_VERSION, nil, { bold = true, size = 16, col = Color3.fromRGB(0, 170, 255) })   -- v2.01: new name (Dylan)
-mkLabel(nil, "Version 2.44.0 - Build 244  |  (c) 2026 Giga_gad27 (Cruppnomics)", nil, { col = COL.grey, size = 10 })
-print("PROTO " .. DIM_VERSION .. " (Build 244) loaded")
+mkLabel(nil, "Version 2.45.0 - Build 245  |  (c) 2026 Giga_gad27 (Cruppnomics)", nil, { col = COL.grey, size = 10 })
+print("PROTO " .. DIM_VERSION .. " (Build 245) loaded")
 -- v2.14: "still in testing" warning (top + bottom of the panel)
 function ENT.warnBanner()
 	local f = Instance.new("Frame")
@@ -289,8 +289,8 @@ ENT.warnBanner()
 -- It only WARNS (never breaks anything). Local test copies ("user_...") are left alone.
 ENT.OFFICIAL_ID = "124557362882102"
 ENT.BUILD_TAG = "PRT-GG27-K7Q4-2026"
-ENT.BUILD_NUMBER = 244
-ENT.RELEASE_SALT = "R244-379-8f"   -- changes every release (maps a leaked copy to its build)   -- fingerprint (proves a copy came from this code)
+ENT.BUILD_NUMBER = 245
+ENT.RELEASE_SALT = "R245-1cf-34"   -- changes every release (maps a leaked copy to its build)   -- fingerprint (proves a copy came from this code)
 ENT.SNAP_EPS = 0.0002713               -- fingerprint
 ENT.MAX_COPIES = 500                   -- v2.36: pattern / copy-along limit (huge counts froze Studio)
 function ENT.officialCheck()
@@ -9399,8 +9399,76 @@ function ENT.keepLook(np, from)
 	end)
 end
 -- items = { { region = r, D = thickness, mid = centre along the normal } }  (no recording here)
+-- v2.44 (Dylan): EXACT CUTS - every edge of a cut sits exactly on its drawn line. Only an edge that lies ON the
+-- part's own edge (a door's bottom on the wall's bottom) is carried 1 stud on past it, so no paper-thin skin is left.
+-- (Before: the whole cutter was grown 0.01-0.05 studs on every side.)
+function ENT.exactCutPts(pts)
+	local host, pl = sk.host, sk.pl
+	local n = #pts
+	if n < 3 then return nil end
+	local area = 0
+	for i = 1, n do local p, q = pts[i], pts[i % n + 1] area += p.X * q.Y - q.X * p.Y end
+	if math.abs(area) < 1e-6 then return nil end
+	local sign = area > 0 and 1 or -1
+	local outside = function() return false end
+	if host and host:IsA("BasePart") then
+		local hn = host.CFrame:VectorToObjectSpace(pl.n)
+		local skip = (math.abs(hn.X) > 0.7 and 1) or (math.abs(hn.Y) > 0.7 and 2) or (math.abs(hn.Z) > 0.7 and 3) or 0
+		local half = host.Size / 2
+		outside = function(p2)
+			local lp = host.CFrame:PointToObjectSpace(W(p2))
+			local a, h = { lp.X, lp.Y, lp.Z }, { half.X, half.Y, half.Z }
+			for k = 1, 3 do if k ~= skip and math.abs(a[k]) > h[k] + 0.01 then return true end end
+			return false
+		end
+	end
+	local PAST = 1
+	local nrm, dist = {}, {}
+	for i = 1, n do
+		local a, b = pts[i], pts[i % n + 1]
+		local e = b - a
+		if e.Magnitude > 1e-6 then
+			local no = V2(e.Y, -e.X).Unit * sign   -- outward
+			nrm[i] = no
+			local m = (a + b) / 2
+			dist[i] = (outside(m + no * 0.1) and not outside(m - no * 0.1)) and PAST or 0
+		else
+			dist[i] = 0
+		end
+	end
+	local out = {}
+	for i = 1, n do
+		local ip = (i - 2) % n + 1
+		local n1, d1, n2, d2 = nrm[ip], dist[ip], nrm[i], dist[i]
+		local v = pts[i]
+		if (d1 == 0 and d2 == 0) or not (n1 and n2) then
+			out[i] = v
+		else
+			local cc = n1:Dot(n2)
+			local den = 1 - cc * cc
+			local x
+			if den < 1e-6 then x = n1 * math.max(d1, d2) else
+				x = n1 * ((d1 - cc * d2) / den) + n2 * ((d2 - cc * d1) / den)
+			end
+			if x.Magnitude > PAST * 4 then x = x.Unit * PAST * 4 end
+			out[i] = v + x
+		end
+	end
+	return out
+end
 function ENT.grown(s, g)
 	if s.kind == "face" and s.src then return ENT.grown(s.src, g) end
+	if ENT.cutting and ENT.EXACT_CUTS ~= false then
+		local c0 = copyShape(s)
+		if g <= 0 or s.open then return c0 end   -- shrinking a bordering shape: exact too
+		if s.kind == "circle" or s.kind == "ellipse" or s.kind == "slot" then return c0 end   -- round: exactly as drawn
+		local okP, pts = pcall(outline, s)
+		if okP and pts and #pts >= 3 then
+			local okE, np = pcall(ENT.exactCutPts, pts)
+			if okE and np then return { kind = "poly", open = false, pts = np } end
+		end
+		return c0
+	end
 	local c = copyShape(s)
 	if s.kind == "rect" then c.w, c.h = s.w + 2 * g, s.h + 2 * g
 	elseif s.kind == "circle" then c.r = s.r + g
