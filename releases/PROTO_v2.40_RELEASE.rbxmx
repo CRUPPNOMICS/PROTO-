@@ -7793,7 +7793,7 @@ function ENT.pocketEdgePick(ray, root)
 			tr = math.max(0, (pe - ray.Origin):Dot(d1) / a)
 			local pr = ray.Origin + d1 * tr
 			local dist = (pr - pe).Magnitude
-			local tol = math.max(0.25, tr * 0.012)
+			local tol = math.max(0.4, tr * 0.04)   -- (v2.40: as easy to grab as the outside edges)
 			if dist < tol and (not bd or dist < bd) and ENT.pocketSeen(E.box, ray, tr) then best, bd = E, dist end
 		end
 	end
