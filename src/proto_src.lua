@@ -24,9 +24,9 @@ if old then old:Destroy() end
 local s = Instance.new("Script")
 s.Name = "DIMPlugin"
 s.Source = [=====[
--- PROTO v2.43  (c) 2026 Giga_gad27 - all rights reserved. Do not copy or re-upload.  (marker: DIM_V1)  - OPTIMISE: collision, detail, decor, shadows, cost readout
+-- PROTO v2.44  (c) 2026 Giga_gad27 - all rights reserved. Do not copy or re-upload.  (marker: DIM_V1)  - OPTIMISE: collision, detail, decor, shadows, cost readout
 -- =====================================================================================
--- PROTO (Sketch to Build) - Version 2.43.0 - Build 243
+-- PROTO (Sketch to Build) - Version 2.44.0 - Build 244
 -- OFFICIAL Roblox Creator Store asset 124557362882102 (the only official copy).
 -- (c) 2026 Giga_gad27 (Cruppnomics). All rights reserved. PROPRIETARY SOFTWARE.
 -- Licensed for use only. You may NOT copy, modify, redistribute, resell, sublicense,
@@ -285,10 +285,10 @@ local function mkBox(parent, default, w)
 end
 
 local U = { tools = {} }
-local DIM_VERSION = "v2.43"
+local DIM_VERSION = "v2.44"
 mkLabel(nil, "PROTO  " .. DIM_VERSION, nil, { bold = true, size = 16, col = Color3.fromRGB(0, 170, 255) })   -- v2.01: new name (Dylan)
-mkLabel(nil, "Version 2.43.0 - Build 243  |  (c) 2026 Giga_gad27 (Cruppnomics)", nil, { col = COL.grey, size = 10 })
-print("PROTO " .. DIM_VERSION .. " (Build 243) loaded")
+mkLabel(nil, "Version 2.44.0 - Build 244  |  (c) 2026 Giga_gad27 (Cruppnomics)", nil, { col = COL.grey, size = 10 })
+print("PROTO " .. DIM_VERSION .. " (Build 244) loaded")
 -- v2.14: "still in testing" warning (top + bottom of the panel)
 function ENT.warnBanner()
 	local f = Instance.new("Frame")
@@ -315,8 +315,8 @@ ENT.warnBanner()
 -- It only WARNS (never breaks anything). Local test copies ("user_...") are left alone.
 ENT.OFFICIAL_ID = "124557362882102"
 ENT.BUILD_TAG = "PRT-GG27-K7Q4-2026"
-ENT.BUILD_NUMBER = 243
-ENT.RELEASE_SALT = "R243-8cc-19"   -- changes every release (maps a leaked copy to its build)   -- fingerprint (proves a copy came from this code)
+ENT.BUILD_NUMBER = 244
+ENT.RELEASE_SALT = "R244-379-8f"   -- changes every release (maps a leaked copy to its build)   -- fingerprint (proves a copy came from this code)
 ENT.SNAP_EPS = 0.0002713               -- fingerprint
 ENT.MAX_COPIES = 500                   -- v2.36: pattern / copy-along limit (huge counts froze Studio)
 function ENT.officialCheck()
@@ -10062,6 +10062,84 @@ local function endPreview(e)
 	if e.carrier then pcall(function() e.carrier:Destroy() end) end
 	showExtrudeButtons(false)
 end
+-- the parts inside the drawn cut area itself (its outline box shrunk by the cutter's extra margin), z0..z1 deep
+function ENT.cutCoreParts(e, z0, z1, params)
+	if not (sk and e and e.list) then return nil end
+	local pl = sk.pl
+	local lo, hi = V2(math.huge, math.huge), V2(-math.huge, -math.huge)
+	for _, sh in ipairs(e.list) do
+		local okO, pts = pcall(outline, sh)
+		if okO and pts then
+			for _, q in ipairs(pts) do
+				lo = V2(math.min(lo.X, q.X), math.min(lo.Y, q.Y))
+				hi = V2(math.max(hi.X, q.X), math.max(hi.Y, q.Y))
+			end
+		end
+	end
+	if lo.X > hi.X then return nil end
+	local gg = (ENT.cutGrow and ENT.cutGrow() or 0.05) + 0.02
+	local w, h, d = hi.X - lo.X - 2 * gg, hi.Y - lo.Y - 2 * gg, math.abs(z1 - z0)
+	if w <= 0.01 or h <= 0.01 or d <= 0.01 then return nil end
+	local cf = CFrame.fromMatrix(W((lo + hi) / 2) + pl.n * ((z0 + z1) / 2), pl.u, pl.v)
+	local list = workspace:GetPartBoundsInBox(cf, V3(w, h, d), params)
+	local set = {}
+	for _, p in ipairs(list) do set[p] = true end
+	return set
+end
+-- how far small things stuck onto the sketched face (edge fills, skirting) stand out in front of it, inside the
+-- cut's area (0 = nothing). Only bits that touch the face and stand out less than 6 studs count (not the floor etc.)
+function ENT.cutFrontExtra(e)
+	if bothWays or not (sk and e and e.list) then return 0 end
+	local pl = sk.pl
+	local f = (e.D < 0) and pl.n or -pl.n   -- "in front" = the side the cut does NOT go
+	local S = e.S or 0
+	local lo, hi = V2(math.huge, math.huge), V2(-math.huge, -math.huge)
+	for _, sh in ipairs(e.list) do
+		local okO, pts = pcall(outline, sh)
+		if okO and pts then
+			for _, q in ipairs(pts) do
+				lo = V2(math.min(lo.X, q.X), math.min(lo.Y, q.Y))
+				hi = V2(math.max(hi.X, q.X), math.max(hi.Y, q.Y))
+			end
+		end
+	end
+	if lo.X > hi.X then return 0 end
+	local base0 = W(V2(0, 0)) + pl.n * S
+	-- only when you sketched ON a face: the host's own block (without its fills) must not stand out in front
+	-- (a centre-plane sketch keeps cutting just the one way, as before)
+	local host = sk.host
+	if host and host:IsA("BasePart") then
+		local bcf, bsz = ENT.blockOf(host)
+		bcf, bsz = bcf or host.CFrame, bsz or host.Size
+		local hs = bsz / 2
+		for _, sx in ipairs({ -1, 1 }) do for _, sy in ipairs({ -1, 1 }) do for _, sz in ipairs({ -1, 1 }) do
+			if ((bcf * V3(hs.X * sx, hs.Y * sy, hs.Z * sz)) - base0):Dot(f) > 0.05 then return 0 end
+		end end end
+	end
+	local CAP, M = 6, 0.1
+	local w, h = hi.X - lo.X - 2 * M, hi.Y - lo.Y - 2 * M
+	if w <= 0.02 or h <= 0.02 then return 0 end
+	local base = W((lo + hi) / 2) + pl.n * S
+	local cf = CFrame.fromMatrix(base + f * (CAP / 2), pl.u, pl.v)
+	local okP, parts = pcall(function() return workspace:GetPartBoundsInBox(cf, V3(w, h, CAP)) end)
+	if not okP or not parts then return 0 end
+	local best = 0
+	for i, p in ipairs(parts) do
+		if i > 200 then break end
+		if p ~= (ex and ex.carrier) and p.Name ~= "DIM_Box" and p.Name ~= "DIM_Preview" and p.Transparency < 0.99 then
+			local pc, ps = p.CFrame, p.Size / 2
+			local mn, mx = math.huge, -math.huge
+			for _, sx in ipairs({ -1, 1 }) do for _, sy in ipairs({ -1, 1 }) do for _, sz in ipairs({ -1, 1 }) do
+				local wpt = pc * V3(ps.X * sx, ps.Y * sy, ps.Z * sz)
+				local z = (wpt - base):Dot(f)
+				mn, mx = math.min(mn, z), math.max(mx, z)
+			end end end
+			-- touches (or goes into) the face, and only stands out a little: a fill / skirting / trim
+			if mn <= 0.05 and mx > 0.05 and mx <= CAP then best = math.max(best, mx) end
+		end
+	end
+	return best
+end
 function acceptExtrude()
 	if not ex then return end
 	local e = ex
@@ -10070,6 +10148,10 @@ function acceptExtrude()
 	local z0, z1 = extentZ(e.D, e.S)
 	if e.cut then
 		local back = 0.05
+		-- v2.43 (Dylan): skirting / fills standing out IN FRONT of the face you sketched on (inside the cut area)
+		-- get cut too - a door cut left a strip of skirting across the doorway
+		local okF, extra = pcall(ENT.cutFrontExtra, e)
+		if okF and extra and extra > 0 then back = math.max(back, extra + 0.05) end
 		if bothWays then z0, z1 = z0 - back, z1 + back
 		elseif e.D < 0 then z1 = z1 + back
 		else z0 = z0 - back end
@@ -10139,6 +10221,18 @@ function acceptExtrude()
 			end
 			-- v2.27: a shape built from many pieces (spline / curved extrude) is glued into ONE solid first, so the
 			-- cut goes through it cleanly - cutting each little piece on its own left notches and lost bits
+			-- v2.44 (Dylan): a part only touched by the cutter's little extra margin (the floor the wall stands on, under a
+			-- door) is NOT cut - only parts inside the area you actually drew (shrunk by that margin) get cut
+			do
+				local okC, core = pcall(ENT.cutCoreParts, e, z0, z1, params)
+				if okC and core then
+					local keep = {}
+					for _, p in ipairs(targets) do
+						if core[p] or p == sk.host then table.insert(keep, p) end
+					end
+					targets = keep
+				end
+			end
 			if ENT.cutScope == "host" and sk.host then
 				local hw = ENT.wholeOf(sk.host)
 				local keep = {}
