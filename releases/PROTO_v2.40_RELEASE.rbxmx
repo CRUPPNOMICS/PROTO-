@@ -8072,6 +8072,27 @@ function ENT.pocketEdgeClick(E, p)
 		end
 		print(("PROTO pocket: %s %s r %.2f | this pocket: %d inside edges, %d opening edges, %d done | pieces %d, corner trims %d | main op %s")
 			:format(E.kind, isF and "fillet" or "chamfer", r, nIn, nRim, nDone, #pieces, #trims, tostring(okC and type(res) == "table" and res[1] ~= nil)))
+		-- v2.40 FILLS WIN (Dylan: "just reapply when done, like on the outside"): every done fill up an inside corner of
+		-- this cut goes back in after the cut (a later opening edge nicked it = a gap), then the corners are rebuilt
+		if okC and type(res) == "table" and res[1] then
+			local refills = {}
+			for _, I in ipairs(all) do
+				if I.kind == "in" and sameBox(I) then
+					local II = info(I)
+					if II then
+						local fp = ENT.fillPrism((I.a + I.b) / 2, I.dir, I.u, I.v, (I.b - I.a).Magnitude, II.r, II.f)
+						if fp then refills[#refills + 1] = fp end
+					end
+				end
+			end
+			if #refills > 0 then
+				local mid0 = res[1]
+				mid0.Parent = workspace
+				local okR, rR = pcall(function() return GeometryService:UnionAsync(mid0, refills, opts) end)
+				if okR and type(rR) == "table" and rR[1] then mid0.Parent = nil res = rR else mid0.Parent = nil print("PROTO pocket: putting the fills back failed - " .. tostring(rR)) end
+			end
+			for _, x in ipairs(refills) do x.Parent = nil end
+		end
 		-- corners: clear each corner box, then put the finished corner piece in
 		if okC and type(res) == "table" and res[1] and #trims > 0 then
 			local mid0 = res[1]
