@@ -1,6 +1,6 @@
--- PROTO v2.42  (c) 2026 Giga_gad27 - all rights reserved. Do not copy or re-upload.  (marker: DIM_V1)  - OPTIMISE: collision, detail, decor, shadows, cost readout
+-- PROTO v2.43  (c) 2026 Giga_gad27 - all rights reserved. Do not copy or re-upload.  (marker: DIM_V1)  - OPTIMISE: collision, detail, decor, shadows, cost readout
 -- =====================================================================================
--- PROTO (Sketch to Build) - Version 2.42.0 - Build 242
+-- PROTO (Sketch to Build) - Version 2.43.0 - Build 243
 -- OFFICIAL Roblox Creator Store asset 124557362882102 (the only official copy).
 -- (c) 2026 Giga_gad27 (Cruppnomics). All rights reserved. PROPRIETARY SOFTWARE.
 -- Licensed for use only. You may NOT copy, modify, redistribute, resell, sublicense,
@@ -259,10 +259,10 @@ local function mkBox(parent, default, w)
 end
 
 local U = { tools = {} }
-local DIM_VERSION = "v2.42"
+local DIM_VERSION = "v2.43"
 mkLabel(nil, "PROTO  " .. DIM_VERSION, nil, { bold = true, size = 16, col = Color3.fromRGB(0, 170, 255) })   -- v2.01: new name (Dylan)
-mkLabel(nil, "Version 2.42.0 - Build 242  |  (c) 2026 Giga_gad27 (Cruppnomics)", nil, { col = COL.grey, size = 10 })
-print("PROTO " .. DIM_VERSION .. " (Build 242) loaded")
+mkLabel(nil, "Version 2.43.0 - Build 243  |  (c) 2026 Giga_gad27 (Cruppnomics)", nil, { col = COL.grey, size = 10 })
+print("PROTO " .. DIM_VERSION .. " (Build 243) loaded")
 -- v2.14: "still in testing" warning (top + bottom of the panel)
 function ENT.warnBanner()
 	local f = Instance.new("Frame")
@@ -289,8 +289,8 @@ ENT.warnBanner()
 -- It only WARNS (never breaks anything). Local test copies ("user_...") are left alone.
 ENT.OFFICIAL_ID = "124557362882102"
 ENT.BUILD_TAG = "PRT-GG27-K7Q4-2026"
-ENT.BUILD_NUMBER = 242
-ENT.RELEASE_SALT = "R242-cf4-57"   -- changes every release (maps a leaked copy to its build)   -- fingerprint (proves a copy came from this code)
+ENT.BUILD_NUMBER = 243
+ENT.RELEASE_SALT = "R243-8cc-19"   -- changes every release (maps a leaked copy to its build)   -- fingerprint (proves a copy came from this code)
 ENT.SNAP_EPS = 0.0002713               -- fingerprint
 ENT.MAX_COPIES = 500                   -- v2.36: pattern / copy-along limit (huge counts froze Studio)
 function ENT.officialCheck()
@@ -411,6 +411,20 @@ r = mkRow()
 U.tools.wall = mkBtn(r, "Double line", 84, function() setTool("wall") end)
 mkLabel(r, "thick", 34)
 U.wallT = mkBox(r, "1", 40)
+-- v2.43: where the double line sits on the path (same as the pattern's Middle / Flip)
+ENT.wallMiddle, ENT.wallFlip = true, false
+function ENT.wallSideBtns()
+	U.wallMidBtn.BackgroundColor3 = ENT.wallMiddle and COL.on or COL.btn
+	U.wallFlipBtn.BackgroundColor3 = (not ENT.wallMiddle) and COL.on or COL.btn
+	U.wallFlipBtn.Text = ENT.wallMiddle and "Side" or (ENT.wallFlip and "Outside" or "Inside")
+	if sk and drawPreview then pcall(drawPreview) end
+end
+r = mkRow()
+U.wallMidBtn = mkBtn(r, "Middle", 58, function() ENT.wallMiddle = not ENT.wallMiddle ENT.wallSideBtns() end, COL.on)
+U.wallFlipBtn = mkBtn(r, "Side", 62, function()
+	if ENT.wallMiddle then ENT.wallMiddle = false else ENT.wallFlip = not ENT.wallFlip end
+	ENT.wallSideBtns()
+end)
 r = mkRow()
 U.tools.point = mkBtn(r, "Point", 62, function() setTool("point") end)
 mkBtn(r, "Finish line", 84, function() finishLine() end)
@@ -674,7 +688,7 @@ mkLabel(nil, "Everything PROTO builds is its own group wrapped in an invisible b
 mkLabel(nil, "THE TOOLBAR  (new)", nil, { bold = true, col = COL.head, size = 11 })
 mkLabel(nil, "The ribbon across the top of the view has every tool: SKETCH / FEATURES / PATTERN / PAINT / VIEW tabs. Hover a button to see what it does. Drag the :: grip to move it, the dash folds it away, Panel opens this panel (numbers + settings live here).", nil, { col = Color3.fromRGB(205, 210, 220), size = 11 })
 mkLabel(nil, "SMARTER DRAWING  (new)", nil, { bold = true, col = Color3.fromRGB(120, 230, 140), size = 11 })
-mkLabel(nil, "LINE now chains: keep clicking (ends that land on another drawing JOIN it exactly - no gaps), each click starts the next line; click the start again = closed shape, double-click / Enter / Esc = stop. Press A (or move back onto the last point) = the next piece is a TANGENT ARC. Live length + angle by the mouse, and yellow words show what it snaps to: HORIZONTAL, VERTICAL, PERPENDICULAR, PARALLEL (hover a line first), TANGENT (lines touch circles / arcs just right), END, MIDPOINT, CENTRE. EXTEND = click a line's end, it grows to the next drawing.", nil, { col = Color3.fromRGB(205, 210, 220), size = 11 })
+mkLabel(nil, "LINE now chains: keep clicking (ends that land on another drawing JOIN it exactly - no gaps), each click starts the next line; click the start again = closed shape, double-click / Enter / Esc = stop. Press A = the next piece is a TANGENT ARC. Live length + angle by the mouse, and yellow words show what it snaps to: HORIZONTAL, VERTICAL, PERPENDICULAR, PARALLEL (hover a line first), TANGENT (lines touch circles / arcs just right), END, MIDPOINT, CENTRE. EXTEND = click a line's end, it grows to the next drawing.", nil, { col = Color3.fromRGB(205, 210, 220), size = 11 })
 mkLabel(nil, "2. DRAW", nil, { bold = true, col = COL.head, size = 11 })
 mkLabel(nil, "Pick a tool in SKETCH: Rect, Circle, Polygon, Line, Spline, Arc, Slot, Ellipse, Double line, Point... ONE SHAPE PER PICK: placing it drops back to Select. Hold Shift on the placing click and Tools stay switched on until Esc (4 circles = Shift, Shift, Shift, normal click). Lines that join up make a closed area (light orange). Dots: green = snapped, BLUE = joins another drawing's key point / centre / mirror point, yellow dashes = lined up with something. Faint yellow lines = real edges of the part and parts around it - you can snap to them.", nil, { col = Color3.fromRGB(205, 210, 220), size = 11 })
 mkLabel(nil, "3. EDIT", nil, { bold = true, col = COL.head, size = 11 })
@@ -940,7 +954,7 @@ for i = 1, 6 do   -- v2.37: 3 centre planes, or the 6 faces of the box round the
 end
 local dimTag = mkTag(COL.sel)
 dimTag.SizeOffset = Vector2.new(0.6, 1.2)
-dimTag.Size = UDim2.fromOffset(230, 18)   -- v2.40: room for length + angle + turn
+dimTag.Size = UDim2.fromOffset(290, 18)   -- v2.40: room for length + angle + turn
 
 local faceHover = Instance.new("SurfaceSelection")
 faceHover.Color3 = Color3.fromRGB(80, 170, 255)
@@ -2302,7 +2316,8 @@ function drawSketch()
 				g.CFrame = CFrame.fromMatrix(W(V2((x0 + x1) / 2, y)) + pl.n * mid, pl.u, pl.v)
 				g.Size = V3(x1 - x0, sh * 1.02, D)
 				g.Color3 = ENT.gcol()
-				g.Transparency = 0.72
+				g.Transparency = 0.86   -- v2.43 (Dylan): lighter blue so the balls / sketch show through
+				g.ZIndex = 1            -- under the pull balls (they sit at 5)
 			end)
 		else
 			-- v2.12: every CLOSED area gets a light see-through orange fill (picked ones go blue instead)
@@ -2369,6 +2384,12 @@ function drawSketch()
 	pEnd(skLines) pEnd(skDots) pEnd(ghBoxes) pEnd(ghCyls) pEnd(fillBoxes)
 end
 
+-- v2.43 (Dylan): a shape drawn EQUAL both ways (square, round ellipse) shows yellow + the word by the mouse
+function ENT.eqMark(isEq, word)
+	if not isEq then return nil end
+	ENT.rel = ENT.rel and (ENT.rel .. "  +  " .. word) or word
+	return Color3.fromRGB(255, 215, 50)
+end
 function drawPreview()
 	pBegin(pvLines) pBegin(pvDots)
 	dimTag.Enabled = false
@@ -2384,8 +2405,9 @@ function drawPreview()
 		pDot(pvDots, ball, bc, rad)
 		-- purple START ball: drag it to move where the extrude / cut begins
 		local sb, srad, base = ENT.startBallPos()
-		local sc = (ENT.startHover or (exDrag and exDrag.start)) and COL.sel or Color3.fromRGB(170, 90, 255)
-		pLine(pvLines, base, sb, sc, 4)
+		-- v2.43 (Dylan): brighter + bigger purple (size in ENT.startBallPos), drawn over the lighter blue
+		local sc = (ENT.startHover or (exDrag and exDrag.start)) and COL.sel or Color3.fromRGB(215, 110, 255)
+		pLine(pvLines, base, sb, sc, 5)
 		pDot(pvDots, sb, sc, srad)
 		if math.abs(ex.S or 0) > 1e-4 then pDash(pvLines, W(ex.c2), base, sc, 2, camDist(base) * 0.01) end
 		-- v2.42: the end / start face under the mouse (or being dragged) lights up like a clickable edge
@@ -2405,8 +2427,30 @@ function drawPreview()
 				end
 			end
 		end
+		-- v2.42 (Dylan): end (or moved start) LEVEL with another part's face = that outline goes YELLOW
+		local lvTxt = ""
+		if ex.used and not bothWays then
+			local okL, lvE = pcall(ENT.exAlignAt, (ex.S or 0) + ex.D, 1e-3)
+			local okS, lvS = pcall(ENT.exAlignAt, ex.S or 0, 1e-3)
+			if not okL then lvE = nil end
+			if not (okS and math.abs(ex.S or 0) > 1e-3) then lvS = nil end
+			for _, L in ipairs({ { lvE, (ex.S or 0) + ex.D }, { lvS, ex.S or 0 } }) do
+				if L[1] then
+					for s in pairs(ex.used) do
+						local okO, pts = pcall(outline, s)
+						if okO and pts then
+							local n = #pts
+							for j = 1, (s.open and n - 1 or n) do
+								pLine(pvLines, W(pts[j]) + sk.pl.n * L[2], W(pts[j % n + 1]) + sk.pl.n * L[2], Color3.fromRGB(255, 215, 50), 6)
+							end
+						end
+					end
+				end
+			end
+			if lvE then lvTxt = "   LEVEL with " .. lvE.name:sub(1, 16) elseif lvS then lvTxt = "   start LEVEL with " .. lvS.name:sub(1, 16) end
+		end
 		dimTag.StudsOffsetWorldSpace = ball
-		dimTag.T.Text = (ex.cut and "Cut " or "Depth ") .. fmt(math.abs(ex.D)) .. (bothWays and "  both ways" or ((ex.D < 0) and "  down" or "")) .. ((math.abs(ex.S or 0) > 1e-4) and ("   start " .. fmt(ex.S)) or "")
+		dimTag.T.Text = (ex.cut and "Cut " or "Depth ") .. fmt(math.abs(ex.D)) .. (bothWays and "  both ways" or ((ex.D < 0) and "  down" or "")) .. ((math.abs(ex.S or 0) > 1e-4) and ("   start " .. fmt(ex.S)) or "") .. lvTxt
 		dimTag.Enabled = true
 	elseif active and sk then
 		local p, snapped, guides = mousePoint()
@@ -2437,7 +2481,9 @@ function drawPreview()
 				-- centre rectangle: first click = centre, mouse = a corner
 				local dx, dy = math.abs(p.X - a.X), math.abs(p.Y - a.Y)
 				local c = { a + V2(-dx, -dy), a + V2(dx, -dy), a + V2(dx, dy), a + V2(-dx, dy) }
-				for i = 1, 4 do pLine(pvLines, W(c[i]), W(c[i % 4 + 1]), COL.shape, 3) end
+				-- v2.43 (Dylan): equal both ways = the outline goes YELLOW + "SQUARE"
+				local eqC = ENT.eqMark(dx > 1e-3 and math.abs(dx - dy) < 1e-3, "SQUARE")
+				for i = 1, 4 do pLine(pvLines, W(c[i]), W(c[i % 4 + 1]), eqC or COL.shape, eqC and 4 or 3) end
 				pDash(pvLines, W(c[1]), W(c[3]), COL.infer, 3, d * 0.01)
 				pDash(pvLines, W(c[2]), W(c[4]), COL.infer, 3, d * 0.01)
 				txt = "W " .. fmt(dx * 2) .. "   H " .. fmt(dy * 2)
@@ -2461,7 +2507,14 @@ function drawPreview()
 					if sh then
 						local pts = outline(sh)
 						local n = #pts
-						for i = 1, (sh.open and n - 1 or n) do pLine(pvLines, W(pts[i]), W(pts[i % n + 1]), COL.shape, 3) end
+						-- v2.43 (Dylan): equal both ways = YELLOW (square from Rect 2pt / 3pt, an ellipse that's a circle)
+						local eqC
+						if sh.kind == "rect" then eqC = ENT.eqMark(math.abs(sh.w - sh.h) < 1e-3, "SQUARE")
+						elseif sh.kind == "ellipse" then eqC = ENT.eqMark(math.abs(sh.a - sh.b) < 1e-3, "CIRCLE")
+						elseif tool == "rect3" and n == 4 then
+							eqC = ENT.eqMark(math.abs((pts[2] - pts[1]).Magnitude - (pts[3] - pts[2]).Magnitude) < 1e-3, "SQUARE")
+						end
+						for i = 1, (sh.open and n - 1 or n) do pLine(pvLines, W(pts[i]), W(pts[i % n + 1]), eqC or COL.shape, eqC and 4 or 3) end
 						if sh.kind == "circle" then txt = "R " .. fmt(sh.r) .. "   D " .. fmt(sh.r * 2)
 						elseif sh.kind == "rect" then txt = "W " .. fmt(sh.w) .. "   H " .. fmt(sh.h) end
 					end
@@ -2539,7 +2592,7 @@ local HINT = {
 	trim = "TRIM: click a piece of a drawing to cut it away (or HOLD and drag across lines to trim everything you cross) - it's removed up to where it crosses or touches other drawings (red = what goes). A drawing that crosses nothing is removed whole. Ctrl+Z brings it back.",
 	fillet = "FILLET: type the radius in 'size', then click a corner (where 2 straight lines meet) - it gets rounded. Orange = the new curve. Works on rectangles, polygons and hand-drawn lines. Ctrl+Z undoes it.",
 	chamfer = "CHAMFER: type the size in 'size', then click a corner - it's cut off flat that far back along both lines. Ctrl+Z undoes it.",
-	line = "LINE: click the start, then keep clicking - each click ends one line and starts the next (a chain). Click the START again = closed shape. Double-click / Enter / Esc = end the chain (then back to Select; hold Shift = tool stays on). A (or move back onto the last point) = next piece is a TANGENT ARC. Yellow words by the mouse = what it snaps to: HORIZONTAL, VERTICAL, PERPENDICULAR, PARALLEL (to a line you passed over), TANGENT, END, MIDPOINT, CENTRE. Ctrl = no snapping.",
+	line = "LINE: click the start, then keep clicking - each click ends one line and starts the next (a chain). Click the START again = closed shape. Double-click / Enter / Esc = end the chain (then back to Select; hold Shift = tool stays on). A = next piece is a TANGENT ARC. Yellow words by the mouse = what it snaps to: HORIZONTAL, VERTICAL, PERPENDICULAR, PARALLEL (to a line you passed over), TANGENT, END, MIDPOINT, CENTRE. Ctrl = no snapping.",
 	tarc = "TANGENT ARC: click the END of a line or arc, then where the arc finishes - it carries on smoothly from that line. Keep clicking for more; A = next piece straight. Double-click / Enter / Esc = end the chain (then back to Select; hold Shift = tool stays on).",
 	extend = "EXTEND: click near the end of a line or arc - it grows until it reaches the next drawing (orange shows how far). Ctrl+Z undoes it.",
 }
@@ -2639,6 +2692,7 @@ function ENT.encodeSketch()
 		local t = { k = sh.kind, g = sh.guide or nil, o = sh.open or nil, sp = sh.spline or nil, ax = sh.axis or nil }
 		if sh.c then t.x, t.y = sh.c.X, sh.c.Y end
 		t.w, t.h, t.r, t.n, t.rot, t.a, t.b, t.L = sh.w, sh.h, sh.r, sh.n, sh.rot, sh.a, sh.b, sh.L
+		t.wi = sh.wi
 		if sh.pts then
 			t.p = {}
 			for _, q in ipairs(sh.pts) do table.insert(t.p, q.X) table.insert(t.p, q.Y) end
@@ -2658,7 +2712,7 @@ function ENT.applySketchStore(value)
 	if not ok or type(data) ~= "table" or data.id ~= sk.id then return end   -- another sketch's history: ignore
 	local shapes = {}
 	for _, t in ipairs(data.shapes or {}) do
-		local sh = { kind = t.k, guide = t.g, open = t.o, spline = t.sp, axis = t.ax, w = t.w, h = t.h, r = t.r, n = t.n, rot = t.rot, a = t.a, b = t.b, L = t.L }
+		local sh = { kind = t.k, guide = t.g, open = t.o, spline = t.sp, axis = t.ax, w = t.w, h = t.h, r = t.r, n = t.n, rot = t.rot, a = t.a, b = t.b, L = t.L, wi = t.wi }
 		if t.x then sh.c = V2(t.x, t.y) end
 		if t.p then
 			sh.pts = {}
@@ -3031,6 +3085,7 @@ function finishLine()
 		addShape({ kind = "poly", pts = ENT.splinePts(pend, false), open = true, spline = true, ctrl = cp })
 	elseif tool == "wall" then
 		ENT.addShapes(ENT.wallShapes(pend, false))
+		ENT.wallSideLock = nil
 	else
 		return
 	end
@@ -3222,12 +3277,66 @@ function ENT.offsetPath(path, d, closed)
 	return out
 end
 -- double line (wall): open path -> one closed outline; closed path -> outer + inner outlines (a ring)
+-- v2.43 (Dylan): like the pattern copy: MIDDLE = the wall is centred on the path; Middle off = the wall sits
+-- beside it (path = one face), INSIDE the shape; FLIP = OUTSIDE. Inside = the side the path bends round
+-- (a closed loop: its inside; a straight line: its left)
+-- v2.43 fix (Dylan): the side is worked out ONCE per double line and then kept (it was flipping when the path
+-- turned). 1st choice: the drawing the first piece runs along (inside = the side that's inside a closed shape);
+-- else the first real turn of the path; a plain straight line = its left until then.
+function ENT.wallSide(path)
+	local L = ENT.wallSideLock
+	if L and path[1] and (L.start - path[1]).Magnitude < 1e-6 then return L.s end
+	ENT.wallSideLock = nil
+	local p1, p2 = path[1], path[2]
+	if not (p1 and p2) or (p2 - p1).Magnitude < 1e-4 then return 1 end
+	local e = (p2 - p1).Unit
+	local nrm = V2(-e.Y, e.X)
+	local mid = (p1 + p2) / 2
+	local eps = math.max(0.05, ENT.wallThick() * 0.25)
+	local inL, inR = false, false
+	for _, sh in ipairs(sk and sk.shapes or {}) do
+		if not sh.open and not sh.guide and sh.kind ~= "point" then
+			local ok, pts = pcall(outline, sh)
+			if ok and pts and #pts >= 3 then
+				if pointInPoly(mid + nrm * eps, pts) then inL = true end
+				if pointInPoly(mid - nrm * eps, pts) then inR = true end
+			end
+		end
+	end
+	-- (only kept once the first piece is really clicked - while it's still on the mouse it can change)
+	local fixed = pend and #pend >= 2
+	if inL ~= inR then
+		local sd = inL and 1 or -1
+		if fixed then ENT.wallSideLock = { start = p1, s = sd } end
+		return sd
+	end
+	-- no drawing alongside: the first turn decides (left turn = inside on the left)
+	for i = 2, #path - 1 do
+		local a, b = path[i] - path[i - 1], path[i + 1] - path[i]
+		if a.Magnitude > 1e-4 and b.Magnitude > 1e-4 then
+			local cr = a.Unit.X * b.Unit.Y - a.Unit.Y * b.Unit.X
+			if math.abs(cr) > 0.05 then
+				local sd = (cr > 0) and 1 or -1
+				if fixed and i + 1 <= #pend then ENT.wallSideLock = { start = p1, s = sd } end
+				return sd
+			end
+		end
+	end
+	return 1
+end
 function ENT.wallShapes(path, closed)
 	local t = ENT.wallThick() / 2
-	if closed then
-		return { { kind = "poly", open = false, pts = ENT.offsetPath(path, t, true) }, { kind = "poly", open = false, pts = ENT.offsetPath(path, -t, true) } }
+	local mid = 0
+	if ENT.wallMiddle == false and #path >= 2 then
+		mid = ENT.wallSide(path) * (ENT.wallFlip and -t or t)
 	end
-	local left, right = ENT.offsetPath(path, t, false), ENT.offsetPath(path, -t, false)
+	if closed then
+		-- v2.43 (Dylan): both loops share a wall id -> the extrude builds just the WALL (no add-then-cut-a-hole)
+		ENT.wallSeq = (ENT.wallSeq or 0) + 1
+		local wi = string.format("w%d_%d", os.time(), ENT.wallSeq)
+		return { { kind = "poly", open = false, pts = ENT.offsetPath(path, mid + t, true), wi = wi }, { kind = "poly", open = false, pts = ENT.offsetPath(path, mid - t, true), wi = wi } }
+	end
+	local left, right = ENT.offsetPath(path, mid + t, false), ENT.offsetPath(path, mid - t, false)
 	if #left < 2 then return {} end
 	local pts = {}
 	for _, q in ipairs(left) do table.insert(pts, q) end
@@ -3564,7 +3673,8 @@ function ENT.chainPreview(a, p, wp, d, txt)
 	local raw = hit and to2D(sk.pl, hit) or p
 	local tol = d * 0.018
 	local dist = (raw - a).Magnitude
-	if ENT.chainDir then
+	-- v2.43 (Dylan): OFF - coming back onto the point switched to an arc by accident. A key / Tangent arc tool only.
+	if ENT.chainDir and ENT.AUTO_ARC then
 		if dist > tol * 4 then
 			ENT.awayArmed = true
 		elseif ENT.awayArmed and dist < tol * 0.5 then
@@ -6425,7 +6535,7 @@ local function sketchClick()
 			if tool == "spline" then
 				local cp = {} for i, q in ipairs(pend) do cp[i] = q end
 				addShape({ kind = "poly", open = false, pts = ENT.splinePts(pend, true), spline = true, ctrl = cp, cl = true })
-			else ENT.addShapes(ENT.wallShapes(pend, true)) end
+			else ENT.addShapes(ENT.wallShapes(pend, true)) ENT.wallSideLock = nil end
 			pend = {}
 		elseif #pend == 0 or (p - pend[#pend]).Magnitude > 1e-4 then
 			table.insert(pend, p)
@@ -9072,9 +9182,44 @@ function ENT.convexSolid(q, D, shift, into)
 	end
 	return false
 end
+-- v2.43 (Dylan): drop in-between points on straight edges (where another drawing touched, or where a double line
+-- started mid-side) and back-and-forth spikes. Those split the area into needle-thin triangles, and the seams between
+-- them left a thin "random wall" standing inside a hole after the hole was cut out.
+function ENT.simplifyPoly(pts)
+	local q = {}
+	for _, p2 in ipairs(pts) do if #q == 0 or (p2 - q[#q]).Magnitude > 1e-4 then q[#q + 1] = p2 end end
+	if #q > 3 and (q[1] - q[#q]).Magnitude <= 1e-4 then table.remove(q) end
+	local changed = true
+	local guard = 0
+	while changed and #q > 3 and guard < 2000 do
+		changed = false
+		guard += 1
+		for i = 1, #q do
+			local a, b, c = q[(i - 2) % #q + 1], q[i], q[i % #q + 1]
+			local e1, e2 = b - a, c - b
+			local l1, l2 = e1.Magnitude, e2.Magnitude
+			if l1 < 1e-4 or l2 < 1e-4 then table.remove(q, i) changed = true break end
+			local cr = (e1.X * e2.Y - e1.Y * e2.X) / (l1 * l2)
+			if math.abs(cr) < 1e-4 then   -- straight on (or straight back = a spike)
+				table.remove(q, i)
+				changed = true
+				break
+			end
+		end
+	end
+	return q
+end
 local function buildShape(s, D, shift, into)
 	local pl, host = sk.pl, sk.host
 	if s.kind == "face" and s.src then s = s.src end   -- untouched shape: build the real rect / circle / ellipse
+	-- v2.43: split areas AND closed line shapes (a double line's inside / outside, polylines) get their in-between
+	-- points dropped; a 4-corner one is then built as ONE block (a fan of triangles left thin walls on its seams
+	-- when it was used to cut a hole)
+	if (s.kind == "face" or (s.kind == "poly" and not s.open and not s.spline)) and s.pts and #s.pts >= 4 then
+		local sq = ENT.simplifyPoly(s.pts)
+		if #sq >= 3 and #sq < #s.pts then s = { kind = "face", open = false, pts = sq }
+		elseif #sq == 4 and s.kind == "poly" then s = { kind = "face", open = false, pts = sq } end
+	end
 	if s.kind == "face" and #s.pts == 4 then
 		-- a split piece that is a rectangle (any angle) -> one block, not wedges
 		local q = s.pts
@@ -9194,6 +9339,10 @@ local function buildShape(s, D, shift, into)
 		local q = {}
 		for _, p2 in ipairs(q0) do if #q == 0 or (p2 - q[#q]).Magnitude > 1e-4 then q[#q + 1] = p2 end end
 		if #q > 3 and (q[1] - q[#q]).Magnitude <= 1e-4 then table.remove(q) end
+		if #q > 3 and not s.spline then   -- v2.43: no in-between points on straight edges (needle triangles)
+			local sq = ENT.simplifyPoly(q)
+			if #sq >= 3 then q = sq end
+		end
 		if #q < 3 then return false end
 		-- best: a fan from a middle point that sees every edge (circles, lenses, domes, polygons...) = even, chunky triangles
 		local tris = ENT.fanTris(q) or ENT.triangulate(q)
@@ -9520,6 +9669,57 @@ function ENT.meshRegion(r, it, grow, into)
 	mp.Parent = into
 	return true
 end
+-- the area between the two loops of ONE double line and nothing else -> build that wall
+-- (the picked area = inside the outer loop A, outside the inner loop B; nothing else drawn across A)
+function ENT.wallFaceSolid(f, D, shift, into)
+	if not (f and f.kind == "face" and f.srcShapes) then return false end
+	local A, n = nil, 0
+	for sh in pairs(f.srcShapes) do A = sh n += 1 end
+	if n ~= 1 or not (A and A.wi) or not A.pts then return false end
+	if #f.pts ~= #outline(A) then return false end   -- something else is drawn across the wall: the normal way
+	local B
+	for _, sh in ipairs(sk.shapes) do
+		if sh ~= A and sh.wi == A.wi and sh.pts and #sh.pts == #A.pts then B = sh break end
+	end
+	if not B then return false end
+	if not pointInPoly(ENT.centroid(B.pts), A.pts) then return false end   -- B must be the inner loop
+	return ENT.wallSolid(A, B, D, shift, into) ~= nil
+end
+-- v2.43: the wall between two matching loops of a double line: one quad per straight section (mitred corners)
+function ENT.wallSolid(A, B, D, shift, into)
+	local pa, pb = A.pts, B.pts
+	if not (pa and pb) or #pa ~= #pb or #pa < 3 then return nil end
+	local n = #pa
+	local f = Instance.new("Folder")
+	f.Parent = into
+	for i = 1, n do
+		local j = i % n + 1
+		local q = { pa[i], pa[j], pb[j], pb[i] }
+		local ar = 0
+		for k = 1, 4 do local u, v = q[k], q[k % 4 + 1] ar += u.X * v.Y - v.X * u.Y end
+		if math.abs(ar) > 1e-4 then
+			if ar < 0 then q = { q[4], q[3], q[2], q[1] } end
+			buildShape({ kind = "face", open = false, pts = q }, D, shift, f)
+		end
+	end
+	local pieces = f:GetChildren()
+	local result
+	if #pieces == 1 then result = pieces[1]
+	elseif #pieces > 1 then
+		local rest = {}
+		for i = 2, #pieces do rest[i - 1] = pieces[i] end
+		local ok, res = pcall(function() return GeometryService:UnionAsync(pieces[1], rest, ENT.cutting and ENT.FAST or CSG_OPTS) end)
+		if ok and type(res) == "table" and res[1] then
+			result = res[1]
+			for _, pc in ipairs(pieces) do pc.Parent = nil end
+		else
+			warn("PROTO: couldn't join the wall pieces - " .. tostring(res))
+		end
+	end
+	if result then result.Parent = into end
+	f.Parent = nil
+	return result
+end
 function ENT.primRegion(f, D, shift, into, grow)
 	if not ENT.primOK(f) then return false end
 	-- a point surely inside the area
@@ -9535,7 +9735,28 @@ function ENT.primRegion(f, D, shift, into, grow)
 	if #inside == 0 then return false end
 	local g = grow or 0
 	local made = {}
-	local base = ENT.solidOf(g ~= 0 and ENT.grown(inside[1], g) or inside[1], D, shift, into)
+	-- v2.43 (Dylan): a double line all round = just ADD the wall (each straight section one piece, corners joined),
+	-- instead of a solid with the inside cut out (the hole's triangle seams left thin walls standing)
+	local wallA, wallB
+	if g == 0 then
+		for ia, a in ipairs(inside) do
+			if a.wi then
+				for k, b in ipairs(outside) do
+					if b ~= a and b.wi == a.wi then
+						wallA, wallB = a, b
+						table.remove(outside, k)
+						table.remove(inside, ia)
+						table.insert(inside, 1, a)
+						break
+					end
+				end
+			end
+			if wallA then break end
+		end
+	end
+	local base = wallA and ENT.wallSolid(wallA, wallB, D, shift, into)
+	if wallA and not base then table.insert(outside, wallB) end   -- couldn't: the old way
+	base = base or ENT.solidOf(g ~= 0 and ENT.grown(inside[1], g) or inside[1], D, shift, into)
 	if not base then return false end
 	local opts = ENT.cutting and ENT.FAST or CSG_OPTS
 	for i = 2, #inside do
@@ -9599,6 +9820,8 @@ function ENT.makeParts(items, grow)
 			if not buildShape(grow and ENT.grown(r.whole, grow) or r.whole, D, shift, model) then bad += 1 end
 		elseif #r.inside == 1 and ENT.primRegion(r.inside[1], D, shift, model, grow) then
 			-- built exactly from the real rectangles / circles / ellipses
+		elseif (not grow or grow == 0) and #r.inside == 1 and ENT.wallFaceSolid(r.inside[1], D, shift, model) then
+			-- v2.43 (Dylan): a double line all round = just the WALL (no solid with a hole cut out of it)
 		else
 			-- the area inside all of r.inside and outside every other shape that overlaps it
 			local base = ENT.solidOf(grow and ENT.grown(r.inside[1], grow) or r.inside[1], D, shift, model)
@@ -11336,7 +11559,7 @@ function ENT.startBallPos()
 	-- sits on the opposite side to the depth ball
 	local dir = (((ex.D < 0) and not bothWays) and sk.pl.n) or -sk.pl.n
 	local rad = camDist(base) * 0.018
-	return base + dir * rad * 1.6, rad, base
+	return base + dir * rad * 2.1, rad * 1.3, base
 end
 function ENT.startBallHit()
 	if not (sk and ex) then return false end
@@ -11355,6 +11578,47 @@ function ENT.exBallHit()
 	local along = v:Dot(ray.Direction)
 	if along < 0 then return false end
 	return (v - ray.Direction * along).Magnitude < rad * 1.5
+end
+-- v2.42 (Dylan): LEVEL WITH another part - the heights (along the sketch normal) of every flat face of the parts
+-- round the extrude that faces the same way; the drag snaps onto them and the end face goes YELLOW when level
+function ENT.exAlignZs()
+	if not (sk and ex) then return {} end
+	if ex.alignZ then return ex.alignZ end
+	local list = {}
+	local n = sk.pl.n
+	local o = W(V2(0, 0))
+	local span = 0
+	for s in pairs(ex.used or {}) do
+		local ok, pts = pcall(outline, s)
+		if ok and pts then for _, q in ipairs(pts) do span = math.max(span, (q - ex.c2).Magnitude) end end
+	end
+	local R = math.clamp(span * 4 + math.abs(ex.D) * 2, 60, 600)
+	local okP, parts = pcall(function() return workspace:GetPartBoundsInRadius(W(ex.c2), R) end)
+	if okP and parts then
+		for i, p in ipairs(parts) do
+			if i > 500 then break end
+			if p ~= ex.carrier and p.Transparency < 0.99 and p.Name ~= "DIM_Box" and p.Name ~= "DIM_Preview" then
+				local cf, sz = p.CFrame, p.Size
+				for _, ax in ipairs({ { cf.RightVector, sz.X }, { cf.UpVector, sz.Y }, { cf.LookVector, sz.Z } }) do
+					if math.abs(ax[1]:Dot(n)) > 0.9995 then
+						local mid = (cf.Position - o):Dot(n)
+						list[#list + 1] = { z = mid + ax[2] / 2, name = p.Name }
+						list[#list + 1] = { z = mid - ax[2] / 2, name = p.Name }
+					end
+				end
+			end
+		end
+	end
+	ex.alignZ = list
+	return list
+end
+function ENT.exAlignAt(z, tol)
+	local best, bd = nil, tol
+	for _, e in ipairs(ENT.exAlignZs()) do
+		local d = math.abs(e.z - z)
+		if d <= bd then best, bd = e, d end
+	end
+	return best
 end
 -- v2.42 (Dylan): the END and START faces of the extrude / cut preview are click zones too (like the edge lines):
 -- hover = that face's outline lights up, drag it = depth (end face) or where it starts (start face)
@@ -11407,8 +11671,12 @@ function ENT.exDragMove()
 	if exDrag.start then
 		-- dragging the START ball: slides where the extrude / cut begins
 		local S = t - exDrag.grab
-		local g0 = ctrlDown() and 0 or gridSize()
-		if g0 > 0 then S = math.floor(S / g0 + 0.5) * g0 end
+		local lv = (not ctrlDown()) and ENT.exAlignAt(S, camDist(W(ex.c2) + sk.pl.n * S) * 0.012) or nil
+		if lv and math.abs(lv.z) > 1e-3 then S = lv.z   -- v2.42: level with another part's face
+		else
+			local g0 = ctrlDown() and 0 or gridSize()
+			if g0 > 0 then S = math.floor(S / g0 + 0.5) * g0 end
+		end
 		ex.S = S
 		U.startBox.Text = fmt(S)
 		exRefresh(true)
@@ -11416,8 +11684,14 @@ function ENT.exDragMove()
 	end
 	local z = t - exDrag.grab - (ex.S or 0)
 	local nd = bothWays and 2 * math.abs(z) or z
-	local g = ctrlDown() and 0 or gridSize()
-	if g > 0 then nd = math.floor(nd / g + 0.5) * g end
+	local S0 = ex.S or 0
+	-- v2.42 (Dylan): the end lands LEVEL with another part's face when it gets close (Ctrl = free)
+	local lv = (not bothWays and not ctrlDown()) and ENT.exAlignAt(S0 + z, camDist(W(ex.c2) + sk.pl.n * (S0 + z)) * 0.012) or nil
+	if lv and math.abs(lv.z - S0) >= 0.05 then nd = lv.z - S0
+	else
+		local g = ctrlDown() and 0 or gridSize()
+		if g > 0 then nd = math.floor(nd / g + 0.5) * g end
+	end
 	if math.abs(nd) < 0.05 then nd = (nd < 0) and -0.05 or 0.05 end
 	ex.D = nd
 	exRefresh(true)
@@ -12077,6 +12351,8 @@ function ENT.ribDef()
 				{ "spline", "Spline", "Click points for a smooth curve", T("spline"), "spline" },
 				{ "wall", "Double line", "A wall 'thick' wide round the path", T("wall"), "wall" },
 				{ box = "wallT", "Thick", "How thick the double line is (studs)" },
+				{ proxy = "wallMidBtn", "Double line: ON = centred on the path you click" },
+				{ proxy = "wallFlipBtn", "Double line: beside the path - Inside / Outside (click to swap)" },
 				{ "point", "Point", "Drop a snap point", T("point"), "point" },
 				{ "finish", "Finish", "Finish the line / spline you're drawing (Enter)", function() finishLine() end },
 			} },
