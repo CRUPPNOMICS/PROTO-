@@ -7800,7 +7800,10 @@ function ENT.pocketEdgePick(ray, root)
 	return best
 end
 function ENT.pocketEdgeKey(p, E)
-	local m = p.CFrame:PointToObjectSpace((E.a + E.b) / 2)
+	-- (v2.40: measured in the BLOCK's own space - the part's own centre moves a hair after each cut / fill, which made
+	-- done edges look not-done = done twice)
+	local bcf = ENT.blockOf(p) or p.CFrame
+	local m = bcf:PointToObjectSpace((E.a + E.b) / 2)
 	return string.format("%.1f,%.1f,%.1f", m.X, m.Y, m.Z)
 end
 -- fillet / chamfer a pocket edge: inside corner = a fill added, rim = rounded / cut off

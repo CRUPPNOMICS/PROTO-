@@ -15,6 +15,6 @@ Per-release salt: v2.35 = R235-m2x8-c4
 | PROTO_v2.39_RELEASE.rbxmx | 2026-10-06 | 11c497df5aa878c9ad1bdcc4265b3b31ab4dde9e65343f1c4ef4636b418dca51 |
 
 Per-release salt: v2.39 = R239-k2n7-f5  (v2.36-v2.38 were test builds only: R236-j5w1-t7, R237-h3c9-x2, R238-p6d4-v8)
-| PROTO_v2.40_RELEASE.rbxmx | 2026-10-07 | d05c47367f2ff08557c0a95a05735e409d2b51c4cd3de036e081f7690b8e4519 |
+| PROTO_v2.40_RELEASE.rbxmx | 2026-10-07 | f1fbf1e10757a03d430324669aab8d2de896baae82fcb39774da7b89b510f533 |
 
 Per-release salt: v2.40 = R240-w89-s9
