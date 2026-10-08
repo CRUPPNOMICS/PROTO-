@@ -8049,6 +8049,21 @@ function ENT.pocketEdgeClick(E, p)
 										end
 										prev = P
 									end
+									-- (v2.40, Dylan: "it shrinks near the end - make it full"): the round carries straight on past both
+									-- ends of the curve, along each wall - so it runs into the wall edge's round at full size, no narrowing
+									do
+										local ext = rr * 3 + 0.5
+										for _, e in ipairs({ { O - A * rho + U * rr, B }, { O - B * rho + U * rr, A } }) do
+											local P0, dir = e[1], e[2]
+											local rod = Instance.new("Part")
+											rod.Anchored, rod.CanCollide, rod.Transparency = true, false, 1
+											rod.Shape = Enum.PartType.Cylinder
+											rod.Size = V3(ext, rr * 2, rr * 2)
+											rod.CFrame = CFrame.fromMatrix(P0 + dir * (ext / 2), dir, U)
+											rod.Parent = workspace
+											outs[#outs + 1] = rod
+										end
+									end
 									local okF, rF = pcall(function() return GeometryService:SubtractAsync(sl, outs, ENT.FAST) end)
 									for _, x in ipairs(outs) do x.Parent = nil end
 									sl.Parent = nil
