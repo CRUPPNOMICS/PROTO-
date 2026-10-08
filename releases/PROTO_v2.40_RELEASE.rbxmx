@@ -7925,7 +7925,7 @@ function ENT.pocketEdgeClick(E, p)
 							local blk = cube()
 							-- (the hole = everything out past the fill's REAL face - its round for a fillet, its slope for a chamfer)
 							local hole = boxAt(C + A * ((rI + 2) / 2) + B * ((rI + 2) / 2) + U * (Dz / 2), A, B, V3(rI + 2, rI + 2, Dz + 0.2))
-							local fillShape = II and ENT.fillPrism(C + U * (Dz / 2), U, A, B, Dz + 0.4, rI, II.f)
+							local fillShape = II and ENT.fillPrism(C + U * (Dz / 2), I.dir, I.u, I.v, Dz + 0.4, rI, II.f)   -- (turned exactly like the fill itself, so its round's facets line up with the fill's - no step)
 							local holeCut
 							if not II then
 								holeCut = hole   -- (no fill: the whole open corner is the hole)
@@ -7959,7 +7959,7 @@ function ENT.pocketEdgeClick(E, p)
 										cyl.Anchored, cyl.CanCollide, cyl.Transparency = true, false, 1
 										cyl.Shape = Enum.PartType.Cylinder
 										cyl.Size = V3((W + Dz) * 3 + 2, rk * 2, rk * 2)
-										cyl.CFrame = CFrame.fromMatrix(C + U * rk + R.wall * rk, R.dir, U)
+										cyl.CFrame = CFrame.fromMatrix(C + U * rk + R.wall * rk, R.dir, R.u)   -- (turned exactly like that edge's own cutter - facets line up)
 										cyl.Parent = workspace
 										local okR, rR = pcall(function() return GeometryService:SubtractAsync(sl, { keep1, cyl }, ENT.FAST) end)
 										keep1.Parent, cyl.Parent, sl.Parent = nil, nil, nil
@@ -7994,7 +7994,7 @@ function ENT.pocketEdgeClick(E, p)
 									big.Parent, core.Parent = nil, nil
 									if okK and type(rK) == "table" and rK[1] then rK[1].Parent = workspace outs[#outs + 1] = rK[1] end
 									-- the round itself: a ring of short rods (+ balls at the joins) round the fill's curved front edge
-									local K = 8
+									local K = 16
 									local prev
 									for i2 = 0, K do
 										local th = math.pi + (math.pi / 2) * (i2 / K)
