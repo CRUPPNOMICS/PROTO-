@@ -1,6 +1,6 @@
--- PROTO v2.46  (c) 2026 Giga_gad27 - all rights reserved. Do not copy or re-upload.  (marker: DIM_V1)  - OPTIMISE: collision, detail, decor, shadows, cost readout
+-- PROTO v2.47  (c) 2026 Giga_gad27 - all rights reserved. Do not copy or re-upload.  (marker: DIM_V1)  - OPTIMISE: collision, detail, decor, shadows, cost readout
 -- =====================================================================================
--- PROTO (Sketch to Build) - Version 2.46.0 - Build 246
+-- PROTO (Sketch to Build) - Version 2.47.0 - Build 247
 -- OFFICIAL Roblox Creator Store asset 124557362882102 (the only official copy).
 -- (c) 2026 Giga_gad27 (Cruppnomics). All rights reserved. PROPRIETARY SOFTWARE.
 -- Licensed for use only. You may NOT copy, modify, redistribute, resell, sublicense,
@@ -259,10 +259,10 @@ local function mkBox(parent, default, w)
 end
 
 local U = { tools = {} }
-local DIM_VERSION = "v2.46"
+local DIM_VERSION = "v2.47"
 mkLabel(nil, "PROTO  " .. DIM_VERSION, nil, { bold = true, size = 16, col = Color3.fromRGB(0, 170, 255) })   -- v2.01: new name (Dylan)
-mkLabel(nil, "Version 2.46.0 - Build 246  |  (c) 2026 Giga_gad27 (Cruppnomics)", nil, { col = COL.grey, size = 10 })
-print("PROTO " .. DIM_VERSION .. " (Build 246) loaded")
+mkLabel(nil, "Version 2.47.0 - Build 247  |  (c) 2026 Giga_gad27 (Cruppnomics)", nil, { col = COL.grey, size = 10 })
+print("PROTO " .. DIM_VERSION .. " (Build 247) loaded")
 -- v2.14: "still in testing" warning (top + bottom of the panel)
 function ENT.warnBanner()
 	local f = Instance.new("Frame")
@@ -289,8 +289,8 @@ ENT.warnBanner()
 -- It only WARNS (never breaks anything). Local test copies ("user_...") are left alone.
 ENT.OFFICIAL_ID = "124557362882102"
 ENT.BUILD_TAG = "PRT-GG27-K7Q4-2026"
-ENT.BUILD_NUMBER = 246
-ENT.RELEASE_SALT = "R246-06a-60"   -- changes every release (maps a leaked copy to its build)   -- fingerprint (proves a copy came from this code)
+ENT.BUILD_NUMBER = 247
+ENT.RELEASE_SALT = "R247-708-56"   -- changes every release (maps a leaked copy to its build)   -- fingerprint (proves a copy came from this code)
 ENT.SNAP_EPS = 0.0002713               -- fingerprint
 ENT.MAX_COPIES = 500                   -- v2.36: pattern / copy-along limit (huge counts froze Studio)
 function ENT.officialCheck()
@@ -10053,8 +10053,26 @@ end
 -- the drawn closed shapes of the open sketch (copies)
 function ENT.mvGrab()
 	local list = {}
-	for _, sh in ipairs(sk and sk.shapes or {}) do
-		if not sh.open and not sh.guide and sh.kind ~= "point" and not sh.axis then table.insert(list, copyShape(sh)) end
+	if not sk then return list end
+	-- v2.46 (Dylan): the CLOSED AREAS of the drawing (orange fill) - so lines + arcs that join up count too, not only
+	-- shapes that are closed on their own (Rect, Circle...)
+	pcall(ENT.computeFaces)
+	local okF, faces = pcall(closedShapes)
+	if okF and faces then
+		for _, f in ipairs(faces) do
+			if f.src and not f.src.open then
+				table.insert(list, copyShape(f.src))   -- an untouched shape: keep it exact (a real circle stays a circle)
+			elseif f.pts and #f.pts >= 3 then
+				local c = {}
+				for i, q in ipairs(f.pts) do c[i] = q end
+				table.insert(list, { kind = "poly", open = false, pts = c })
+			end
+		end
+	end
+	if #list == 0 then
+		for _, sh in ipairs(sk.shapes) do
+			if not sh.open and not sh.guide and sh.kind ~= "point" and not sh.axis then table.insert(list, copyShape(sh)) end
+		end
 	end
 	return list
 end
@@ -10066,7 +10084,7 @@ function ENT.mvOpenView(k)
 	startSketch(planeFrom(pl.o, pl.u, pl.v), M.host, "View: " .. ENT.mvName(vi))
 	-- going back to a view (Back, or a failed build): its drawing comes back to edit
 	if M.views[k] and sk then
-		for _, sh in ipairs(M.views[k].shapes) do table.insert(sk.shapes, copyShape(sh)) end
+		for _, sh in ipairs(M.views[k].raw or M.views[k].shapes) do table.insert(sk.shapes, copyShape(sh)) end
 		M.views[k] = nil
 		drawSketch() rebuildFields()
 		ENT.commitSketch("Back to view")
@@ -10089,7 +10107,9 @@ function ENT.mvContinue()
 	if not sk then ENT.err("The sketch for this view was closed - press Views again.") ENT.mvStop() return end
 	local shapes = ENT.mvGrab()
 	if #shapes == 0 then ENT.err("Draw a CLOSED shape on this view first (Rect, Circle, or lines that join up).") return end
-	M.views[M.at] = { pl = sk.pl, shapes = shapes, name = ENT.mvName(M.order[M.at]) }
+	local raw = {}
+	for _, sh in ipairs(sk.shapes) do table.insert(raw, copyShape(sh)) end   -- (the drawing as drawn, for Back)
+	M.views[M.at] = { pl = sk.pl, shapes = shapes, raw = raw, name = ENT.mvName(M.order[M.at]) }
 	exitSketch()
 	if M.at < #M.order then ENT.mvOpenView(M.at + 1)
 	elseif M.how == "overlap" then ENT.mvBuild()
@@ -10475,7 +10495,10 @@ function ENT.mvBuildNet()
 	local st = {}
 	local wMax, hMax = 0, 0
 	for i = 0, N do
-		local l = L0 + len * (1 - math.cos(PI * i / N)) / 2
+		-- v2.46 tidy (Dylan): half "denser at the ends", half even - pure cosine put the end rings so close together
+		-- that the triangles between them were slivers too thin to build (holes near the tips)
+		local t = i / N
+		local l = L0 + len * (0.5 * (1 - math.cos(PI * t)) / 2 + 0.5 * t)
 		l = math.clamp(l, L0 + len * 1e-4, L1 - len * 1e-4)
 		local e = { l = l }
 		if top then e.w0, e.w1 = span(top, l) if e.w0 then wMax = math.max(wMax, e.w1 - e.w0) end end
@@ -10514,7 +10537,7 @@ function ENT.mvBuildNet()
 	if #rows < 2 then ENT.err("Couldn't find the shape along the length - check the drawings cross each other.") ENT.mvOpenView(#M.order) return end
 	local big = 0
 	for _, r in ipairs(rows) do big = math.max(big, r.size) end
-	local T = math.clamp(math.max(len, big * 2) * 0.004, 0.05, 0.2)   -- plate thickness (thin = smoother)
+	local T = math.clamp(math.max(len, big * 2) * 0.005, 0.08, 0.25)   -- plate thickness (too thin and Roblox drops some when gluing)
 	local rec
 	pcall(function() rec = CHS:TryBeginRecording("DIM_Views", "PROTO Views net - " .. nV .. " views") end)
 	local made
@@ -10567,7 +10590,27 @@ function ENT.mvBuildNet()
 			end
 			level = nxt
 		end
-		ENT.finishParts(folder)
+		-- v2.46 (Dylan: "make the box wrap the last thing"): the glued part's own frame is turned like its first plate,
+		-- so a box round THAT is too big and off to one side. Save the net's real points on the part (DIM_Bounds, in its
+		-- own space) - the build box is then fitted round the actual shape, as the very last step
+		local whole = {}
+		for _, c in ipairs(folder:GetChildren()) do if c:IsA("BasePart") then table.insert(whole, c) end end
+		if #whole == 1 then
+			local part = whole[1]
+			local pts = {}
+			local stepK = math.max(1, math.floor(K / 12))
+			for _, R in ipairs(rows) do
+				for k = 1, K, stepK do
+					local lp = part.CFrame:PointToObjectSpace(R[k])
+					pts[#pts + 1] = { math.floor(lp.X * 1000 + 0.5) / 1000, math.floor(lp.Y * 1000 + 0.5) / 1000, math.floor(lp.Z * 1000 + 0.5) / 1000 }
+				end
+			end
+			local bv = Instance.new("StringValue")
+			bv.Name = "DIM_Bounds"
+			bv.Value = game:GetService("HttpService"):JSONEncode(pts)
+			bv.Parent = part
+		end
+		ENT.finishParts(folder)   -- (fits the DIM_Box last, round the saved points)
 		made = folder
 	end)
 	if rec then CHS:FinishRecording(rec, ok and Enum.FinishRecordingOperation.Commit or Enum.FinishRecordingOperation.Cancel)
