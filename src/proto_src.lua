@@ -24,9 +24,9 @@ if old then old:Destroy() end
 local s = Instance.new("Script")
 s.Name = "DIMPlugin"
 s.Source = [=====[
--- PROTO v2.47  (c) 2026 Giga_gad27 - all rights reserved. Do not copy or re-upload.  (marker: DIM_V1)  - OPTIMISE: collision, detail, decor, shadows, cost readout
+-- PROTO v3.67  (c) 2026 Giga_gad27 - all rights reserved. Do not copy or re-upload.  (marker: DIM_V1)  - PROTO 3.0 - HEX colour picker + BRUSH paint + one-face paint; typing a side's size changes only that side; double-click a line = type its size; names PROTO_ (not DIM_); REMOVED Hide unseen faces; cut failures say why; NEW: centred rectangles stay centred; EDIT SKETCH (double-click a cut); DRAG HANDLES; FIX: cuts next to / inside drawings; NEW: pinned toolbar + FEATURES list on the right; line LENGTHS; SHELL
 -- =====================================================================================
--- PROTO (Sketch to Build) - Version 2.47.0 - Build 247
+-- PROTO (Sketch to Build) - Version 3.67.0 - Build 367
 -- OFFICIAL Roblox Creator Store asset 124557362882102 (the only official copy).
 -- (c) 2026 Giga_gad27 (Cruppnomics). All rights reserved. PROPRIETARY SOFTWARE.
 -- Licensed for use only. You may NOT copy, modify, redistribute, resell, sublicense,
@@ -79,6 +79,33 @@ local setTool, setMode, setTarget, startSketch, exitSketch, turnOn, turnOff, vie
 local extrude, mirrorSel, pattern, centreOnTarget, meshTest, faceNudge, faceUnlock
 local finishLine, cancelPending, undoShape, togglePlanes
 local ENT = {}   -- sketch entity helpers (kept in a table: the script is at Luau's 200-local limit)
+-- v2.99 (Dylan: "make sure it says PRO not DIM"): what PROTO makes is named PROTO_... now. Older builds in a place
+-- are still DIM_... (they're renamed when PROTO starts) - both are recognised everywhere.
+function ENT.isPN(n) return n:sub(1, 4) == "DIM_" or n:sub(1, 6) == "PROTO_" end
+function ENT.isBox(n) return n == "PROTO_Box" or n == "DIM_Box" end
+function ENT.isPrev(n) return n == "PROTO_Preview" or n == "DIM_Preview" end
+function ENT.isOutline(n) return n == "PROTO_Outline" or n == "DIM_Outline" end
+function ENT.isBounds(n) return n == "PROTO_Bounds" or n == "DIM_Bounds" end
+function ENT.boxIn(m) return m and (m:FindFirstChild("PROTO_Box") or m:FindFirstChild("DIM_Box")) or nil end
+-- the old names in this place -> the new ones (one undo step; only PROTO's own names, nothing else is touched)
+function ENT.renameOld()
+	if ENT.renamedOld then return end
+	ENT.renamedOld = true
+	local map = { DIM_Extrude = "PROTO_Extrude", DIM_Revolve = "PROTO_Revolve", DIM_Box = "PROTO_Box", DIM_Preview = "PROTO_Preview",
+		DIM_Outline = "PROTO_Outline", DIM_Bounds = "PROTO_Bounds" }
+	local list = {}
+	for _, d in ipairs(workspace:GetDescendants()) do
+		local nn = map[d.Name] or (d.Name:sub(1, 9) == "DIM_Face_" and ("PROTO_Face_" .. d.Name:sub(10))) or nil
+		if nn then list[#list + 1] = { d, nn } end
+	end
+	if #list == 0 then return end
+	local CHS0 = game:GetService("ChangeHistoryService")
+	local rec
+	pcall(function() rec = CHS0:TryBeginRecording("PROTO_Rename", "PROTO: DIM_ names -> PROTO_") end)
+	for _, it in ipairs(list) do pcall(function() it[1].Name = it[2] end) end
+	if rec then pcall(function() CHS0:FinishRecording(rec, Enum.FinishRecordingOperation.Commit) end) end
+	print(("PROTO: renamed %d old DIM_ item(s) to PROTO_ (Ctrl+Z puts the old names back)"):format(#list))
+end
 local flyTo, acceptExtrude, cancelExtrude, exRefresh
 local pointInPoly
 
@@ -285,10 +312,10 @@ local function mkBox(parent, default, w)
 end
 
 local U = { tools = {} }
-local DIM_VERSION = "v2.47"
+local DIM_VERSION = "v3.67"
 mkLabel(nil, "PROTO  " .. DIM_VERSION, nil, { bold = true, size = 16, col = Color3.fromRGB(0, 170, 255) })   -- v2.01: new name (Dylan)
-mkLabel(nil, "Version 2.47.0 - Build 247  |  (c) 2026 Giga_gad27 (Cruppnomics)", nil, { col = COL.grey, size = 10 })
-print("PROTO " .. DIM_VERSION .. " (Build 247) loaded")
+mkLabel(nil, "Version 3.67.0 - Build 367  |  (c) 2026 Giga_gad27 (Cruppnomics)", nil, { col = COL.grey, size = 10 })
+print("PROTO " .. DIM_VERSION .. " (Build 367) loaded")
 -- v2.14: "still in testing" warning (top + bottom of the panel)
 function ENT.warnBanner()
 	local f = Instance.new("Frame")
@@ -315,8 +342,8 @@ ENT.warnBanner()
 -- It only WARNS (never breaks anything). Local test copies ("user_...") are left alone.
 ENT.OFFICIAL_ID = "124557362882102"
 ENT.BUILD_TAG = "PRT-GG27-K7Q4-2026"
-ENT.BUILD_NUMBER = 247
-ENT.RELEASE_SALT = "R247-708-56"   -- changes every release (maps a leaked copy to its build)   -- fingerprint (proves a copy came from this code)
+ENT.BUILD_NUMBER = 367
+ENT.RELEASE_SALT = "367"   -- changes every release (maps a leaked copy to its build)   -- fingerprint (proves a copy came from this code)
 ENT.SNAP_EPS = 0.0002713               -- fingerprint
 ENT.MAX_COPIES = 500                   -- v2.36: pattern / copy-along limit (huge counts froze Studio)
 function ENT.officialCheck()
@@ -347,7 +374,7 @@ U.panelBtn = mkBtn(mkRow(), "Buttons here too: ON", 160, function(b) ENT.setPane
 U.modeBox = mkHead("MODE")
 local r = mkRow()
 U.modePlanes = mkBtn(r, "Sketch", 62, function() setMode("planes") end, COL.on)
-U.modePaint = mkBtn(r, "Paint", 62, function() setMode("paint") end)
+U.modePaint = mkBtn(r, "Paint", 62, function() setMode(mode == "paint" and "planes" or "paint") end)   -- v3.60: on / off
 U.modeMirror = mkBtn(r, "Mirror", 62, function() setMode("mirror") end)
 U.planesBtn = mkBtn(r, "Planes: on", 62, function() togglePlanes() end)
 r = mkRow()
@@ -379,31 +406,88 @@ for rowI, cols in ipairs({
 	end
 end
 r = pui(mkRow())
-mkLabel(r, "R,G,B", 40)
-U.paintRGB = mkBox(r, "163, 162, 165", 110)
-U.paintSetBtn = mkBtn(r, "Set", 40, function()
+mkLabel(r, "Colour", 40)
+U.paintRGB = mkBox(r, "#A3A2A5", 110)
+-- v2.79 (Dylan: "can you do a hex for this not just some numbers"): a hex code (#4B974B, 4B974B, #4B9) or R, G, B
+function ENT.parseColour(text)
+	text = tostring(text or "")
+	local h = string.match(text, "^%s*#?(%x%x%x%x%x%x)%s*$")
+	if not h then
+		local h3 = string.match(text, "^%s*#(%x%x%x)%s*$") or (string.find(text, "[%a]") and string.match(text, "^%s*(%x%x%x)%s*$"))
+		if h3 then h = h3:sub(1, 1):rep(2) .. h3:sub(2, 2):rep(2) .. h3:sub(3, 3):rep(2) end
+	end
+	if h and (string.find(text, "#") or string.find(h, "%a") or not string.find(text, "[,%s]")) then
+		return Color3.fromRGB(tonumber(h:sub(1, 2), 16), tonumber(h:sub(3, 4), 16), tonumber(h:sub(5, 6), 16))
+	end
 	local t = {}
-	for n in string.gmatch(U.paintRGB.Text, "%d+") do table.insert(t, math.clamp(tonumber(n), 0, 255)) end
-	if #t >= 3 then ENT.paintCol = Color3.fromRGB(t[1], t[2], t[3]) ENT.paintRefresh() end
-end)
-mkBtn(r, "Pick", 50, function() ENT.paintPicking = true ENT.paintRefresh() end)
+	for n in string.gmatch(text, "%d+%.?%d*") do table.insert(t, math.clamp(math.floor(tonumber(n) + 0.5), 0, 255)) end   -- v3.44: "1.5" is one number
+	if #t >= 3 then return Color3.fromRGB(t[1], t[2], t[3]) end
+	return nil
+end
+function ENT.hexOf(c)
+	return string.format("#%02X%02X%02X", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
+end
+function ENT.paintSetTyped()
+	local c = ENT.parseColour(U.paintRGB.Text)
+	if c then ENT.paintCol = c ENT.paintRefresh()
+	else setStatus("Colour: type a hex code like #4B974B (or R, G, B like 75, 151, 75).") end
+end
+U.paintSetBtn = mkBtn(r, "Set", 40, function() ENT.paintSetTyped() end)
+U.paintRGB.FocusLost:Connect(function(enter) if enter then ENT.paintSetTyped() end end)
+U.paintPickToolBtn = mkBtn(r, "Pick", 50, function() ENT.pickToggle() end)   -- v3.61: on / off, lit while on
 r = pui(mkRow())
-U.paintColBtn = mkBtn(r, "Colour: on", 90, function() ENT.paintDoCol = not ENT.paintDoCol ENT.paintRefresh() end)
-U.paintMatBtn = mkBtn(r, "Material: on", 90, function() ENT.paintDoMat = not ENT.paintDoMat ENT.paintRefresh() end)
-mkBtn(r, "Paint selected", 100, function() ENT.paintSelected() end, COL.go)
+-- v3.61 (Dylan: "just colour and material, and say if you want both or one - like the one face / whole part button"):
+-- ONE button that steps COLOUR + MATERIAL -> COLOUR -> MATERIAL -> ... (the old Material button is hidden)
+U.paintColBtn = mkBtn(r, "Paint: COLOUR + MATERIAL", 150, function()
+	if ENT.paintDoCol and ENT.paintDoMat then ENT.paintDoCol, ENT.paintDoMat = true, false
+	elseif ENT.paintDoCol then ENT.paintDoCol, ENT.paintDoMat = false, true
+	else ENT.paintDoCol, ENT.paintDoMat = true, true end
+	ENT.paintRefresh()
+end, COL.on)
+U.paintMatBtn = mkBtn(r, "Material: on", 90, function() end)
+U.paintMatBtn.Visible = false
+-- (v3.59, Dylan: "remove it" - Paint selected is gone; Paint: WHOLE PART / ONE FACE / BRUSH covers it)
 r = pui(mkRow())
-U.paintFaceBtn = mkBtn(r, "Paint: WHOLE PART", 150, function() ENT.paintFace = not ENT.paintFace ENT.paintRefresh() end, COL.on)
-pui(mkLabel(nil, "ONE FACE = click a face to colour just that side (Shift-click a face = clear it). Roblox can't give one face its own material, so one-face paint is colour only.", nil, { col = COL.grey, size = 11 }))
+U.paintFaceBtn = mkBtn(r, "Paint: WHOLE PART", 150, function()
+	-- v3.02: WHOLE PART -> ONE FACE -> BRUSH -> ...
+	if ENT.paintBrush then ENT.paintBrush, ENT.paintFace = false, false
+	elseif ENT.paintFace then ENT.paintFace, ENT.paintBrush = false, true
+	else ENT.paintFace = true end
+	ENT.paintRefresh()
+end, COL.on)
+-- v3.02 (Dylan: "a colour hex like this, paint like this, and one per face"): the HEX PICKER + the BRUSH
+U.paintPickBtn = mkBtn(r, "Colour", 90, function() ENT.hexPickerOpen() end, ENT.paintCol)
+-- v3.63 (Dylan: "I need a material button like the colour one"): opens a material picker the same way
+U.paintMatPick = mkBtn(r, "Plastic", 90, function() ENT.matPickerOpen() end)
+r = pui(mkRow())
+mkLabel(r, "brush", 36)
+U.brushR = mkBox(r, "1", 40)
+mkLabel(r, "strength", 50)
+U.brushS = mkBox(r, "1", 40)
+-- v3.44 (paint check): the boxes show what's really used (0, negative or junk was used as 0.05 / 1 but still showed)
+U.brushR.FocusLost:Connect(function() if ENT.brushSize then local r2 = ENT.brushSize() U.brushR.Text = string.format("%g", r2) end end)
+U.brushS.FocusLost:Connect(function() if ENT.brushSize then local _, s2 = ENT.brushSize() U.brushS.Text = string.format("%g", s2) end end)
+U.brushSymBtn = mkBtn(r, "X sym: off", 74, function() ENT.brushSym = not ENT.brushSym ENT.paintRefresh() end)
+U.brushClearBtn = mkBtn(r, "Clear brush", 80, function() ENT.brushClear() end)
+-- v3.13 (Dylan: "move that to the paint area"): an image / text on the face towards you, from here now
+r = pui(mkRow())
+mkLabel(r, "decal", 36)
+U.decalBox = mkBox(r, "", 110)
+pcall(function() U.decalBox.PlaceholderText = "image ID / text" end)
+U.decalImgBtn = mkBtn(r, "Add image", 70, function() ENT.decalAdd("img") end)
+U.decalTxtBtn = mkBtn(r, "Add text", 64, function() ENT.decalAdd("txt") end)
+pui(mkLabel(nil, "ONE FACE = click a face to paint just that side (Shift-click a face = clear it). With MATERIAL on, the face gets a paper-thin skin in that material (Roblox gives a part only one material).", nil, { col = COL.grey, size = 11 }))
 U.matBtns = {}
 local MATS = { "SmoothPlastic", "Plastic", "Neon", "Glass", "ForceField", "Metal", "DiamondPlate", "CorrodedMetal", "Foil",
 	"Wood", "WoodPlanks", "Concrete", "Brick", "Cobblestone", "Slate", "Granite", "Marble", "Pebble", "Rock", "Basalt",
 	"Grass", "Sand", "Ground", "Mud", "Ice", "Snow", "Fabric", "Carpet", "Leather", "Cardboard", "Rubber", "Plaster" }
+ENT.MATS = MATS   -- v3.63: the material picker uses the same list
 for i = 1, #MATS, 4 do
 	r = pui(mkRow())
 	for j = i, math.min(i + 3, #MATS) do
 		local ok, m = pcall(function() return Enum.Material[MATS[j]] end)
 		if ok and m then
-			local b = mkBtn(r, MATS[j], 72, function() ENT.paintMat = m ENT.paintRefresh() end)
+			local b = mkBtn(r, MATS[j], 72, function() ENT.paintMat = m ENT.paintVariant = "" ENT.paintRefresh() end)
 			b.TextSize = 10
 			U.matBtns[b] = m
 		end
@@ -474,6 +558,10 @@ U.tools.fillet.Visible, U.tools.chamfer.Visible = false, false   -- v2.39: sketc
 mkLabel(r, "size", 34)
 U.filletR = mkBox(r, "1", 44)
 mkLabel(r, "edge fillet / chamfer size (FEATURES tab)", 150).TextSize = 10
+r = mkRow()   -- v2.86 SHELL wall
+mkLabel(r, "wall", 34)
+U.shellT = mkBox(r, "0.5", 44)
+mkLabel(r, "shell wall thickness (FEATURES tab > Shell)", 150).TextSize = 10
 r = mkRow()
 mkLabel(r, "value", 40)
 U.dimBox = mkBox(r, "", 70)
@@ -494,6 +582,19 @@ U.edgesBtn = mkBtn(r, "Edges: ON", 84, function(b)
 	if sk then ENT.computeRefLines() drawSketch() drawPreview() end
 end, COL.on)
 U.edgeLinesBtn = mkBtn(r, "Edges -> lines", 100, function() ENT.edgesToLines() end)
+-- v3.49: movable planes - the handles on the sketch plane on / off, and back to where it started
+r = mkRow()
+U.planeMoveBtn = mkBtn(r, "Move plane: OFF", 110, function() ENT.planeMoveToggle() end) -- v3.52: off until you ask for it
+U.planeResetBtn = mkBtn(r, "Reset plane", 90, function() ENT.planeReset() end)
+ENT.showLens = true
+pcall(function() local v = plugin:GetSetting("PROTO_showLens") if v ~= nil then ENT.showLens = v == true end end)
+U.lensBtn = mkBtn(r, ENT.showLens and "Lengths: ON" or "Lengths: OFF", 90, function(b)
+	ENT.showLens = not ENT.showLens
+	b.Text = ENT.showLens and "Lengths: ON" or "Lengths: OFF"
+	b.BackgroundColor3 = ENT.showLens and COL.on or COL.btn
+	pcall(function() plugin:SetSetting("PROTO_showLens", ENT.showLens) end)
+	if sk then drawSketch() end
+end, ENT.showLens and COL.on or nil)
 ENT.subEnd()
 r = mkRow()
 mkBtn(r, "Cancel", 62, function() cancelPending() end)
@@ -536,12 +637,33 @@ U.startBox = mkBox(r, "0", 50)
 U.dirBtn.Parent = r   -- v1.97: Both ways sits beside 'start from' (room for the - / + buttons)
 U.dirBtn.LayoutOrder = 999999
 mkLabel(nil, "start from = studs off the sketch (or drag the purple ball)", nil, { col = COL.grey, size = 10 })
--- MESH CUTTER (beta) switch: false = hidden (release build). Set to true to show the button again
--- once Roblox saves MeshParts made by Solid Modeling On Meshes.
-ENT.SHOW_MESH = false
+-- v2.48 MESH CUTTER: back on. Its cut parts are now saved to Roblox (uploaded as real meshes, ENT.msSaveList), so
+-- they stay in the place and publish. Not ready (APIs off / beta off / store copy) = it stays off, normal cuts.
+-- ===== v2.55 MESH-ONLY PROTO (Dylan 12 Oct: "we are going all in on the beta features - thats it nothing else") =====
+-- PROTO never joins pieces. Every old joining call goes through here, and here it's refused - so if one is ever
+-- reached, Output says exactly where (and nothing gets glued).
+ENT.MESH_ONLY = true
+function ENT.union(a, rest, opts)
+	if ENT.MESH_ONLY then
+		local where = debug.traceback("", 2):match("\n%s*[^\n]*:(%d+)") or "?"
+		error("PROTO mesh-only: the old joining code was reached (line " .. tostring(where) .. ") - nothing was glued. Please tell Crupp what you did.", 0)
+	end
+	return GeometryService:UnionAsync(a, rest, opts)
+end
+ENT.SHOW_MESH = true
 r = mkRow()
-U.meshBtn = mkBtn(r, "Mesh cutter (beta): off", 170, function() ENT.toggleMesh() end)
-mkLabel(r, "perfect line / spline cuts", 120).TextSize = 10
+U.meshBtn = mkBtn(r, "Mesh: CHECK AGAIN", 130, function() ENT.toggleMesh() end)
+U.meshRow = r
+mkBtn(r, "Check", 56, function() ENT.msShowCheck() end)
+mkLabel(r, "every shape = one mesh", 110).TextSize = 10
+r.Visible = ENT.SHOW_MESH
+U.meshInfo = mkLabel(nil, "PROTO builds everything as ONE mesh (nothing joined) and saves it to Roblox. It needs: File > Beta Features > CreateAssetAsync Lua API (restart Studio), and Game Settings > Security > Allow Mesh / Image APIs. Then press Mesh: CHECK AGAIN (or restart Studio).", nil, { col = COL.warn, size = 11, bold = true })
+U.meshInfo.Visible = false
+U.meshBtn.Visible = false
+U.meshRow.Visible = false
+r = mkRow()
+mkBtn(r, "Save meshes now", 130, function() ENT.msSaveAll() end)
+mkBtn(r, "Mesh test", 90, function() task.spawn(meshTest) end)
 r.Visible = ENT.SHOW_MESH
 r = mkRow()
 U.extrudeBtn = mkBtn(r, "EXTRUDE", 104, function() extrude() end, COL.go)
@@ -672,7 +794,7 @@ U.patAxisBtn = mkBtn(r, "Axis: Y", 62, function(b)
 	patAxis = (patAxis == "X" and "Y") or (patAxis == "Y" and "Z") or "X"
 	b.Text = "Axis: " .. patAxis
 end)
-mkBtn(r, "Linear", 62, function() pattern("linear") end)
+mkBtn(r, "Linear", 62, function() ENT.arrStart() end)
 mkBtn(r, "Circular", 66, function() pattern("circular") end)
 r = mkRow()
 mkBtn(r, "Centre on target", 124, function() centreOnTarget() end)
@@ -708,34 +830,11 @@ U.grid = mkBox(r, "1", 50)
 mkLabel(r, "Shift = 1/10  Ctrl = free", 120, { col = COL.grey, size = 10 })
 
 mkHead("HELP")
-mkLabel(nil, "WHAT PROTO IS", nil, { bold = true, col = COL.head, size = 11 })
-mkLabel(nil, "CAD-style building inside Studio, inspired by tools like SolidWorks: draw a flat sketch on a part, then Extrude, Cut, Revolve or Pattern it into real Roblox parts with exact sizes. It's for buildings, props, traps and mechanical pieces - not sculpting or characters (use Blender for those). PROTO is not affiliated with SolidWorks or Blender. PROTO (c) 2026 Giga_gad27 - all rights reserved.", nil, { col = Color3.fromRGB(205, 210, 220), size = 11 })
-mkLabel(nil, "1. START A SKETCH", nil, { bold = true, col = COL.head, size = 11 })
-mkLabel(nil, "Turn PROTO on, click a part - its Front / Top / Right planes appear. Click a plane (or a face of the part) to draw on it. Space = look from the other side. PLANE box moves the sketch up / down.", nil, { col = Color3.fromRGB(205, 210, 220), size = 11 })
-mkLabel(nil, "SHIFT-CLICK = DIRECT FACE SKETCH  (new)", nil, { bold = true, col = Color3.fromRGB(120, 230, 140), size = 11 })
-mkLabel(nil, "Hold Shift - the exact face under the mouse lights up. Shift-click it = a sketch starts flat on THAT face straight away (any piece, even inside a build). It goes straight through the planes, side panels and invisible box. A normal click still picks the whole build.", nil, { col = Color3.fromRGB(205, 210, 220), size = 11 })
-mkLabel(nil, "BUILDS + THE INVISIBLE BOX  (new)", nil, { bold = true, col = COL.head, size = 11 })
-mkLabel(nil, "Everything PROTO builds is its own group wrapped in an invisible box, squared with the world. Click a build = its planes go through the middle of its box. Hover it = the side of the box facing you lights up - click it to sketch flat on that side. FEATURES tab: Whole object = one box round everything joined, Group feature / Straighten tidy up older builds.", nil, { col = Color3.fromRGB(205, 210, 220), size = 11 })
-mkLabel(nil, "THE TOOLBAR  (new)", nil, { bold = true, col = COL.head, size = 11 })
-mkLabel(nil, "The ribbon across the top of the view has every tool: SKETCH / FEATURES / PATTERN / PAINT / VIEW tabs. Hover a button to see what it does. Drag the :: grip to move it, the dash folds it away, Panel opens this panel (numbers + settings live here).", nil, { col = Color3.fromRGB(205, 210, 220), size = 11 })
-mkLabel(nil, "SMARTER DRAWING  (new)", nil, { bold = true, col = Color3.fromRGB(120, 230, 140), size = 11 })
-mkLabel(nil, "LINE now chains: keep clicking (ends that land on another drawing JOIN it exactly - no gaps), each click starts the next line; click the start again = closed shape, double-click / Enter / Esc = stop. Press A = the next piece is a TANGENT ARC. Live length + angle by the mouse, and yellow words show what it snaps to: HORIZONTAL, VERTICAL, PERPENDICULAR, PARALLEL (hover a line first), TANGENT (lines touch circles / arcs just right), END, MIDPOINT, CENTRE. EXTEND = click a line's end, it grows to the next drawing.", nil, { col = Color3.fromRGB(205, 210, 220), size = 11 })
-mkLabel(nil, "2. DRAW", nil, { bold = true, col = COL.head, size = 11 })
-mkLabel(nil, "Pick a tool in SKETCH: Rect, Circle, Polygon, Line, Spline, Arc, Slot, Ellipse, Double line, Point... ONE SHAPE PER PICK: placing it drops back to Select. Hold Shift on the placing click and Tools stay switched on until Esc (4 circles = Shift, Shift, Shift, normal click). Lines that join up make a closed area (light orange). Dots: green = snapped, BLUE = joins another drawing's key point / centre / mirror point, yellow dashes = lined up with something. Faint yellow lines = real edges of the part and parts around it - you can snap to them.", nil, { col = Color3.fromRGB(205, 210, 220), size = 11 })
-mkLabel(nil, "3. EDIT", nil, { bold = true, col = COL.head, size = 11 })
-mkLabel(nil, "Select: click a drawing (dark green - pieces joined to it show lighter green). Ctrl-click / Shift-click = pick edges, several at once (Delete removes them). Shift-click + drag = reshape (corner, side, circle edge) or move it (Shift-click the middle). Click a white key point + Delete = break the drawing there. Dimension: click a line / circle and type its size (two lines = angle). Trim: click (or hold + drag) to cut a piece away up to where it crosses. Split: break a line anywhere. Cut point to point: click two points - the bit between them goes. Delete removes the clicked drawing.", nil, { col = Color3.fromRGB(205, 210, 220), size = 11 })
-mkLabel(nil, "4. MAKE IT 3D", nil, { bold = true, col = COL.head, size = 11 })
-mkLabel(nil, "EXTRUDE: one area goes straight away, several = click the ones you want (blue, Shift = add / take away) then EXTRUDE / Enter. Drag the orange ball for depth, purple ball = where it starts. ACCEPT / Enter = make it, CANCEL / Esc = nothing made. CUT = the same but cuts it out of every part it touches.", nil, { col = Color3.fromRGB(205, 210, 220), size = 11 })
-mkLabel(nil, "ROUND / BEVEL 3D EDGES  (new)", nil, { bold = true, col = Color3.fromRGB(120, 230, 140), size = 11 })
-mkLabel(nil, "FEATURES tab > Fillet edge (round) or Chamfer edge (flat). Type the size in the box beside them, then click any edge of a block - it lights up orange first. Do as many edges as you like (Esc = stop). Works on block parts for now. Ctrl+Z undoes each edge.", nil, { col = Color3.fromRGB(205, 210, 220), size = 11 })
-mkLabel(nil, "5. REVOLVE  (EARLY ACCESS)", nil, { bold = true, col = COL.head, size = 11 })
-mkLabel(nil, "Draw half the outline beside a line. REVOLVE (or REV CUT), pick the area if asked, then click the centre line to spin round (any straight line, edge or orange dashed line; Enter = the suggested one). Angle box = how far round. It saves construction lines (centre line + top / bottom rings) to snap to later. Early access: it works, but it's still being improved - updates coming.", nil, { col = Color3.fromRGB(205, 210, 220), size = 11 })
-mkLabel(nil, "6. PATTERN / MIRROR  (Pattern = EARLY ACCESS)", nil, { bold = true, col = COL.head, size = 11 })
-mkLabel(nil, "PATTERN copies the picked parts round a point, along a line / edge / path, or along several picked lines: count, gap or equal spacing, per side or total, fit to corners, flip / middle. MIRROR copies the selection across a plane - click a face of the build first and the plane moves onto that face (the copy lands right against it); Box faces = all 6 sides of its box. Ctrl-click adds parts. Pattern is early access: it works, but it's still being improved - updates coming.", nil, { col = Color3.fromRGB(205, 210, 220), size = 11 })
-mkLabel(nil, "7. PAINT / OPTIMISE", nil, { bold = true, col = COL.head, size = 11 })
-mkLabel(nil, "PAINT colours a whole part or one face. OPTIMISE: collision (Hull / Precise / Box), detail LOW / MED / HIGH (revolve sides, spline points) and a triangle readout - if it says HEAVY, try Detail LOW.", nil, { col = Color3.fromRGB(205, 210, 220), size = 11 })
-mkLabel(nil, "CONTROLS", nil, { bold = true, col = COL.head, size = 11 })
-mkLabel(nil, "SLEEP: not sketching? Esc twice = PROTO goes to sleep (big green REACTIVATE). One click on the toolbar or this panel wakes it up.\nEsc = drop what's on the mouse / stop picking / cancel a preview -> back to Select -> Esc again = leave the sketch.\nEnter = finish a line or spline / accept / go.\nShift = fine grid (1/10) everywhere - placing a centre, sizing, dragging (let go of Shift mid-drag = back to stud by stud). Shift on the placing click also keeps the tool on, and Shift + drag on a drawing = resize / move it.  Ctrl = no snapping (free), Ctrl / Shift-click = pick edges (multi).  Alt = free move.\nDelete = delete the clicked drawing, or break at the picked key point.\nCtrl+Z / Ctrl+Y = undo / redo (every step).\nSpace = flip the sketch view.\nHotkeys for every tool: File > Customize Shortcuts, search PROTO.", nil, { col = Color3.fromRGB(205, 210, 220), size = 11 })
+-- v3.41: the old long help text (much of it out of date) is now the Help window: lessons, every tool, keys, fixes
+mkLabel(nil, "Step-by-step lessons, every tool explained (what it does, how, what it's good for), all the keys, and fixes for when something goes wrong.", nil, { col = Color3.fromRGB(205, 210, 220), size = 11 })
+r = mkRow()
+mkBtn(r, "Open Help + Tutorial", 170, function() if ENT.helpOpen then ENT.helpOpen("tut") end end, COL.go)
+mkLabel(nil, "Also on the toolbar: the HELP tab.", nil, { col = COL.grey, size = 10 })
 
 mkHead("FEEDBACK")
 mkLabel(nil, "Found a bug, or got an idea for a feature? We want to hear it!", nil, { bold = true, col = COL.head, size = 11 })
@@ -929,8 +1028,10 @@ local function pDash(p, a, b, col, thick, seg)
 	local camStep = (workspace.CurrentCamera.CFrame.Position - (a + b) / 2).Magnitude * 0.035
 	local step = math.max(seg or 1, camStep, 0.05)
 	local n = math.clamp(math.floor(len / step), 1, 80)
+	local holes = ENT.dashHoles   -- v2.89: length labels on screen - a dash under one is left out
 	for i = 0, n - 1 do
-		pLine(p, a:Lerp(b, i / n), a:Lerp(b, (i + 0.7) / n), col, thick)
+		local a1, b1 = a:Lerp(b, i / n), a:Lerp(b, (i + 0.7) / n)
+		if not (holes and ENT.underLabel and ENT.underLabel(a1, b1)) then pLine(p, a1, b1, col, thick) end
 	end
 end
 local function pDot(p, pos, col, rad)
@@ -947,9 +1048,6 @@ local skLines = newPool("BoxHandleAdornment", true)
 local skDots = newPool("SphereHandleAdornment", true)
 local pvLines = newPool("BoxHandleAdornment", true)
 local pvDots = newPool("SphereHandleAdornment", true)
-local ghBoxes = newPool("BoxHandleAdornment", true)
-local ghCyls = newPool("CylinderHandleAdornment", true)
-local fillBoxes = newPool("BoxHandleAdornment", true)
 
 local function mkTag(col)
 	local g = Instance.new("BillboardGui")
@@ -1096,13 +1194,13 @@ function ENT.prepBuild(p)
 	if not (p and ENT.isProto(p)) then return end
 	local m = ENT.featureModel(p)
 	if m then
-		if not (m.Name:sub(1, 4) == "DIM_" or m:FindFirstChild("DIM_Box")) then return end   -- someone's own model: leave it
+		if not (ENT.isPN(m.Name) or ENT.boxIn(m)) then return end   -- someone's own model: leave it
 		-- RULE: one box PER BUILD. A group holding several finished builds (parts named DIM_..., an early v2.37
 		-- auto-wrap mistake) is split: each of those builds gets its own group + box
 		-- builds that ended up INSIDE this one (made on top of it) move out next to it
 		local nested = {}
 		for _, d in ipairs(m:GetChildren()) do
-			if d:IsA("Model") and (d.Name:sub(1, 4) == "DIM_" or d:FindFirstChild("DIM_Box")) then table.insert(nested, d) end
+			if d:IsA("Model") and (ENT.isPN(d.Name) or ENT.boxIn(d)) then table.insert(nested, d) end
 		end
 		if #nested > 0 then
 			record("PROTO Separate builds", function()
@@ -1113,10 +1211,10 @@ function ENT.prepBuild(p)
 		end
 		local whole = {}
 		for _, d in ipairs(m:GetChildren()) do
-			if d:IsA("BasePart") and d.Name:sub(1, 4) == "DIM_" and d.Name ~= "DIM_Box" then table.insert(whole, d) end
+			if d:IsA("BasePart") and ENT.isPN(d.Name) and not ENT.isBox(d.Name) then table.insert(whole, d) end
 		end
 		local loose = 0
-		for _, d in ipairs(m:GetChildren()) do if d:IsA("BasePart") and d.Name:sub(1, 4) ~= "DIM_" then loose += 1 end end
+		for _, d in ipairs(m:GetChildren()) do if d:IsA("BasePart") and not ENT.isPN(d.Name) then loose += 1 end end
 		if #whole >= 2 or (#whole >= 1 and loose > 0) then
 			record("PROTO Split builds", function()
 				local keepFirst = (loose == 0)
@@ -1146,7 +1244,7 @@ function ENT.prepBuild(p)
 	local list = ENT.featureGroup(p) or { p }
 	record("PROTO Wrap build", function()
 		local g = Instance.new("Model")
-		g.Name = (p.Name:sub(1, 4) == "DIM_") and p.Name or "DIM_Extrude"
+		g.Name = (ENT.isPN(p.Name)) and p.Name or "PROTO_Extrude"
 		g.Parent = p.Parent
 		for _, q in ipairs(list) do q.Parent = g end
 		ENT.fitBox(g, true)
@@ -1161,7 +1259,7 @@ function ENT.groupFeature()
 	local m
 	local ok = record("PROTO Group feature", function()
 		m = Instance.new("Model")
-		m.Name = "DIM_Extrude"
+		m.Name = "PROTO_Extrude"
 		m.Parent = p.Parent
 		for _, q in ipairs(list) do q.Parent = m end
 		ENT.fitBox(m, true)
@@ -1195,14 +1293,14 @@ end
 function ENT.featureModel(p)
 	local m = p and p.Parent
 	if not (m and m:IsA("Model")) or m == workspace then return nil end
-	if m.Name:sub(1, 4) == "DIM_" or m:FindFirstChild("DIM_Outline") or p:GetAttribute("PROTO_Build") then return m end
+	if ENT.isPN(m.Name) or (m:FindFirstChild("PROTO_Outline") or m:FindFirstChild("DIM_Outline")) or p:GetAttribute("PROTO_Build") then return m end
 	return nil
 end
 -- box round the WHOLE feature, lined up the same way as the clicked part's planes
 -- no model (pieces loose in Workspace / a folder): the PROTO-made pieces that touch it, and the ones touching those...
 function ENT.featureGroup(p)
 	if not (p:GetAttribute("PROTO_Build") and p.Parent) then return nil end
-	if p.Name:sub(1, 4) == "DIM_" then return nil end   -- v2.37: a finished one-part build = its own build, never merged
+	if ENT.isPN(p.Name) then return nil end   -- v2.37: a finished one-part build = its own build, never merged
 	local function aabb(q)
 		local c, h = q.CFrame, q.Size / 2
 		local ext = V3(math.abs(c.RightVector.X) * h.X + math.abs(c.UpVector.X) * h.Y + math.abs(c.LookVector.X) * h.Z,
@@ -1212,7 +1310,7 @@ function ENT.featureGroup(p)
 	end
 	local cand = {}
 	for _, q in ipairs(p.Parent:GetChildren()) do
-		if q:IsA("BasePart") and q:GetAttribute("PROTO_Build") and q.Name:sub(1, 4) ~= "DIM_" then
+		if q:IsA("BasePart") and q:GetAttribute("PROTO_Build") and not ENT.isPN(q.Name) then
 			table.insert(cand, q)
 			if #cand > 2000 then return nil end
 		end
@@ -1270,13 +1368,19 @@ function ENT.fitBox(m, how)
 	if not (m and m:IsA("Model")) then return end
 	local first = ENT.ownParts(m)[1]
 	if not first then return end
-	local bx = m:FindFirstChild("DIM_Box")
+	local bx = ENT.boxIn(m)
 	if how == "keep" and not bx then how = true end
 	-- RULE (Dylan): build -> wrap -> correct. EVERY box faces the same way as the world (and so as each other)
-	local cf, size = ENT.featureBox(first, true, CFrame.identity)
+	-- v3.41 (glitch sweep): with Whole object on, featureBox took touching parts from OTHER builds too and
+	-- rewrote this build's box / pivot. Turn Whole object off just for this, and always put it back.
+	local wasWhole = ENT.wholeObject
+	ENT.wholeObject = false
+	local okFB, cf, size = pcall(ENT.featureBox, first, true, CFrame.identity)
+	ENT.wholeObject = wasWhole
+	if not okFB then error(cf, 0) end
 	if not bx then
 		bx = Instance.new("Part")
-		bx.Name = "DIM_Box"
+		bx.Name = "PROTO_Box"
 		bx.Anchored = true
 		bx.CanCollide = false
 		bx.CanTouch = false
@@ -1298,7 +1402,7 @@ end
 -- grew round the new one too)
 function ENT.buildParent(host)
 	local par = (host and host.Parent) or workspace
-	while par and par ~= workspace and par:IsA("Model") and (par.Name:sub(1, 4) == "DIM_" or par:FindFirstChild("DIM_Box")) do
+	while par and par ~= workspace and par:IsA("Model") and (ENT.isPN(par.Name) or ENT.boxIn(par)) do
 		par = par.Parent
 	end
 	return par or workspace
@@ -1327,8 +1431,8 @@ function ENT.ownParts(m)
 	local function walk(x)
 		for _, d in ipairs(x:GetChildren()) do
 			if d:IsA("BasePart") then
-				if d.Name ~= "DIM_Box" then table.insert(t, d) end
-			elseif d:IsA("Model") and (d.Name:sub(1, 4) == "DIM_" or d:FindFirstChild("DIM_Box")) then
+				if not ENT.isBox(d.Name) then table.insert(t, d) end
+			elseif d:IsA("Model") and (ENT.isPN(d.Name) or ENT.boxIn(d)) then
 				-- another build: not ours
 			else
 				walk(d)
@@ -1340,8 +1444,8 @@ function ENT.ownParts(m)
 end
 -- is this a part PROTO made (any version)?
 function ENT.isProto(q)
-	if not (q and q:IsA("BasePart") and q.Parent) or q.Name == "DIM_Preview" or q.Name == "DIM_Box" or not q:IsDescendantOf(workspace) then return false end
-	return q:GetAttribute("PROTO_Build") ~= nil or q.Name:sub(1, 4) == "DIM_" or ENT.featureModel(q) ~= nil
+	if not (q and q:IsA("BasePart") and q.Parent) or ENT.isPrev(q.Name) or ENT.isBox(q.Name) or not q:IsDescendantOf(workspace) then return false end
+	return q:GetAttribute("PROTO_Build") ~= nil or ENT.isPN(q.Name) or ENT.featureModel(q) ~= nil
 end
 -- v2.37: the WHOLE object: every PROTO part joined to this one (touching, or in the same group), across groups -
 -- e.g. an arch sitting on a slab = one object, one invisible box, one set of planes
@@ -1374,7 +1478,7 @@ function ENT.featureBox(p, fresh, rotOver)
 	local list = ENT.objParts(p)
 	if not list then return cf, size end
 	local m = (not ENT.wholeObject) and ENT.featureModel(p)
-	local bx = m and m:FindFirstChild("DIM_Box")
+	local bx = m and ENT.boxIn(m)
 	if bx and bx:IsA("BasePart") and not fresh and not rotOver then return bx.CFrame, bx.Size end
 	local rot
 	if rotOver then rot = rotOver
@@ -1392,7 +1496,7 @@ function ENT.featureBox(p, fresh, rotOver)
 			-- v2.38: a curved piece's own box turned at an angle would bulge the box out. Use its SAVED OUTLINE when it
 			-- has one (extrude edges / revolve rings = the real shape), or treat an upright round piece as a cylinder
 			local done = false
-			local bv = q:FindFirstChild("DIM_Bounds")
+			local bv = (q:FindFirstChild("PROTO_Bounds") or q:FindFirstChild("DIM_Bounds"))
 			if bv and bv:IsA("StringValue") then
 				local okB, pts = pcall(function() return game:GetService("HttpService"):JSONDecode(bv.Value) end)
 				if okB and type(pts) == "table" and #pts > 0 then
@@ -1405,7 +1509,7 @@ function ENT.featureBox(p, fresh, rotOver)
 			local ov
 			if not done then
 				for _, ch in ipairs(q:GetChildren()) do
-					if ch.Name == "DIM_Outline" and ch:IsA("StringValue") and not (ENT.outKind and ENT.outKind(ch, q) == "cut") then ov = ch break end
+					if ENT.isOutline(ch.Name) and ch:IsA("StringValue") and not (ENT.outKind and ENT.outKind(ch, q) == "cut") then ov = ch break end
 				end
 			end
 			if ov and ov:IsA("StringValue") then
@@ -1511,7 +1615,7 @@ function ENT.targetPockets(partsIn)
 	for _, q in ipairs(parts) do
 		if q:IsA("BasePart") then
 			for _, ch in ipairs(q:GetChildren()) do
-				if ch.Name == "DIM_Outline" and ch:IsA("StringValue") and ENT.outKind(ch, q) == "cut" then
+				if ENT.isOutline(ch.Name) and ch:IsA("StringValue") and ENT.outKind(ch, q) == "cut" then
 					local P = ENT.prismCache[ch.Value]
 					if P == nil then
 						local data = ENT.outlineCache[ch.Value]
@@ -1584,7 +1688,7 @@ function ENT.innerFace(res)
 	for _, q in ipairs(parts) do
 		if q:IsA("BasePart") then
 			for _, ch in ipairs(q:GetChildren()) do
-				if ch.Name == "DIM_Outline" and ch:IsA("StringValue") and ENT.outKind(ch, q) == "cut" then
+				if ENT.isOutline(ch.Name) and ch:IsA("StringValue") and ENT.outKind(ch, q) == "cut" then
 					local P = ENT.prismCache[ch.Value]
 					if P == nil then
 						local data = ENT.outlineCache[ch.Value]
@@ -2153,6 +2257,38 @@ end
 local function regionShapes(r)
 	return r.whole and { r.whole } or r.inside
 end
+-- v2.90: areas that all contain each other (nested, not crossing) -> just the innermost one; anything else as it was
+function ENT.innermost(list)
+	local function area(q) local A = 0 for i = 1, #q do local a, b = q[i], q[i % #q + 1] A += a.X * b.Y - b.X * a.Y end return math.abs(A / 2) end
+	local best, ba
+	for _, s in ipairs(list) do
+		local a = area(outline(s))
+		if not ba or a < ba then best, ba = s, a end
+	end
+	local bq = outline(best)
+	for _, s in ipairs(list) do
+		if s ~= best then
+			local q = outline(s)
+			for _, p in ipairs(bq) do
+				-- (a point of the inner one outside this one = they cross, not nest: leave it alone)
+				if not pointInPoly(p, q) then
+					local onEdge = false
+					for i = 1, #q do
+						local a, b = q[i], q[i % #q + 1]
+						local ab = b - a
+						local l2 = ab:Dot(ab)
+						if l2 > 0 then
+							local t = math.clamp((p - a):Dot(ab) / l2, 0, 1)
+							if ((a + ab * t) - p).Magnitude < 0.03 then onEdge = true break end
+						end
+					end
+					if not onEdge then return list end
+				end
+			end
+		end
+	end
+	return { best }
+end
 function ENT.regionContains(r, p, sig)
 	if r.whole then return pointInPoly(p, outline(r.whole)) end
 	sig = sig or ENT.sigAt(p)
@@ -2177,99 +2313,40 @@ function ENT.regionBounds(r)
 	end
 	return lo, hi
 end
--- scanline over the regions: fn(x0, x1, y, stripHeight) for every run of the strip that is inside any of them
-local FILL_STRIPS = 48
-function ENT.scanRegions(regions, fn)
-	if #regions == 0 then return end
-	local lo, hi = math.huge, -math.huge
-	for _, r in ipairs(regions) do
-		local a, b = ENT.regionBounds(r)
-		lo, hi = math.min(lo, a.Y), math.max(hi, b.Y)
-	end
-	if hi - lo < 1e-4 then return end
-	local closed = closedShapes()
-	local sh = (hi - lo) / FILL_STRIPS
-	for k = 0, FILL_STRIPS - 1 do
-		local y = lo + (k + 0.5) * sh
-		local xs = {}
-		for _, s in ipairs(closed) do
-			local lp = outline(s)
-			local cnt = #lp
-			for i = 1, cnt do
-				local a, b = lp[i], lp[i % cnt + 1]
-				if (a.Y > y) ~= (b.Y > y) then table.insert(xs, a.X + (y - a.Y) * (b.X - a.X) / (b.Y - a.Y)) end
-			end
-		end
-		table.sort(xs)
-		local runStart
-		for i = 1, #xs - 1 do
-			local x0, x1 = xs[i], xs[i + 1]
-			local inside = false
-			if x1 - x0 > 1e-5 then
-				local m = V2((x0 + x1) / 2, y)
-				local sig = ENT.sigAt(m)
-				for _, r in ipairs(regions) do if ENT.regionContains(r, m, sig) then inside = true break end end
-			end
-			if inside then
-				runStart = runStart or x0
-			elseif runStart then
-				fn(runStart, x0, y, sh)
-				runStart = nil
-			end
-		end
-		if runStart then fn(runStart, xs[#xs], y, sh) end
-	end
-end
--- strips covering every closed area (cached until the drawing changes): { x0, x1, y, stripHeight }
-function ENT.closedFill()
-	if sk.fillSig == sk.faceSig and sk.fillRuns then return sk.fillRuns end
-	local runs = {}
-	local faces = closedShapes()
-	local polys, lo, hi = {}, math.huge, -math.huge
-	for _, f in ipairs(faces) do
+-- v2.59: every separate area of the drawing (cached until the drawing changes), for the one-piece fills
+function ENT.pvAreas()
+	local key = sk.faceSig or ENT.encodeSketch()
+	if sk.pvSig == key and sk.pvList then return sk.pvList end
+	local polys = {}
+	for _, f in ipairs(closedShapes()) do
 		local ok, o = pcall(outline, f)
-		if ok and o and #o >= 3 then
-			polys[#polys + 1] = o
-			for _, q in ipairs(o) do lo, hi = math.min(lo, q.Y), math.max(hi, q.Y) end
-		end
+		if ok and o and #o >= 3 then polys[#polys + 1] = o end
 	end
-	if #polys > 0 and hi - lo > 1e-4 then
-		local sh = (hi - lo) / FILL_STRIPS
-		for k = 0, FILL_STRIPS - 1 do
-			local y = lo + (k + 0.5) * sh
-			local xs = {}
-			for _, lp in ipairs(polys) do
-				local cnt = #lp
-				for i = 1, cnt do
-					local a, b = lp[i], lp[i % cnt + 1]
-					if (a.Y > y) ~= (b.Y > y) then table.insert(xs, a.X + (y - a.Y) * (b.X - a.X) / (b.Y - a.Y)) end
-				end
-			end
-			table.sort(xs)
-			local runStart, last
-			for i = 1, #xs - 1 do
-				local x0, x1 = xs[i], xs[i + 1]
-				local inside = false
-				if x1 - x0 > 1e-5 then
-					local m = V2((x0 + x1) / 2, y)
-					for _, lp in ipairs(polys) do if pointInPoly(m, lp) then inside = true break end end
-				else
-					inside = runStart ~= nil
-				end
-				if inside then runStart = runStart or x0 last = x1
-				elseif runStart then runs[#runs + 1] = { runStart, x0, y, sh } runStart = nil end
-			end
-			if runStart then runs[#runs + 1] = { runStart, last, y, sh } end
+	local ok, list = pcall(ENT.pvAreasFrom, polys)
+	sk.pvSig, sk.pvList = key, ok and list or {}
+	if not ok then warn("PROTO: couldn't fill the areas (" .. tostring(list) .. ")") end
+	return sk.pvList
+end
+-- which of those areas are picked by these regions -> picked list, the rest, and a key naming the split
+function ENT.pvSplit(regions)
+	local all = ENT.pvAreas()
+	local yes, no, ks = {}, {}, {}
+	for i, A in ipairs(all) do
+		local hit = false
+		if A.mid then
+			local sig = ENT.sigAt(A.mid)
+			for _, r in ipairs(regions) do if ENT.regionContains(r, A.mid, sig) then hit = true break end end
 		end
+		if hit then yes[#yes + 1] = A ks[#ks + 1] = i else no[#no + 1] = A end
 	end
-	sk.fillSig, sk.fillRuns = sk.faceSig, runs
-	return runs
+	return yes, no, tostring(sk.pvSig) .. "#" .. table.concat(ks, ",")
 end
 function ENT.gcol() return (ex and ex.ov) and Color3.fromRGB(170, 100, 255) or ((ex and ex.cut) and COL.cut or COL.ex) end
 function drawSketch()
 	if sk then ENT.computeFaces() end
 	if ENT.pickUI then ENT.pickUI() end
-	pBegin(skLines) pBegin(skDots) pBegin(ghBoxes) pBegin(ghCyls) pBegin(fillBoxes)
+	if ENT.drawLens then pcall(ENT.drawLens) end   -- v2.87 / v2.89: lengths first - the dashed lines leave gaps round them
+	pBegin(skLines) pBegin(skDots)
 	if sk then
 		local pl = sk.pl
 		local h = sk.half
@@ -2328,6 +2405,32 @@ function drawSketch()
 		-- Select tool: the key points you can click (white) and the picked one (big orange)
 		if tool == "select" and not ex then
 			for _, kp in ipairs(ENT.keyPoints()) do pDot(skDots, W(kp), Color3.fromRGB(235, 235, 245), camDist(W(kp)) * 0.0045) end
+			-- v2.92 DRAG HANDLES: a corner on every corner, one in the middle of every side, the centre - grab and drag
+			local HC, CC = Color3.fromRGB(80, 180, 255), Color3.fromRGB(255, 200, 60)
+			for _, sh in ipairs(sk.shapes) do
+				if not sh.guide and not sh.axis and sh.kind ~= "point" and not sh.ctrl then
+					local hs = {}
+					if sh.kind == "circle" then
+						for k = 0, 3 do local a = k * PI / 2 hs[#hs + 1] = sh.c + V2(math.cos(a), math.sin(a)) * sh.r end
+					elseif sh.kind == "ellipse" then
+						local ux, uy = V2(math.cos(sh.rot), math.sin(sh.rot)), V2(-math.sin(sh.rot), math.cos(sh.rot))
+						hs = { sh.c + ux * sh.a, sh.c - ux * sh.a, sh.c + uy * sh.b, sh.c - uy * sh.b }
+					elseif sh.kind == "rect" or sh.kind == "ngon" or (sh.kind == "poly" and #sh.pts <= 12) then
+						local pts = outline(sh)
+						local n = #pts
+						for j = 1, n do
+							hs[#hs + 1] = pts[j]
+							if not sh.open or j < n then hs[#hs + 1] = (pts[j] + pts[j % n + 1]) / 2 end
+						end
+					end
+					for _, h in ipairs(hs) do pDot(skDots, W(h), HC, camDist(W(h)) * 0.0078) end   -- (v2.93: 20% bigger)
+					if not sh.open and #hs > 0 then
+						local c = shapeCentre(sh)
+						local pinned = ENT.rectAnchored(sh)
+						pDot(skDots, W(c), pinned and Color3.fromRGB(60, 225, 120) or CC, camDist(W(c)) * (pinned and 0.009 or 0.0075))
+					end
+				end
+			end
 		end
 		if sk.keySel then pDot(skDots, W(sk.keySel), COL.arrow, camDist(W(sk.keySel)) * 0.011) end
 		if sk.segSel and ENT.drawSegSel then ENT.drawSegSel() end
@@ -2339,42 +2442,22 @@ function drawSketch()
 				if s.srcShapes then for m in pairs(s.srcShapes) do inPicked[m] = true end end
 			end
 		end
+		-- v2.59: each fill is ONE piece (one mesh), not rows of thin strips
+		local frame = CFrame.fromMatrix(pl.o, pl.u, pl.v)
+		local zs = (pl.u:Cross(pl.v)):Dot(pl.n) < 0 and -1 or 1   -- the frame's z runs along the sketch normal
 		if ex then
 			local z0, z1 = extentZ(ex.D)
-			local D, mid = z1 - z0, (z0 + z1) / 2
-			ENT.scanRegions(ex.regions, function(x0, x1, y, sh)
-				local g = pGet(ghBoxes)
-				g.CFrame = CFrame.fromMatrix(W(V2((x0 + x1) / 2, y)) + pl.n * mid, pl.u, pl.v)
-				g.Size = V3(x1 - x0, sh * 1.02, D)
-				g.Color3 = ENT.gcol()
-				g.Transparency = 0.86   -- v2.43 (Dylan): lighter blue so the balls / sketch show through
-				g.ZIndex = 1            -- under the pull balls (they sit at 5)
-			end)
+			local yes, _, key = ENT.pvSplit(ex.regions)
+			-- v2.43 (Dylan): light, so the balls / sketch show through
+			ENT.pvShow("ghost", "G" .. key, yes, frame, z0 * zs, z1 * zs, ENT.gcol(), 0.7)
+			ENT.pvShow("fill", nil) ENT.pvShow("pick", nil)
 		else
 			-- v2.12: every CLOSED area gets a light see-through orange fill (picked ones go blue instead)
-			for _, run in ipairs(ENT.closedFill()) do
-				local skip = false
-				if #sk.regions > 0 then
-					local m = V2((run[1] + run[2]) / 2, run[3])
-					for _, r in ipairs(sk.regions) do if ENT.regionContains(r, m) then skip = true break end end
-				end
-				if not skip then
-					local g = pGet(fillBoxes)
-					g.CFrame = CFrame.fromMatrix(W(V2((run[1] + run[2]) / 2, run[3])), pl.u, pl.v)
-					g.Size = V3(run[2] - run[1], run[4] * 1.02, 0.03)
-					g.Color3 = Color3.fromRGB(255, 185, 111)
-					g.Transparency = 0.72
-					g.ZIndex = 0
-				end
-			end
-			ENT.scanRegions(sk.regions, function(x0, x1, y, sh)
-				local g = pGet(fillBoxes)
-				g.CFrame = CFrame.fromMatrix(W(V2((x0 + x1) / 2, y)), pl.u, pl.v)
-				g.Size = V3(x1 - x0, sh * 1.02, 0.04)
-				g.Color3 = COL.ex
-				g.Transparency = 0.55
-				g.ZIndex = 0
-			end)
+			local yes, no, key = ENT.pvSplit(sk.regions)
+			-- v2.59b (Dylan): one piece now, so a bit more solid. Sits a hair off the surface so it doesn't flicker
+			ENT.pvShow("fill", "F" .. key, no, frame, 0.01 * zs, 0.04 * zs, Color3.fromRGB(255, 185, 111), 0.5)
+			ENT.pvShow("pick", "P" .. key, yes, frame, 0.012 * zs, 0.05 * zs, COL.ex, 0.4)
+			ENT.pvShow("ghost", nil)
 		end
 		for _, s in ipairs(sk.shapes) do
 			local isGuide = s.guide or s.axis   -- splines are always drawn like lines: solid green
@@ -2412,9 +2495,136 @@ function drawSketch()
 			end
 		end
 	end
-	pEnd(skLines) pEnd(skDots) pEnd(ghBoxes) pEnd(ghCyls) pEnd(fillBoxes)
+	pEnd(skLines) pEnd(skDots)
+	ENT.dashHoles = nil
+	if not sk then ENT.pvShow("fill", nil) ENT.pvShow("pick", nil) ENT.pvShow("ghost", nil) end
 	if ENT.mvDraw then pcall(ENT.mvDraw) end   -- v2.46: the other views of a multi-view drawing
 end
+
+-- ===== v2.87 LENGTHS (Dylan: "a setting to show the stud length of all these lines") =====
+-- Every side of a drawing gets its length in studs beside it (just outside the shape). A curve drawn as many little
+-- lines (an arc, a rounded corner) counts as ONE piece - its whole length. Circles show their diameter, ellipses /
+-- slots their width x height. PLANE > "Lengths" turns it on / off (remembered).
+ENT.lenTags = ENT.lenTags or {}
+function ENT.drawLens()
+	local used = 0
+	local function tag(pos, text)
+		if used >= 160 then return end
+		used += 1
+		local g = ENT.lenTags[used]
+		if not g then
+			g = mkTag(Color3.fromRGB(255, 225, 120))
+			g.Size = UDim2.fromOffset(64, 16)
+			g.T.TextSize = 11
+			ENT.lenTags[used] = g
+		end
+		g.StudsOffsetWorldSpace = pos
+		g.T.Text = text
+		g.Enabled = true
+		-- v2.89 (Dylan: "the numbers have priority over the line"): sized to the number, solid, and the dashed
+		-- lines leave a gap round it
+		local wpx = #text * 7 + 14
+		g.Size = UDim2.fromOffset(wpx, 16)
+		g.T.BackgroundTransparency = 0.1
+		local sp, vis = workspace.CurrentCamera:WorldToViewportPoint(pos)
+		if vis then ENT.dashHoles[#ENT.dashHoles + 1] = { x = sp.X, y = sp.Y, hw = wpx / 2 + 4, hh = 8 + 4 } end
+	end
+	ENT.dashHoles = {}
+	if sk and ENT.showLens and not ex then
+		local cam = workspace.CurrentCamera
+		local function onScreen(a2, b2)
+			local p1, v1 = cam:WorldToViewportPoint(W(a2))
+			local p2, v2 = cam:WorldToViewportPoint(W(b2))
+			if not (v1 or v2) then return 0 end
+			return (Vector2.new(p1.X, p1.Y) - Vector2.new(p2.X, p2.Y)).Magnitude
+		end
+		-- the label sits just outside the line, at its middle (away from the shape's centre)
+		local function side(p, d, cen, text)
+			if d.Magnitude < 1e-9 then return end
+			local nrm = V2(-d.Y, d.X).Unit
+			if cen and (p - cen):Dot(nrm) < 0 then nrm = -nrm end
+			local off = camDist(W(p)) * 0.022
+			tag(W(p + nrm * off), text)
+		end
+		for _, sh in ipairs(sk.shapes) do
+			if sh.guide or sh.axis or sh.kind == "point" then continue end
+			local off = camDist(W(sh.c or shapeCentre(sh))) * 0.022
+			if sh.kind == "circle" then
+				tag(W(sh.c + V2(0, sh.r + off)), "Ø " .. fmt(sh.r * 2))
+			elseif sh.kind == "ellipse" then
+				tag(W(sh.c + V2(0, math.max(sh.a, sh.b) + off)), fmt(sh.a * 2) .. " x " .. fmt(sh.b * 2))
+			elseif sh.kind == "slot" then
+				tag(W(sh.c + V2(0, sh.r + off)), fmt(sh.L + sh.r * 2) .. " x " .. fmt(sh.r * 2))
+			elseif sh.kind == "rect" or sh.kind == "ngon" or sh.kind == "poly" then
+				local pts = outline(sh)
+				local n = #pts
+				if n >= 2 then
+					local closed = not sh.open
+					local cen = closed and shapeCentre(sh) or nil
+					-- the real corners (a turn of more than 20 degrees); an open line's two ends count as corners
+					local corners = {}
+					for j = 1, n do
+						local isC = true
+						if closed or (j > 1 and j < n) then
+							local a, b, c = pts[(j - 2) % n + 1], pts[j], pts[j % n + 1]
+							local d1, d2 = b - a, c - b
+							-- (a sharp turn, or where a curve's little pieces meet a long straight line - a tangent arc's end)
+							local l1, l2 = d1.Magnitude, d2.Magnitude
+							if l1 > 1e-9 and l2 > 1e-9 then isC = d1.Unit:Dot(d2.Unit) < 0.94 or math.max(l1, l2) > 2.5 * math.min(l1, l2) end
+						end
+						if isC then corners[#corners + 1] = j end
+					end
+					if closed and #corners == 0 then corners = { 1 } end
+					local function piece(i0, i1)
+						local seq = { pts[i0] }
+						local j = i0
+						repeat j = j % n + 1 seq[#seq + 1] = pts[j] until j == i1 or #seq > n + 1
+						local L = 0
+						for k = 1, #seq - 1 do L += (seq[k + 1] - seq[k]).Magnitude end
+						if L < 1e-4 then return end
+						-- too small on screen to read = no label (zoom in to see it)
+						local scr = 0
+						for k = 1, #seq - 1 do scr += onScreen(seq[k], seq[k + 1]) if scr > 26 then break end end
+						if scr <= 26 then return end
+						local half, acc = L / 2, 0
+						for k = 1, #seq - 1 do
+							local a2, b2 = seq[k], seq[k + 1]
+							local sl = (b2 - a2).Magnitude
+							if acc + sl >= half - 1e-9 then
+								side(a2 + (b2 - a2) * (sl > 0 and (half - acc) / sl or 0), b2 - a2, cen, fmt(L))
+								return
+							end
+							acc += sl
+						end
+					end
+					local m = #corners
+					if closed then
+						for k = 1, m do piece(corners[k], corners[k % m + 1]) end
+					else
+						for k = 1, m - 1 do piece(corners[k], corners[k + 1]) end
+					end
+				end
+			end
+		end
+	end
+	for i = used + 1, #ENT.lenTags do ENT.lenTags[i].Enabled = false end
+end
+-- is a dash under one of the length labels? (checked on screen: its ends and middle)
+function ENT.underLabel(a, b)
+	local holes = ENT.dashHoles
+	if not holes or #holes == 0 then return false end
+	local cam = workspace.CurrentCamera
+	for k = 0, 2 do
+		local sp, vis = cam:WorldToViewportPoint(a:Lerp(b, k / 2))
+		if vis then
+			for _, h in ipairs(holes) do
+				if math.abs(sp.X - h.x) <= h.hw and math.abs(sp.Y - h.y) <= h.hh then return true end
+			end
+		end
+	end
+	return false
+end
+-- ===== end v2.87 LENGTHS =====
 
 -- v2.43 (Dylan): a shape drawn EQUAL both ways (square, round ellipse) shows yellow + the word by the mouse
 function ENT.eqMark(isEq, word)
@@ -2612,7 +2822,7 @@ local HINT = {
 	rect3 = "RECT 3PT (any angle): click the start and end of one edge, then how wide.",
 	slot = "SLOT: click the centre of one end, the centre of the other end, then how wide.",
 	circle3 = "CIRCLE 3PT: click 3 points the circle goes through.",
-	arc = "ARC: click the centre, the start, then the end (Alt = the long way round). Arcs are guide lines.",
+	arc = "ARC: click the centre, the start, then the end (Alt = the long way round).",
 	ellipse = "ELLIPSE: click the centre, the end of the long axis, then how wide.",
 	spline = "SPLINE: click points for a smooth curve. Click the first point again = closed solid shape. End on another drawing = it stops there and closes the area. Finish / Enter / Esc = keep it as an open guide curve.",
 	point = "POINT: click to drop a snap point.",
@@ -2675,7 +2885,7 @@ function refreshStatus()
 	if ENT.pickUI then pcall(ENT.pickUI) end
 	if ENT.ribPaint then pcall(ENT.ribPaint) end
 	if not widget.Enabled then return end
-	if not active then setStatus("PAUSED (another tool took over). Press PROTO to carry on.") return end
+	if not active then setStatus("PAUSED (another tool took over). Click any PROTO button to carry on.") return end
 	if mode == "face" then
 		if facePart then
 			setStatus("FACE: " .. facePart.Name .. " / " .. faceId.Name .. ". Drag the orange handle or type an amount and press + or -.")
@@ -2686,7 +2896,8 @@ function refreshStatus()
 	end
 	if mode == "paint" then
 		if ENT.paintPicking then setStatus("PICK: click a part to copy its colour and material.") return end
-		setStatus("PAINT: pick a colour and / or material below, then click parts to paint them (each click = one Ctrl+Z step). 'Paint selected' paints everything selected. Pick = copy from a part.")
+		if ENT.paintBrush then setStatus("BRUSH: drag over a PROTO part to paint (radius / strength in the Brush boxes; Shift = paint it back to the part's colour). Let go = it's painted (one Ctrl+Z step).") return end
+		setStatus("PAINT: pick a colour and / or material below, then click parts to paint them (each click = one Ctrl+Z step). Pick = copy from a part.")
 		return
 	end
 	if mode == "mirror" then
@@ -2758,8 +2969,13 @@ function ENT.applySketchStore(value)
 		table.insert(shapes, sh)
 	end
 	sk.shapes = shapes
-	sk.faceSig, sk.faces, sk.fillSig = nil, nil, nil
+	sk.faceSig, sk.faces, sk.pvSig = nil, nil, nil
 	sk.regions, sk.sel, sk.moving = {}, nil, nil
+	-- v3.41 (glitch sweep): every shape is new now, so drop picks / drags that still point at the old ones
+	-- (Delete used to say it removed edges that were no longer there)
+	sk.segSel, sk.keySel, sk.reshape, sk.ctrlDrag = nil, nil, nil, nil
+	ENT.dimFirst, ENT.dimPending = nil, nil
+	if ENT.dimHide then pcall(ENT.dimHide) end
 	pend = {}
 	drawSketch() drawPreview() rebuildFields()
 	setStatus("Undo / redo: sketch has " .. #shapes .. " shape(s).")
@@ -2984,13 +3200,101 @@ local function addShape(s)
 	ENT.commitSketch("Draw " .. (NAMES[s.kind] or "shape"))
 end
 function rebuildFields()
+	if ENT.sideProps then
+		-- v3.12 (Dylan: "never really close, they just shrink so people know they are there")
+		local has = sk ~= nil and (sk.sel ~= nil or ENT.DRAW_TOOLS[tool] == true)
+		U.fields.Visible = has
+		if ENT.sideFieldsCard then ENT.sideFieldsCard.Visible = has end
+		if ENT.sideSel then
+			local ss = sk and sk.sel
+			ENT.sideSel.Visible = ss ~= nil
+			ENT.sideSel.Text = ss and ("Selected: " .. tostring(NAMES[ss.kind] or ss.kind) .. (ss.guide and "  (guide)" or "")) or ""
+		end
+		if ENT.sidePropsNote then
+			local fv = ENT.featNow ~= nil and ENT.featNow ~= ""
+			ENT.sidePropsNote.Text = (has or fv) and "" or (sk and "click a drawing" or "open a sketch, click a drawing")
+		end
+		task.defer(function() pcall(ENT.detailPlace) end)
+	end
 	for _, c in ipairs(U.fields:GetChildren()) do
 		if not c:IsA("UIListLayout") then c:Destroy() end
 	end
 	if not sk then mkLabel(U.fields, "(no sketch open)", nil, { col = COL.grey }) return end
+	-- v3.25 (Dylan: "when I highlight that it should show properties"): the picked drawing TOOL - its name, how it's
+	-- drawn, and EXACT SIZE (on = one click places it at the typed size)
+	if ENT.DRAW_TOOLS[tool] then
+		local TN = { rect = "Rectangle (centre)", rectc = "Rectangle (2 corners)", rect3 = "Rectangle (any angle)", circle = "Circle",
+			circle3 = "Circle (3 points)", arc = "Arc", tarc = "Tangent arc", ellipse = "Ellipse", slot = "Slot", ngon = "Polygon",
+			line = "Line", midline = "Centre line", spline = "Spline", wall = "Double line", point = "Point" }
+		local HOW = { rect = "Click the centre, then a corner.", rectc = "Click one corner, then the opposite one.",
+			rect3 = "Click along one edge, then how wide.", circle = "Click the centre, then the edge.", circle3 = "Click 3 points it goes through.",
+			arc = "Centre, start, end (Alt = long way round).", tarc = "Starts on the end of a line / arc.", ellipse = "Centre, end of the long axis, then how wide.",
+			slot = "Centre of each end, then how wide.", ngon = "Click the centre, then a corner.", line = "Click point after point. Enter / Finish = done.",
+			midline = "Click the middle, then an end.", spline = "Click points for a smooth curve. Enter = done.", wall = "Click along the path. Enter = done.",
+			point = "Click to drop a snap point." }
+		mkLabel(U.fields, "Tool: " .. (TN[tool] or tool), nil, { bold = true })
+		mkLabel(U.fields, HOW[tool] or "", nil, { col = COL.grey, size = 11 })
+		local SZ = { rect = { "W", "H" }, rectc = { "W", "H" }, circle = { "D" }, ngon = { "D" } }
+		local want = SZ[tool]
+		if want then
+			ENT.exact = ENT.exact or {}
+			local e = ENT.exact[tool]
+			if not e then e = { on = false, W = 4, H = 4, D = 4 } ENT.exact[tool] = e end
+			local tr = mkRow(U.fields)
+			mkBtn(tr, e.on and "Exact size: ON" or "Exact size: OFF", 110, function()
+				e.on = not e.on
+				setStatus(e.on and ("EXACT SIZE: one click places a " .. ((#want == 2) and (fmt(e.W) .. " x " .. fmt(e.H)) or ("D " .. fmt(e.D))) .. " " .. (TN[tool] or tool) .. ".") or "Exact size off - drag it out as usual.")
+				rebuildFields()
+			end, e.on and COL.on or nil)
+			if e.on then
+				tr = mkRow(U.fields)
+				for _, k in ipairs(want) do
+					mkLabel(tr, k, 16)
+					local b = mkBox(tr, fmt(e[k]), 50)
+					b.FocusLost:Connect(function()
+						local v = tonumber(b.Text)
+						if v and v > 0 then e[k] = v end
+						b.Text = fmt(e[k])
+					end)
+				end
+			end
+		end
+	end
+	-- v3.14 (Dylan: "put those options in the right hand bar"): the drawing tool's own settings
+	if tool == "ngon" then
+		local tr = mkRow(U.fields)
+		mkLabel(tr, "Polygon sides", 86)
+		local function setN(n)
+			U.sides.Text = tostring(math.clamp(math.floor(n), 3, 64))
+			rebuildFields()
+			if drawPreview then pcall(drawPreview) end
+		end
+		mkBtn(tr, "-", 24, function() setN((tonumber(U.sides.Text) or 6) - 1) end, COL.warn)
+		local nb = mkBox(tr, U.sides.Text, 40)
+		nb.FocusLost:Connect(function() local v = tonumber(nb.Text) if v then setN(v) else nb.Text = U.sides.Text end end)
+		mkBtn(tr, "+", 24, function() setN((tonumber(U.sides.Text) or 6) + 1) end, COL.go)
+	elseif tool == "wall" then
+		local tr = mkRow(U.fields)
+		mkLabel(tr, "Double line thick", 100)
+		local tb = mkBox(tr, U.wallT.Text, 44)
+		tb.FocusLost:Connect(function()
+			local v = tonumber(tb.Text)
+			if v and v > 0 then U.wallT.Text = tostring(v) end
+			tb.Text = U.wallT.Text
+			if drawPreview then pcall(drawPreview) end
+		end)
+		tr = mkRow(U.fields)
+		mkBtn(tr, "Middle", 70, function() ENT.wallMiddle = not ENT.wallMiddle ENT.wallSideBtns() rebuildFields() end, ENT.wallMiddle and COL.on or nil)
+		mkBtn(tr, U.wallFlipBtn.Text, 70, function()
+			if ENT.wallMiddle then ENT.wallMiddle = false else ENT.wallFlip = not ENT.wallFlip end
+			ENT.wallSideBtns()
+			rebuildFields()
+		end, (not ENT.wallMiddle) and COL.on or nil)
+	end
+	if ENT.DRAW_TOOLS[tool] and not sk.sel then return end
 	local s = sk.sel
 	if not s then mkLabel(U.fields, "Use Select and click a shape's edge. New shapes get selected by themselves.", nil, { col = COL.grey }) return end
-	mkLabel(U.fields, "Selected: " .. NAMES[s.kind] .. (s.guide and "  (guide)" or ""), nil, { bold = true })
+	if not ENT.sideSel then mkLabel(U.fields, "Selected: " .. NAMES[s.kind] .. (s.guide and "  (guide)" or ""), nil, { bold = true }) end
 	local function field(row, name, get, set)
 		mkLabel(row, name, 24)
 		local b = mkBox(row, fmt(get()), 56)
@@ -3102,6 +3406,7 @@ function setTool(t)
 	if sk then sk.segSel, sk.reshape = nil, nil end
 	for name, b in pairs(U.tools) do b.BackgroundColor3 = (name == t) and COL.on or COL.btn end
 	if ENT.ribPaint then pcall(ENT.ribPaint) end
+	if ENT.sideProps then pcall(rebuildFields) end   -- v3.14: the tool's settings in PROPERTIES
 	refreshStatus()
 	drawPreview()
 end
@@ -3949,6 +4254,12 @@ function ENT.deleteSeg()
 			n0 += 1
 		end
 	end
+	-- v3.41 (glitch sweep): the picked drawings are gone (e.g. after Ctrl+Z) - don't save an empty undo step
+	if n0 == 0 then
+		drawSketch() drawPreview()
+		setStatus("Nothing removed - the picked edges aren't there any more. Pick them again.")
+		return
+	end
 	sk.sel, sk.regions = nil, {}
 	drawSketch() drawPreview() rebuildFields()
 	ENT.commitSketch("Delete edges")
@@ -3959,6 +4270,18 @@ end
 -- grab a circle's edge = radius, grab the middle (inside / a curve) = move the whole drawing. Joined line ends follow. =====
 function ENT.snapSkip(s)
 	return (sk.moving and sk.moving.orig[s]) or (sk.reshape and sk.reshape.skip[s]) or false
+end
+-- v2.95 (Dylan: "if the rectangle's middle is clicked into a point, it stays there and only the sides move"): is this
+-- rectangle centred on a point - the sketch's centre, another drawing's centre, a crossing / key point?
+function ENT.rectAnchored(s)
+	if not (s and s.kind == "rect" and s.c) then return false end
+	local c = s.c
+	if c.Magnitude < 1e-3 then return true end
+	for _, o in ipairs(sk.shapes) do
+		if o ~= s and o.c and (o.c - c).Magnitude < 1e-3 then return true end
+	end
+	for _, kp in ipairs(ENT.keyPoints()) do if (kp - c).Magnitude < 1e-3 then return true end end
+	return false
 end
 -- open lines whose ends sit on point p (they follow a dragged corner)
 function ENT.endsAt(p, skipS)
@@ -3971,7 +4294,7 @@ function ENT.endsAt(p, skipS)
 	end
 	return t
 end
-function ENT.reshapeStart(q)
+function ENT.reshapeStart(q, plain)
 	local tol = camDist(W(q)) * 0.02
 	local R
 	-- 1) a corner / end
@@ -3980,9 +4303,14 @@ function ENT.reshapeStart(q)
 		if (s.kind == "poly" and not s.ctrl) or s.kind == "rect" or s.kind == "ngon" then
 			local pts = outline(s)
 			if not (s.kind == "poly" and #pts > 12 and not s.open) then
+				-- v3.41 (glitch sweep): an open curve (arc / trimmed circle, more than 12 points) can only be grabbed
+				-- at its two ends - grabbing a middle point bent the curve at one hidden point
+				local dense = s.kind == "poly" and #pts > 12
 				for i, v in ipairs(pts) do
-					local d = (v - q).Magnitude
-					if d < bd then bd, R = d, { how = "vertex", s = s, i = i, v0 = v } end
+					if not dense or i == 1 or i == #pts then
+						local d = (v - q).Magnitude
+						if d < bd then bd, R = d, { how = "vertex", s = s, i = i, v0 = v } end
+					end
 				end
 			end
 		end
@@ -3991,6 +4319,21 @@ function ENT.reshapeStart(q)
 	if not R then
 		for _, s in ipairs(sk.shapes) do
 			if s.kind == "circle" and math.abs((q - s.c).Magnitude - s.r) < tol then R = { how = "radius", s = s } break end
+		end
+	end
+	-- 2b) v2.92: an ellipse's edge = its width or its height (whichever way you grabbed it)
+	if not R then
+		for _, s in ipairs(sk.shapes) do
+			if s.kind == "ellipse" and s.a > 0 and s.b > 0 then
+				local ux, uy = V2(math.cos(s.rot), math.sin(s.rot)), V2(-math.sin(s.rot), math.cos(s.rot))
+				local d = q - s.c
+				local lx, ly = d:Dot(ux), d:Dot(uy)
+				local e = math.sqrt((lx / s.a) ^ 2 + (ly / s.b) ^ 2)
+				if math.abs(e - 1) * math.min(s.a, s.b) < tol then
+					R = { how = "ellipse", s = s, axis = (math.abs(lx) / s.a >= math.abs(ly) / s.b) and "a" or "b" }
+					break
+				end
+			end
 		end
 	end
 	-- 3) a straight side
@@ -4003,6 +4346,7 @@ function ENT.reshapeStart(q)
 	end
 	if R then
 		R.orig, R.start, R.moved, R.skip = copyShape(R.s), q, false, { [R.s] = true }
+		R.anchor = ENT.rectAnchored(R.s)   -- v2.95: a rectangle centred on a point keeps its centre there
 		R.fromTool = tool ~= "select"   -- grabbed while a draw tool is on (a plain Shift-click there still draws)
 		local pts = outline(R.s)
 		local follow = {}
@@ -4017,6 +4361,18 @@ function ENT.reshapeStart(q)
 	end
 	-- 4) the middle = move the whole drawing (Select only - with a draw tool, clicking inside a shape draws in it)
 	if tool ~= "select" then return false end
+	if plain then
+		-- v2.92 (plain drag, no Shift): only the CENTRE handle moves a drawing - clicking inside it still picks it
+		for _, s in ipairs(sk.shapes) do
+			if not s.open and not s.guide and s.kind ~= "point" and (shapeCentre(s) - q).Magnitude < tol then
+				ENT.startMove(q, s)
+				sk.moving.plainClick = true
+				setStatus("MOVING: drag it, let go to drop.")
+				return true
+			end
+		end
+		return false
+	end
 	local hit = pickShape(q)
 	if hit then
 		ENT.startMove(q, hit)
@@ -4028,6 +4384,8 @@ function ENT.reshapeStart(q)
 end
 function ENT.reshapeDrag()
 	local R = sk.reshape
+	-- (v2.92: a plain click wobbles a pixel or two - that's not a drag)
+	if R.plain and not R.moved and R.mx and math.abs(mouse.X - R.mx) + math.abs(mouse.Y - R.my) < 5 then return end
 	local p = mousePoint()
 	if not p then return end
 	local s, o = R.s, R.orig
@@ -4045,6 +4403,13 @@ function ENT.reshapeDrag()
 				if v.Magnitude > 1e-4 then to = nb + v.Unit * ENT.snapLen(v.Magnitude) end
 			end
 			s.pts[R.i] = to
+		elseif s.kind == "rect" and R.anchor then
+			-- v2.95: centred on a point = it stays centred there; both sides move together (grows / shrinks evenly)
+			local w = math.max(0.01, ENT.snapLen(math.abs(p.X - o.c.X) * 2))
+			local h = math.max(0.01, ENT.snapLen(math.abs(p.Y - o.c.Y) * 2))
+			s.c, s.w, s.h = o.c, w, h
+			local sx, sy = w / math.max(o.w, 1e-6), h / math.max(o.h, 1e-6)
+			moveF = function(old) return V2(o.c.X + (old.X - o.c.X) * sx, o.c.Y + (old.Y - o.c.Y) * sy) end
 		elseif s.kind == "rect" then
 			local opp = o.c * 2 - R.v0
 			local dx, dy = p.X - opp.X, p.Y - opp.Y
@@ -4056,9 +4421,14 @@ function ENT.reshapeDrag()
 			if v.Magnitude > 0.01 then s.r = ENT.snapLen(v.Magnitude) s.rot = math.atan2(v.Y, v.X) - 2 * PI * (R.i - 1) / s.n end
 			to = ENT.ngonPts(s.c, s.r, s.n, s.rot)[R.i]
 		end
-		moveF = function() return to end
+		moveF = moveF or function() return to end
 	elseif R.how == "radius" then
 		s.r = math.max(0.01, ENT.snapLen((p - o.c).Magnitude))   -- whole studs (Shift held = 1/10)
+	elseif R.how == "ellipse" then
+		local ux, uy = V2(math.cos(o.rot), math.sin(o.rot)), V2(-math.sin(o.rot), math.cos(o.rot))
+		local d = p - o.c
+		if R.axis == "a" then s.a = math.max(0.01, ENT.snapLen(math.abs(d:Dot(ux))))
+		else s.b = math.max(0.01, ENT.snapLen(math.abs(d:Dot(uy)))) end
 	elseif R.how == "edge" then
 		-- the grab point rounded to the CURRENT grid, so the side lands on studs (Shift held = 1/10, let go = studs)
 		local g = gridSize()
@@ -4070,6 +4440,18 @@ function ENT.reshapeDrag()
 			s.pts[R.j] = o.pts[R.j] + d
 			s.pts[R.j % n + 1] = o.pts[R.j % n + 1] + d
 			moveF = function(old) return old + d end
+		elseif s.kind == "rect" and R.anchor then
+			-- v2.95: centred on a point = the opposite side moves too (it stays centred)
+			local mid = (R.a0 + R.b0) / 2
+			local w, h = o.w, o.h
+			if math.abs(mid.Y - o.c.Y) > math.abs(mid.X - o.c.X) then
+				h = math.max(0.01, ENT.snapLen(math.abs(p.Y - o.c.Y) * 2))
+			else
+				w = math.max(0.01, ENT.snapLen(math.abs(p.X - o.c.X) * 2))
+			end
+			s.c, s.w, s.h = o.c, w, h
+			local sx, sy = w / math.max(o.w, 1e-6), h / math.max(o.h, 1e-6)
+			moveF = function(old) return V2(o.c.X + (old.X - o.c.X) * sx, o.c.Y + (old.Y - o.c.Y) * sy) end
 		elseif s.kind == "rect" then
 			local mid = (R.a0 + R.b0) / 2
 			if math.abs(mid.Y - o.c.Y) > math.abs(mid.X - o.c.X) then
@@ -4136,6 +4518,11 @@ function ENT.reshapeEnd()
 	local R = sk.reshape
 	sk.reshape = nil
 	if R and R.moved then rebuildFields() ENT.commitSketch("Reshape")
+	elseif R and R.plain then
+		-- v2.92: grabbed a handle but didn't drag = a normal Select click after all (pick the point / drawing)
+		ENT.noHandle = true
+		pcall(ENT.sketchClick)
+		ENT.noHandle = false
 	elseif R and R.fromTool then
 		-- draw tool + Shift-click without dragging = a normal (keep-the-tool-on) drawing click after all
 		ENT.noReshape = true
@@ -4301,8 +4688,18 @@ end
 -- what clicking edge j of s dimensions: { name, get(), set(v), round }  (or nil, reason)
 function ENT.dimInfo(s, j)
 	if s.kind == "rect" then
-		if j % 2 == 1 then return { name = "Width", get = function() return s.w end, set = function(v) s.w = v end } end
-		return { name = "Height", get = function() return s.h end, set = function(v) s.h = v end }
+		-- v3.01 (Dylan: "changing one side should not affect the other - top 10, bottom 50, the drawing adjusts"):
+		-- typing a size sets THAT side only (it shrinks / grows about its own middle); the rectangle becomes a 4-sided
+		-- shape. (To resize the whole rectangle evenly, drag a side's handle.)
+		local which = (j == 1 and "Bottom") or (j == 2 and "Right side") or (j == 3 and "Top") or "Left side"
+		return { name = which, get = function() return (j % 2 == 1) and s.w or s.h end,
+			set = function(v)
+				local pts = outline(s)
+				local a, b = pts[j], pts[j % 4 + 1]
+				local mid, u = (a + b) / 2, (b - a).Unit
+				pts[j], pts[j % 4 + 1] = mid - u * (v / 2), mid + u * (v / 2)
+				s.kind, s.pts, s.c, s.w, s.h = "poly", pts, nil, nil, nil
+			end }
 	elseif s.kind == "circle" then
 		return { name = "Diameter", round = true, get = function() return s.r * 2 end, set = function(v) s.r = v / 2 end }
 	elseif s.kind == "ngon" then
@@ -4330,12 +4727,10 @@ function ENT.dimInfo(s, j)
 			set = function(v)
 				local d = s.pts[i1] - s.pts[j]
 				if d.Magnitude < 1e-6 then return end
-				if not s.open and n == 4 then
-					-- 4-sided shape (Rect 3pt etc.): slide the far side so it stays a rectangle
-					local i2 = i1 % n + 1
-					local delta = d.Unit * (v - d.Magnitude)
-					s.pts[i1] += delta
-					s.pts[i2] += delta
+				if not s.open then
+					-- v3.01: a closed shape's side changes on its own, about its middle (the sides next to it lean to meet it)
+					local mid, u = (s.pts[j] + s.pts[i1]) / 2, d.Unit
+					s.pts[j], s.pts[i1] = mid - u * (v / 2), mid + u * (v / 2)
 				else
 					s.pts[i1] = s.pts[j] + d.Unit * v   -- the start stays put, the end moves
 				end
@@ -4572,7 +4967,9 @@ function ENT.trimPlan(q)
 	end
 	local function path(L0, L1)
 		local out = { at(L0) }
-		for _, off in ipairs(closed and { 0, total } or { 0 }) do
+		-- v3.41 (glitch sweep): a closed shape's piece can start before 0 (below the first cut), so look one lap back too
+		-- (it cut straight across a corner)
+		for _, off in ipairs(closed and { -total, 0, total } or { 0 }) do
 			for _, sg in ipairs(segs) do
 				local Lv = sg.L0 + off
 				if Lv > L0 + 1e-6 and Lv < L1 - 1e-6 then table.insert(out, sg.a) end
@@ -4872,7 +5269,7 @@ function ENT.patStart(kind)
 	ENT.revUI()
 	if tool ~= "select" or #pend > 0 then setTool("select") end
 	ENT.patAsk = { kind = kind, step = "line", parts = {} }
-	for _, o in ipairs(ENT.selectionList()) do
+	for _, o in ipairs((ENT.selectionList())) do   -- v3.41 (glitch sweep): first value only (it now returns 2)
 		local it = o:IsA("BasePart") and ENT.wholeOf(o) or o
 		if not table.find(ENT.patAsk.parts, it) then table.insert(ENT.patAsk.parts, it) end
 	end
@@ -4897,7 +5294,7 @@ end
 function ENT.wholeOf(part)
 	local it = part
 	if part.Parent and part.Parent:IsA("Model") and part.Parent ~= workspace then it = part.Parent end
-	while it.Parent and it.Parent:IsA("Model") and it.Parent ~= workspace and it.Parent.Name:sub(1, 4) == "DIM_" do it = it.Parent end
+	while it.Parent and it.Parent:IsA("Model") and it.Parent ~= workspace and ENT.isPN(it.Parent.Name) do it = it.Parent end
 	return it
 end
 -- a picked thing's box (a part: its own; a group: the box round all of it)
@@ -5073,7 +5470,10 @@ function ENT.patMovesFor(part)
 	local pl = sk.pl
 	local nrm = pl.u:Cross(pl.v)
 	local count = math.floor(tonumber(U.count.Text) or 0)
-	if count ~= count or count < 2 then return nil, "Count must be 2 or more (it includes the original)." end
+	-- v3.43 (pattern check): copying ALONG picked lines puts copies ON the lines (the original can be anywhere), so 1 per
+	-- line is fine there (one in the middle of each wall). Everywhere else the count includes the original.
+	local minC = (T and T.mode == "multi") and 1 or 2
+	if count ~= count or count < minC then return nil, minC == 1 and "Count must be 1 or more." or "Count must be 2 or more (it includes the original)." end
 	if count > ENT.MAX_COPIES then return nil, "Count is too big - " .. ENT.MAX_COPIES .. " copies max." end
 	local moves = {}
 	if P.kind == "round" then
@@ -5096,6 +5496,7 @@ function ENT.patMovesFor(part)
 		local pts = {}
 		-- n = the line's side direction (left of the way the line runs); a corner shared by 2 lines keeps both
 		local function add(p, dir, n)
+			if #pts > ENT.MAX_COPIES then return end   -- v3.41 (glitch sweep): stop adding once there are too many copies
 			for _, o in ipairs(pts) do
 				if (o.p - p).Magnitude < 0.01 then
 					if n and o.n and math.abs(o.n.Unit:Dot(n)) < 0.9 then o.n += n end
@@ -5175,6 +5576,8 @@ function ENT.patMovesFor(part)
 				end
 			end
 		end
+		-- v3.41 (glitch sweep): the copy limit counts the WHOLE pattern, not each line (it froze Studio)
+		if #pts > ENT.MAX_COPIES then return nil, "Too many copies - " .. ENT.MAX_COPIES .. " max." end
 		local q0 = to2D(pl, part.Position)
 		local d0 = lines[1].segs[1].b - lines[1].segs[1].a   -- v2.36: first REAL segment (curves can start with 2 equal points)
 		local a0 = math.atan2(d0.Y, d0.X)
@@ -5296,15 +5699,37 @@ function ENT.patHover()
 	-- v1.95: a blue hollow outline of every copy (like the extrude preview), so you can see the result first
 	local moves = (#P.parts > 0) and ENT.patMovesFor(ENT.patRef(P.parts))
 	if moves then
-		for _, it in ipairs(P.parts) do
-			local cf, size = ENT.itemBox(it)
-			for _, M in ipairs(moves) do ENT.ghostBox(M * cf, size) end
+		if #moves * #P.parts <= 240 then
+			for _, it in ipairs(P.parts) do
+				local cf, size = ENT.itemBox(it)
+				for _, M in ipairs(moves) do ENT.ghostBox(M * cf, size) end
+			end
+		else
+			-- v3.43 (pattern check): lots of copies = one box round all the picked things per spot (thousands of lines lagged)
+			local R = ENT.patRef(P.parts)
+			for k, M in ipairs(moves) do if k <= 500 then ENT.ghostBox(M * R.CFrame, R.Size) end end
 		end
 	end
 	local hov = ENT.partUnderMouse()
 	if hov then return (table.find(P.parts, hov) and "click = drop " or "click = copy ") .. hov.Name end
 	return #P.parts .. " part(s) - Enter = make copies"
 end
+-- v3.43 (pattern check): ONE copy of a part / group moved by T. Welds inside the copy are switched off while it's placed
+-- (a weld to a part outside the copy - e.g. the floor it's welded to - dragged that part along with it), then back on.
+function ENT.cloneAt(o, T)
+	local cl = o:Clone()
+	if not cl then return nil end
+	local welds = {}
+	for _, j in ipairs(cl:GetDescendants()) do
+		if j:IsA("WeldConstraint") and j.Enabled then j.Enabled = false table.insert(welds, j) end
+	end
+	cl:PivotTo(T * o:GetPivot())
+	cl.Parent = o.Parent
+	for _, j in ipairs(welds) do j.Enabled = true end
+	return cl
+end
+-- v3.43: how many copies at most in one go (copies x picked things) - thousands froze Studio
+ENT.MAX_CLONES = 2000
 function ENT.patGo()
 	local P = ENT.patAsk
 	if not P then return end
@@ -5313,16 +5738,18 @@ function ENT.patGo()
 	if #P.parts == 0 then ENT.err("Pick the parts to copy first - click them (they go green).") return end
 	local moves, why = ENT.patMovesFor(ENT.patRef(P.parts))
 	if not moves then ENT.err(why) return end
+	if #moves == 0 then ENT.err("No copies to make - every spot is where the part already is. Change the count / gap.") return end
+	-- v3.43 (pattern check): copies x picked things, not just copies
+	if #moves * #P.parts > ENT.MAX_CLONES then
+		ENT.err(("That's %d copies (%d spots x %d things) - %d max. Pick fewer things or lower the count."):format(#moves * #P.parts, #moves, #P.parts, ENT.MAX_CLONES))
+		return
+	end
 	local made = {}
 	local ok = record("PROTO Pattern " .. P.kind .. " " .. P.T.name, function()
 		for _, M in ipairs(moves) do
 			for _, it in ipairs(P.parts) do
-				local cl = it:Clone()
-				if cl then
-					if cl:IsA("Model") then cl:PivotTo(M * it:GetPivot()) else cl.CFrame = M * it.CFrame end
-					cl.Parent = it.Parent
-					table.insert(made, cl)
-				end
+				local cl = ENT.cloneAt(it, M)   -- v3.43: welds kept from dragging other parts along
+				if cl then table.insert(made, cl) end
 			end
 		end
 	end)
@@ -5338,11 +5765,134 @@ function ENT.setPlaneOffset(d)
 	local p0 = sk.pl0 or sk.pl
 	sk.pl0 = p0
 	sk.off = d
-	sk.pl = { o = p0.o + p0.n * d, u = p0.u, v = p0.v, n = p0.n }
-	ENT.computeRefLines()
-	drawSketch() drawPreview()
+	if ENT.planeApply then ENT.planeApply()   -- v3.49: keeps any tilt
+	else
+		sk.pl = { o = p0.o + p0.n * d, u = p0.u, v = p0.v, n = p0.n }
+		ENT.computeRefLines()
+		drawSketch() drawPreview()
+	end
 	setStatus("Sketch plane moved " .. string.format("%g", d) .. " studs " .. ((d >= 0) and "up / out" or "down / in") .. " from where it started. (Drawings move with it.)")
 end
+-- ===== v3.49 MOVABLE PLANES (Dylan: "we need movable planes" - drag handles on the plane) =====
+-- While sketching, the sketch plane has its own handles at its middle:
+--   ORANGE arrows = slide the plane up / down (out of / into the part)   (grid steps; Ctrl = free)
+--   RINGS         = tilt it round its own X (red) or Y (green) line        (5 degree steps; Ctrl = free)
+-- The drawings ride along with the plane. SKETCH tab > Plane > "Move plane" hides / shows the handles.
+ENT.planeMove = false -- v3.52 (Dylan: "it can't just be there all the time"): handles only after "Move plane" is turned ON
+ENT.planeTilt = CFrame.new()   -- (reset when a sketch starts)
+-- the plane as it is now: where it started, tilted, then slid along its (tilted) normal
+function ENT.planeApply()
+	if not sk then return end
+	local p0 = sk.pl0 or sk.pl
+	sk.pl0 = p0
+	local R = sk.tiltR or CFrame.new()
+	local u = R:VectorToWorldSpace(p0.u)
+	local v = R:VectorToWorldSpace(p0.v)
+	local n = u:Cross(v).Unit
+	if n:Dot(R:VectorToWorldSpace(p0.n)) < 0 then n = -n end
+	sk.pl = { o = p0.o + n * (sk.off or 0), u = u, v = v, n = n }
+	ENT.computeRefLines()
+	drawSketch() drawPreview()
+end
+function ENT.planeTiltDeg()
+	local p0, pl = sk and (sk.pl0 or sk.pl), sk and sk.pl
+	if not (p0 and pl) then return 0 end
+	return math.deg(math.acos(math.clamp(p0.n:Dot(pl.n), -1, 1)))
+end
+function ENT.planeHandlesMake()
+	if ENT.planeH then return end
+	local anc = Instance.new("Part")
+	anc.Name = "PROTO_Preview"
+	anc.Anchored, anc.CanCollide, anc.CanTouch, anc.CanQuery = true, false, false, false
+	anc.CastShadow = false
+	anc.Transparency = 1
+	anc.Locked = true
+	anc.Archivable = false
+	anc.Size = Vector3.new(3, 0.2, 3)
+	ENT.planeAnchor = anc
+	local h = Instance.new("Handles")
+	h.Style = Enum.HandlesStyle.Movement
+	h.Color3 = Color3.fromRGB(255, 150, 30)
+	h.Faces = Faces.new(Enum.NormalId.Top, Enum.NormalId.Bottom)
+	h.Parent = adornRoot
+	ENT.planeH = h
+	local a = Instance.new("ArcHandles")
+	a.Axes = Axes.new(Enum.Axis.X, Enum.Axis.Z)
+	a.Parent = adornRoot
+	ENT.planeArc = a
+	local st = {}
+	h.MouseButton1Down:Connect(function() if sk then st.off = sk.off or 0 end end)
+	h.MouseDrag:Connect(function(face, d)
+		if not (sk and st.off) or ex then return end
+		local v = st.off + ((face == Enum.NormalId.Bottom) and -d or d)
+		local g = ctrlDown() and 0 or gridSize()
+		if g > 0 then v = math.floor(v / g + 0.5) * g end
+		sk.off = v
+		if U.planeOff then U.planeOff.Text = string.format("%g", math.floor(v * 1000 + 0.5) / 1000) end
+		ENT.planeApply()
+		setStatus(("Plane moved %g studs, tilted %g degrees. (Drawings move with it.)"):format(math.floor(v * 100 + 0.5) / 100, math.floor(ENT.planeTiltDeg() * 10 + 0.5) / 10))
+	end)
+	h.MouseButton1Up:Connect(function() st = {} end)
+	a.MouseButton1Down:Connect(function() if sk then st.R = sk.tiltR or CFrame.new() end end)
+	a.MouseDrag:Connect(function(axis, ang)
+		if not (sk and st.R) or ex then return end
+		local deg = math.deg(ang)
+		if not ctrlDown() then deg = math.floor(deg / 5 + 0.5) * 5 end
+		local p0 = sk.pl0 or sk.pl
+		-- the ring's line, in the plane as it was when the drag started
+		local u0 = st.R:VectorToWorldSpace(p0.u)
+		local n0 = st.R:VectorToWorldSpace(p0.n)
+		local ax = (axis == Enum.Axis.X) and u0 or u0:Cross(n0)   -- (the ring's own axis: X = across, Z = the other way)
+		sk.tiltR = CFrame.fromAxisAngle(ax, math.rad(deg)) * st.R
+		ENT.planeApply()
+		setStatus(("Plane tilted %g degrees, moved %g studs. (Drawings move with it.) Ctrl = free angle."):format(math.floor(ENT.planeTiltDeg() * 10 + 0.5) / 10, math.floor((sk.off or 0) * 100 + 0.5) / 100))
+	end)
+	a.MouseButton1Up:Connect(function() st = {} end)
+end
+-- put the handles on the sketch plane's middle (or hide them)
+function ENT.planeHandlesUpd()
+	local show = sk and ENT.planeMove and not ex and not ENT.arr and not ENT.patAsk and not ENT.revAsk and active
+	if not show then
+		if ENT.planeH then ENT.planeH.Adornee = nil ENT.planeArc.Adornee = nil end
+		if ENT.planeAnchor then ENT.planeAnchor.Parent = nil end
+		return
+	end
+	ENT.planeHandlesMake()
+	local pl = sk.pl
+	local anc = ENT.planeAnchor
+	local s = math.clamp(camDist(pl.o) * 0.06, 1, 12)
+	anc.Size = Vector3.new(s, 0.05, s)
+	anc.CFrame = CFrame.fromMatrix(pl.o, pl.u, pl.n)
+	anc.Parent = workspace
+	if ENT.planeH.Adornee ~= anc then ENT.planeH.Adornee = anc ENT.planeArc.Adornee = anc end
+end
+function ENT.planeMoveToggle()
+	ENT.planeMove = not ENT.planeMove
+	if U.planeMoveBtn then
+		U.planeMoveBtn.Text = ENT.planeMove and "Move plane: ON" or "Move plane: OFF"
+		U.planeMoveBtn.BackgroundColor3 = ENT.planeMove and COL.on or COL.btn
+	end
+	pcall(ENT.planeHandlesUpd)
+	setStatus(ENT.planeMove and "MOVE PLANE: drag the orange arrows to slide the sketch plane, the rings to tilt it (drawings move with it)." or "Plane handles hidden.")
+end
+function ENT.planeReset()
+	if not sk then return end
+	sk.tiltR = nil
+	sk.off = 0
+	if U.planeOff then U.planeOff.Text = "0" end
+	ENT.planeApply()
+	setStatus("Sketch plane back where it started.")
+end
+do
+	-- every redraw of the sketch puts the handles where the plane is now
+	local orig = drawSketch
+	drawSketch = function(...)
+		orig(...)
+		pcall(ENT.planeHandlesUpd)
+	end
+end
+-- (leaving the sketch hides them too - see exitSketch)
+-- ===== end v3.49 MOVABLE PLANES =====
 -- the outline of what an extrude / cut made: both end loops + the side edges of shapes with few corners (world space)
 function ENT.featureSegs(list, z0, z1)
 	local out = {}
@@ -5513,7 +6063,7 @@ function ENT.attachOutline(inst, segs, kind)
 			math.floor(b.X * 1000) / 1000, math.floor(b.Y * 1000) / 1000, math.floor(b.Z * 1000) / 1000 })
 	end
 	local v = Instance.new("StringValue")
-	v.Name = "DIM_Outline"
+	v.Name = "PROTO_Outline"
 	v.Value = HttpService:JSONEncode(t)
 	if kind then pcall(function() v:SetAttribute("DIM_kind", kind) end) end
 	if kind == "cut" then
@@ -5529,6 +6079,7 @@ function ENT.attachOutline(inst, segs, kind)
 	end
 	v.Parent = inst
 	pcall(function() game:GetService("CollectionService"):AddTag(v, "DIM_Outline") end)
+	return v
 end
 -- v2.40: copy a saved outline / bounds value onto a NEW part (after a union / subtract). The points are stored in
 -- the part's own space - the new part sits / turns differently, so they're moved across through the world
@@ -5655,7 +6206,7 @@ function ENT.computeRefLines()
 				local cnt = 0
 				for _, ch in ipairs(par:GetChildren()) do if ch:IsA("BasePart") then cnt += 1 if cnt > 6 then many = true break end end end
 			end
-			if part ~= host and part.Name ~= "DIM_Preview" and part.Name ~= "Baseplate" and part.Size.Magnitude < 400
+			if part ~= host and not ENT.isPrev(part.Name) and part.Name ~= "Baseplate" and part.Size.Magnitude < 400
 				and part.ClassName == "Part" and part.Shape == Enum.PartType.Block and not many
 				and part.Transparency < 1 then
 				n += 1
@@ -6371,7 +6922,7 @@ function ENT.finishParts(inst)
 				local cutIn = ENT.cutting
 				if not cutIn then
 					for _, ch in ipairs(p:GetChildren()) do
-						if ch.Name == "DIM_Outline" and ch:IsA("StringValue") and ENT.outKind(ch, p) == "cut" then cutIn = true break end
+						if ENT.isOutline(ch.Name) and ch:IsA("StringValue") and ENT.outKind(ch, p) == "cut" then cutIn = true break end
 					end
 				end
 				if cutIn then fid = Enum.CollisionFidelity.Default end
@@ -6469,6 +7020,30 @@ local function sketchClick()
 				return
 			end
 		end
+		-- v2.92 (Dylan: "I can't pull or push the shapes"): DRAG HANDLES - no Shift needed. Grab a corner (moves it /
+		-- resizes a rectangle from it), a side (pushes / pulls that side), a circle / ellipse edge (size), or the centre
+		-- dot (moves the drawing). Let go without dragging = the normal click (pick the point / drawing).
+		if not ENT.picking and not ENT.noHandle and #pend == 0 and not shiftDown() and not ctrlDown() then
+			-- v3.00 (Dylan: "one touch and pull makes it move, a double press sets its size like a dimension"):
+			-- DOUBLE-CLICK a line / edge / circle = type its size (the Dimension tool's box, right by the mouse)
+			local now = os.clock()
+			local L = ENT.lastSelClick
+			local dbl = L and (now - L.t) < 0.4 and (L.q - q).Magnitude < camDist(W(q)) * 0.02
+			ENT.lastSelClick = { t = now, q = q }
+			if dbl and ENT.pickEdge(q) then
+				ENT.lastSelClick = nil
+				ENT.dimFirst, ENT.dimPending = nil, nil
+				local okD, errD = pcall(ENT.dimClick, q)
+				if not okD then warn("PROTO size box: " .. tostring(errD)) end
+				drawSketch() drawPreview()
+				return
+			end
+			if ENT.reshapeStart(q, true) then
+				if sk.reshape then sk.reshape.plain, sk.reshape.mx, sk.reshape.my = true, mouse.X, mouse.Y end
+				drawSketch() drawPreview()
+				return
+			end
+		end
 		-- a KEY POINT (an end, a corner, a crossing, where a drawing crosses a yellow centre line)? -> pick it; Delete = split there
 		if not ENT.picking then
 			local best, bd = nil, camDist(W(q)) * 0.015
@@ -6505,6 +7080,10 @@ local function sketchClick()
 		local sig = ENT.sigAt(q)
 		local inside = {}
 		for _, s in ipairs(closedShapes()) do if sig[s] then table.insert(inside, s) end end   -- the split-up areas, not the raw drawings
+		-- v2.90 (Dylan: "sometimes the cuts just flat out refuse to cut but the lines are correct"): a drawing INSIDE
+		-- another one that doesn't touch it -> the click is in both outlines. The area clicked is the innermost one
+		-- (the outer one has it as a hole) - it used to come out as "several overlapping shapes" and the cut refused.
+		if #inside > 1 and ENT.innermost then inside = ENT.innermost(inside) end
 		if #inside > 0 then region = { inside = inside } end
 		if shiftDown() then
 			-- Shift-click: add / take away this area from what gets extruded
@@ -6531,7 +7110,14 @@ local function sketchClick()
 		drawSketch() rebuildFields() refreshStatus()
 		return
 	end
-	if tool == "rect" then
+	local ex1 = ENT.exact and ENT.exact[tool]
+	if ex1 and ex1.on and #pend == 0 and (tool == "rect" or tool == "rectc" or tool == "circle" or tool == "ngon") then
+		-- v3.25 EXACT SIZE: one click places it
+		if tool == "rect" then addShape({ kind = "rect", c = p, w = ex1.W, h = ex1.H })
+		elseif tool == "rectc" then addShape({ kind = "rect", c = p + V2(ex1.W / 2, ex1.H / 2), w = ex1.W, h = ex1.H })
+		elseif tool == "circle" then addShape({ kind = "circle", c = p, r = ex1.D / 2 })
+		else addShape({ kind = "ngon", c = p, r = ex1.D / 2, n = sidesN(), rot = 0 }) end
+	elseif tool == "rect" then
 		if #pend == 0 then pend = { p } else
 			local a = pend[1]
 			pend = {}
@@ -6783,22 +7369,42 @@ end
 -- ===== PAINT =====
 function ENT.paintRefresh()
 	local c = ENT.paintCol
-	U.paintNow.Text = ("Colour %d, %d, %d   Material %s"):format(math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5), ENT.paintMat.Name)
+	U.paintNow.Text = ("Colour %s  (%d, %d, %d)   Material %s"):format(ENT.hexOf(c), math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5), ENT.paintMat.Name)
 	U.paintNow.TextColor3 = c
-	U.paintRGB.Text = ("%d, %d, %d"):format(math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
+	U.paintRGB.Text = ENT.hexOf(c)   -- v2.79: shown as hex
 	for b, col in pairs(U.swatches) do b.Text = (col == c) and "X" or "" end
 	for b, m in pairs(U.matBtns) do b.BackgroundColor3 = (m == ENT.paintMat) and COL.on or COL.btn end
-	U.paintColBtn.Text = ENT.paintDoCol and "Colour: on" or "Colour: off"
-	U.paintColBtn.BackgroundColor3 = ENT.paintDoCol and COL.on or COL.btn
-	U.paintMatBtn.Text = ENT.paintDoMat and "Material: on" or "Material: off"
-	U.paintMatBtn.BackgroundColor3 = ENT.paintDoMat and COL.on or COL.btn
-	if U.paintFaceBtn then U.paintFaceBtn.Text = ENT.paintFace and "Paint: ONE FACE" or "Paint: WHOLE PART" end
+	if not (ENT.paintDoCol or ENT.paintDoMat) then ENT.paintDoCol = true end   -- (never "nothing")
+	U.paintColBtn.Text = (ENT.paintDoCol and ENT.paintDoMat and "Paint: COLOUR + MATERIAL") or (ENT.paintDoCol and "Paint: COLOUR") or "Paint: MATERIAL"
+	U.paintColBtn.BackgroundColor3 = COL.on
+	if U.paintPickToolBtn then U.paintPickToolBtn.BackgroundColor3 = (ENT.paintPicking and mode == "paint") and COL.on or COL.btn end
+	if U.paintFaceBtn then U.paintFaceBtn.Text = (ENT.paintBrush and "Paint: BRUSH") or (ENT.paintFace and "Paint: ONE FACE") or "Paint: WHOLE PART" end
+	if U.paintMatPick then U.paintMatPick.Text = ((ENT.paintVariant or "") ~= "" and ENT.paintVariant) or ENT.paintMat.Name end   -- v3.63 (v3.64: your own material by name)
+	if ENT.matPickerPlace and ENT.matGui and ENT.matGui.Enabled then pcall(ENT.matPickerPlace, true) end
+	if U.paintPickBtn then
+		U.paintPickBtn.BackgroundColor3 = c
+		U.paintPickBtn.TextColor3 = (c.R + c.G + c.B > 1.6) and Color3.new(0, 0, 0) or Color3.new(1, 1, 1)
+		U.paintPickBtn.Text = "Colour"   -- v3.04: no number (Dylan: "nobody needs to see that") - the button IS the colour
+	end
+	if U.brushSymBtn then
+		U.brushSymBtn.Text = ENT.brushSym and "X sym: on" or "X sym: off"
+		U.brushSymBtn.BackgroundColor3 = ENT.brushSym and COL.on or COL.btn
+	end
+	if not ENT.paintBrush and ENT.brushRingOff then pcall(ENT.brushRingOff) end
 	refreshStatus()
+	if ENT.ribPaint then pcall(ENT.ribPaint) end   -- v3.61: Pick / Paint mode light up right away
+end
+function ENT.pickToggle()
+	local was = ENT.paintPicking and mode == "paint"
+	if mode ~= "paint" then setMode("paint") end
+	ENT.paintPicking = not was
+	ENT.paintRefresh()
+	if ENT.paintPicking then setStatus("PICK: click a part to copy its colour + material. Click Pick again (or Esc) to stop.") end
 end
 -- one face: a SurfaceGui with a plain colour panel on that side (follows the part when it moves)
 function ENT.paintFaceOf(part, face, clear)
 	if not face then return end
-	local name = "DIM_Face_" .. face.Name
+	local name = "PROTO_Face_" .. face.Name
 	record(clear and "PROTO Clear face paint" or "PROTO Paint face", function()
 		local g = part:FindFirstChild(name)
 		if clear then
@@ -6823,18 +7429,50 @@ function ENT.paintFaceOf(part, face, clear)
 	end)
 	setStatus((clear and "Cleared the " or "Painted the ") .. face.Name .. " face of " .. part.Name .. ". Ctrl+Z undoes it.")
 end
+-- v3.44 (paint check): a part PROTO made (only those get colour inside the mesh / the brush - a plain Roblox brick
+-- clicked with ONE FACE used to be swapped for a mesh copy of itself; it gets a face panel instead)
+function ENT.protoMade(p)
+	if not (p and p:IsA("BasePart")) then return false end
+	if p:IsA("MeshPart") then return true end
+	for k in pairs(p:GetAttributes()) do if k:sub(1, 6) == "PROTO_" or k:sub(1, 4) == "DIM_" then return true end end
+	if ENT.isPN(p.Name) then return true end
+	local m = p.Parent
+	return m ~= nil and m:IsA("Model") and ENT.isPN(m.Name)
+end
+-- v3.44: colour kept INSIDE the mesh (painted faces / brush) - then its own colour lives in PROTO_PaintBase, not Color
+function ENT.hasMeshPaint(p)
+	if not (p and p:IsA("BasePart") and ENT.detailKind(p)) then return false end
+	return #ENT.paintOf(p) > 0 or #ENT.brushOf(p) > 0 or typeof(p:GetAttribute("PROTO_PaintBase")) == "Color3"
+end
 function ENT.paintParts(list)
 	if #list == 0 then setStatus("Nothing to paint.") return end
+	local later = {}
 	record("PROTO Paint", function()
 		for _, p in ipairs(list) do
 			if ENT.paintDoCol then
-				if p:IsA("PartOperation") then p.UsePartColor = true end
-				p.Color = ENT.paintCol
+				-- v3.44 (paint check): a part with colour inside its mesh gets its OWN colour changed (painted faces stay)
+				-- - setting Color tinted the whole mesh, and the next rebuild put it back
+				if ENT.hasMeshPaint(p) then table.insert(later, p)
+				else
+					if p:IsA("PartOperation") then p.UsePartColor = true end
+					p.Color = ENT.paintCol
+				end
 			end
-			if ENT.paintDoMat then p.Material = ENT.paintMat p.MaterialVariant = "" end
+			if ENT.paintDoMat then p.Material = ENT.paintMat p.MaterialVariant = ENT.paintVariant or "" end
 		end
 	end)
 	setStatus("Painted " .. #list .. " part(s). Ctrl+Z undoes it.")
+	if #later > 0 then
+		local col = ENT.paintCol
+		task.spawn(function()
+			for _, p in ipairs(later) do
+				if p.Parent then
+					local np, why = ENT.paintBaseColour(p, col)
+					if not np then setStatus("PAINT: " .. tostring(why)) end
+				end
+			end
+		end)
+	end
 end
 function ENT.paintSelected()
 	local list, seen = {}, {}
@@ -6860,6 +7498,8 @@ function ENT.startPlanes()
 	if not showPlanes then togglePlanes() end
 	drawPlanes()
 	setStatus(("START: planes at %d, %d, %d. Click Front / Top / Right to sketch on it."):format(o.X, o.Y, o.Z))
+	ENT.sketchStarted = true   -- v3.09: the Start button now says Exit sketch
+	if ENT.ribPaint then pcall(ENT.ribPaint) end
 end
 -- ===== targets, sketch start / stop, modes =====
 function ENT.watchTarget(p)
@@ -6881,8 +7521,10 @@ function ENT.watchTarget(p)
 			upd()
 		end
 	end))
+	-- v3.41 (glitch sweep): also let go when the part's group (Model) is deleted - the part still had a Parent then
+	-- (AncestryChanged fires for a parent's parent changing too)
 	table.insert(targetConns, p.AncestryChanged:Connect(function()
-		if not p.Parent and target == p then setTarget(nil) end
+		if target == p and not p:IsDescendantOf(workspace) then setTarget(nil) end
 	end))
 end
 function setTarget(p)
@@ -6896,6 +7538,7 @@ function setTarget(p)
 	if p then Selection:Set({ ENT.featureModel(p) or p }) end
 	drawPlanes()
 	refreshStatus()
+	if ENT.detailRefresh then pcall(ENT.detailRefresh) end
 end
 -- wall-like planes: turn the sketch so its "up" is the world's up (a lying-down cylinder's planes were sideways)
 function ENT.uprightPlane(pl)
@@ -6909,6 +7552,8 @@ function ENT.uprightPlane(pl)
 	return pl
 end
 function startSketch(pl, host, name)
+	if ENT.drawTopoFace then pcall(ENT.drawTopoFace, nil) end   -- (v2.76)
+	ENT.topoFaceHot = nil
 	if ENT.faceGlow then ENT.faceGlow.Visible = false end
 	for _, b in ipairs(ENT.glowPool or {}) do b.Visible = false end
 	pl = ENT.uprightPlane(pl)
@@ -6928,6 +7573,13 @@ function startSketch(pl, host, name)
 	view("Normal")
 end
 function exitSketch()
+	ENT.sketchStarted = false   -- v3.09
+	task.defer(function() pcall(ENT.planeHandlesUpd) end)   -- v3.49: the plane handles go with the sketch
+	if ENT.planeMove then   -- v3.52: "Move plane" switches itself OFF when the sketch ends (next sketch starts clean)
+		ENT.planeMove = false
+		if U.planeMoveBtn then U.planeMoveBtn.Text = "Move plane: OFF" U.planeMoveBtn.BackgroundColor3 = COL.btn end
+	end
+	if ENT.editCut and ENT.editCutEnd then ENT.editCutEnd() end   -- v2.94
 	if ex then cancelExtrude() end
 	ENT.revAsk = nil
 	ENT.revUI()
@@ -6945,7 +7597,11 @@ function togglePlanes()
 	drawPlanes()
 end
 function setMode(m)
-	if ENT.edgeTool then ENT.edgeTool = nil ENT.edgeLine.Visible = false end
+	if ENT.brushRingOff then pcall(ENT.brushRingOff) end   -- v3.02
+	ENT.brushStroke = nil   -- v3.44 (paint check): a half-done brush stroke is dropped on a mode change
+	if ENT.arr then pcall(ENT.arrStop) end   -- v3.47: the live linear pattern ends on a mode change
+	-- v3.41 (glitch sweep): turn the edge tool fully off (lit edge, hover, tag, toolbar) - edgeStop never calls setMode
+	if ENT.edgeTool then ENT.edgeStop() end
 	if (m == "face" or m == "mirror" or m == "paint") and sk then exitSketch() end
 	mode = m
 	if m ~= "face" then faceUnlock() end
@@ -6974,7 +7630,7 @@ function ENT.pocketPanels(root)
 	for _, q in ipairs(parts) do
 		if q:IsA("BasePart") then
 			for _, ch in ipairs(q:GetChildren()) do
-				if ch.Name == "DIM_Outline" and ch:IsA("StringValue") then key[#key + 1] = tostring(q.CFrame) .. #ch.Value end
+				if ENT.isOutline(ch.Name) and ch:IsA("StringValue") then key[#key + 1] = tostring(q.CFrame) .. #ch.Value end
 			end
 		end
 	end
@@ -6987,7 +7643,7 @@ function ENT.pocketPanels(root)
 	for _, q in ipairs(parts) do
 		if q:IsA("BasePart") then
 			for _, ch in ipairs(q:GetChildren()) do
-				if ch.Name == "DIM_Outline" and ch:IsA("StringValue") and ENT.outKind(ch, q) == "cut" then
+				if ENT.isOutline(ch.Name) and ch:IsA("StringValue") and ENT.outKind(ch, q) == "cut" then
 					local P = ENT.prismCache[ch.Value]
 					if P == nil then
 						local data = ENT.outlineCache[ch.Value]
@@ -7167,7 +7823,7 @@ ENT.edgeLine.Adornee = TERRAIN
 ENT.edgeLine.AlwaysOnTop = true
 ENT.edgeLine.Thickness = 9
 ENT.edgeLine.ZIndex = 5
-ENT.edgeLine.Color3 = Color3.fromRGB(255, 150, 30)
+ENT.edgeLine.Color3 = Color3.fromRGB(80, 230, 120)
 ENT.edgeLine.Visible = false
 ENT.edgeLine.Parent = adornRoot
 -- the block a part is (its own box, or the remembered block of an already-rounded one): CFrame, Size
@@ -7179,7 +7835,7 @@ function ENT.blockOf(p)
 	-- v2.40: a block cut before PROTO remembered it (no BlockRel): its own box is the block
 	if p:IsA("PartOperation") then
 		for _, ch in ipairs(p:GetChildren()) do
-			if ch.Name == "DIM_Outline" and ch:IsA("StringValue") and ENT.outKind(ch, p) == "cut" then return p.CFrame, p.Size end
+			if ENT.isOutline(ch.Name) and ch:IsA("StringValue") and ENT.outKind(ch, p) == "cut" then return p.CFrame, p.Size end
 		end
 	end
 	return nil
@@ -7229,7 +7885,7 @@ function ENT.edgeInside(E, p, along)
 		probe.Parent = workspace
 		local found = nil
 		for _, x in ipairs(workspace:GetPartsInPart(probe, op)) do
-			if x ~= probe and x.Name ~= "DIM_Box" and x.Name ~= "DIM_Preview" and x.Transparency < 1 and x ~= TERRAIN and not x.Locked then found = x break end
+			if x ~= probe and not ENT.isBox(x.Name) and not ENT.isPrev(x.Name) and x.Transparency < 1 and x ~= TERRAIN and not x.Locked then found = x break end
 		end
 		probe.Parent = nil
 		return found
@@ -7242,162 +7898,6 @@ function ENT.edgeInside(E, p, along)
 	return nil
 end
 -- ===== v2.40 FILL CORNERS (Dylan): every inside fill remembers where it ENDS. When a new fill ends where another
--- fill ends (two chamfers / fillets meeting at a corner, at right angles), a small corner piece is added between
--- them so the two sloped faces meet cleanly (a mitre) instead of leaving a triangle hole. =====
--- all inside-fill ends near point q: { c = corner point, dir = along the edge (pointing OUT of the fill), u, v, r, t }
-function ENT.fillEndsNear(q, rad)
-	local out = {}
-	local op = OverlapParams.new()
-	op.MaxParts = 60
-	local ok, parts = pcall(function() return workspace:GetPartBoundsInRadius(q, rad, op) end)
-	if not ok then return out end
-	for _, part in ipairs(parts) do
-		local js = part:GetAttribute("PROTO_EdgesDone")
-		if js then
-			local cf, size = ENT.blockOf(part)
-			local okD, done = pcall(function() return game:GetService("HttpService"):JSONDecode(js) end)
-			if cf and okD and type(done) == "table" then
-				local h = { size.X / 2, size.Y / 2, size.Z / 2 }
-				for _, d in ipairs(done) do
-					if d.i and d.ux then
-						local k = d.k
-						local a, b = (k % 3) + 1, ((k + 1) % 3) + 1
-						local edgeC = AXV[a] * (d.a * h[a]) + AXV[b] * (d.b * h[b])
-						local dir = cf:VectorToWorldSpace(AXV[k])
-						local u = cf:VectorToWorldSpace(V3(d.ux, d.uy, d.uz))
-						local v = cf:VectorToWorldSpace(V3(d.vx, d.vy, d.vz))
-						for _, e in ipairs({ { d.s0 or -h[k], -1 }, { d.s1 or h[k], 1 } }) do
-							out[#out + 1] = { c = cf:PointToWorldSpace(edgeC + AXV[k] * e[1]), dir = dir * e[2], u = u, v = v, r = d.r, t = d.t }
-						end
-					end
-				end
-			end
-		end
-	end
-	return out
-end
--- a solid = the convex hull of these points (made as the overlap of big blocks, one per hull face)
-function ENT.hullPart(pts)
-	local n = #pts
-	if n < 4 then return nil end
-	local ctr = V3()
-	for _, p in ipairs(pts) do ctr += p end
-	ctr /= n
-	local ext = 0
-	for _, p in ipairs(pts) do ext = math.max(ext, (p - ctr).Magnitude) end
-	if ext < 1e-3 then return nil end
-	local planes = {}
-	local eps = math.max(1e-4, ext * 1e-4)
-	for i = 1, n - 2 do for j = i + 1, n - 1 do for k = j + 1, n do
-		local nv = (pts[j] - pts[i]):Cross(pts[k] - pts[i])
-		if nv.Magnitude > 1e-6 then
-			nv = nv.Unit
-			local pos, neg = false, false
-			for m = 1, n do
-				local dd = nv:Dot(pts[m] - pts[i])
-				if dd > eps then pos = true elseif dd < -eps then neg = true end
-			end
-			if not (pos and neg) then
-				if pos then nv = -nv end   -- outward
-				local off = nv:Dot(pts[i])
-				local dup = false
-				for _, q in ipairs(planes) do if q.n:Dot(nv) > 0.9999 and math.abs(q.off - off) < eps * 10 then dup = true break end end
-				if not dup then planes[#planes + 1] = { n = nv, off = off } end
-			end
-		end
-	end end end
-	if #planes < 4 then return nil end
-	local S = ext * 6 + 1
-	local blocks = {}
-	for _, q in ipairs(planes) do
-		local P = ctr + q.n * (q.off - q.n:Dot(ctr))   -- the centre, pushed onto the face plane
-		local a = math.abs(q.n.Y) < 0.9 and q.n:Cross(Vector3.yAxis).Unit or q.n:Cross(Vector3.xAxis).Unit
-		local bq = Instance.new("Part")
-		bq.Anchored, bq.CanCollide, bq.Transparency = true, false, 1
-		bq.Size = V3(S, S, S)
-		bq.CFrame = CFrame.fromMatrix(P - q.n * (S / 2), a, q.n:Cross(a))
-		bq.Parent = workspace
-		blocks[#blocks + 1] = bq
-	end
-	-- v2.40 fix: overlap them ONE AT A TIME (all at once gave the overlap with ANY of them = a giant box)
-	local cur = table.remove(blocks, 1)
-	for _, bq in ipairs(blocks) do
-		local ok, res = pcall(function() return GeometryService:IntersectAsync(cur, { bq }, ENT.FAST) end)
-		cur.Parent = nil
-		bq.Parent = nil
-		if not (ok and type(res) == "table" and res[1]) then
-			for _, x in ipairs(blocks) do x.Parent = nil end
-			return nil
-		end
-		cur = res[1]
-		cur.Parent = workspace
-	end
-	return cur
-end
--- the corner piece between a new fill's end and any other fill's end that meets it
-function ENT.cornerPieces(ends, isF)
-	local pieces = {}
-	for _, A in ipairs(ends) do
-		for _, B in ipairs(ENT.fillEndsNear(A.c, A.r * 3 + 1)) do
-			local near = (B.c - A.c).Magnitude < math.max(A.r, B.r) * 1.2 + 0.05
-			local square = math.abs(A.dir:Dot(B.dir)) < 0.3
-			-- a REAL corner: each fill ends against the other one's wall - A runs into the face B grows out of, and
-			-- B runs into the face A grows out of (so they share the third wall). Anything else isn't a corner.
-			local meets = (B.dir:Dot(A.u) < -0.9 or B.dir:Dot(A.v) < -0.9) and (A.dir:Dot(B.u) < -0.9 or A.dir:Dot(B.v) < -0.9)
-			-- v2.40 OUTSIDE corner (round the outside of a pillar / the end of a wall): the two fills point PAST each
-			-- other's ends. Each one carries on r past the corner and is cut on the 45-degree line where they meet
-			-- (a mitre, like a picture frame) - built as one piece: a little pyramid over the corner square
-			local up
-			for _, a in ipairs({ A.u, A.v }) do for _, b in ipairs({ B.u, B.v }) do if a:Dot(b) > 0.99 then up = a end end end
-			local outer = up and near and square and B.t == A.t and (A.dir:Dot(B.u) > 0.9 or A.dir:Dot(B.v) > 0.9) and (B.dir:Dot(A.u) > 0.9 or B.dir:Dot(A.v) > 0.9)
-			if outer then
-				-- (Dylan's way) a small box sitting in the corner square, then the two outside cuts shape it:
-				-- chamfer = keep what's inside BOTH 45-degree diamonds, fillet = take BOTH rounds out of it
-				-- the EXACT corner = where the two edge lines cross (the fill ends were pushed a hair past it, and
-				-- averaging them shifted the piece over)
-				local C = A.c + A.dir * (B.c - A.c):Dot(A.dir)
-				local X, Z = A.dir, B.dir
-				local rr = math.max(A.r, B.r)
-				local function wp(sz, cfr, shape)
-					local q = Instance.new("Part")
-					q.Anchored, q.CanCollide, q.Transparency = true, false, 1
-					if shape then q.Shape = shape end
-					q.Size = sz
-					q.CFrame = cfr
-					q.Parent = workspace
-					return q
-				end
-				-- Dylan's way: 1) a BOX that fills exactly the corner square (r x r, r tall), no moving parts
-				-- 2) each chamfer seen as a square: its OUTSIDE half is a cutter - run it long past the corner
-				-- 3) cut the box with both outsides -> what's left is the corner shape
-				local box = wp(V3(rr, rr, rr), CFrame.fromMatrix(C + (X + Z + up) * (rr / 2), X, up))
-				local cutters = {}
-				for _, F in ipairs({ { X, Z }, { Z, X } }) do
-					local run, away = F[1], F[2]   -- run = along the fill, away = out from its wall
-					if isF then
-						-- fillet: the outside bit = the round's cylinder (r out, r up)
-						cutters[#cutters + 1] = wp(V3(rr * 4, rr * 2, rr * 2), CFrame.fromMatrix(C + away * rr + up * rr, run, up), Enum.PartType.Cylinder)
-					else
-						-- chamfer: the outside bit = everything past the 45-degree face (a big block lying on that face)
-						local nrm = (away + up).Unit
-						local S = rr * 4
-						local onFace = C + up * rr   -- (the face runs from C + up r down to C + away r)
-						cutters[#cutters + 1] = wp(V3(S, S, S), CFrame.fromMatrix(onFace + nrm * (S / 2), run, nrm))
-					end
-				end
-				local okc, rc = pcall(function() return GeometryService:SubtractAsync(box, cutters, ENT.FAST) end)
-				box.Parent = nil
-				for _, c in ipairs(cutters) do c.Parent = nil end
-				local hp = okc and type(rc) == "table" and rc[1] or nil
-				print(("PROTO corner piece: %s at %.2f, %.2f, %.2f  size %.2f  %s"):format(isF and "fillet" or "chamfer", C.X, C.Y, C.Z, rr, hp and "made" or "FAILED"))
-				if hp then hp.Parent = workspace pieces[#pieces + 1] = hp end
-			end
-			-- (inside corners: the two fills already overlap into a clean valley on their own - the extra hull piece
-			-- there made odd tapered wedges, so it's gone)
-		end
-	end
-	return pieces
-end
 -- v2.40: is world point q inside a fill that's already been made (worked out from the saved recipes - fills are
 -- joined into their blocks, so a probe can't tell a fill from the wall)
 function ENT.inFill(q)
@@ -7438,129 +7938,7 @@ function ENT.inFill(q)
 	end
 	return false
 end
--- v2.40: fill pieces that WRAP round a rounded upright corner (block space): the corner's edge runs along axis kc,
--- its two faces point out along n1c / n2c, round radius rc. The fill sits at height 'level' (along kc), grows 'up'
--- (block-space direction) and is rf big. Returns world parts.
-function ENT.wrapPieces(cf, h, kc, n1c, n2c, rc, level, up, rf, fillet, surf)
-	local out = {}
-	local H = V3(h[1], h[2], h[3])
-	local function absv(x) return V3(math.abs(x.X), math.abs(x.Y), math.abs(x.Z)) end
-	local edgeCc = n1c * absv(n1c):Dot(H) + n2c * absv(n2c):Dot(H)   -- the upright edge's middle (block space)
-	local ctr = edgeCc - n1c * rc - n2c * rc
-	ctr = ctr - AXV[kc] * ctr:Dot(AXV[kc]) + AXV[kc] * level
-	local Sz = (rc + rf) * 6 + 4
-	local wctr = cf:PointToWorldSpace(ctr)
-	-- (v2.40: rays felt the block's COLLISION hull, not the drawn round = a flat slab sticking out. Now the slices stand
-	-- on the TRUE round, with a backing strip hidden inside the wall so no line shows where the drawn facets dip in)
-	local facets = {}
-	local pieces = {}
-	if #facets >= 2 then
-		-- boundaries halfway between neighbouring facets; the first / last open out into the straight fills
-		for i, f in ipairs(facets) do
-			local a0 = (i == 1) and 0 or (facets[i - 1].th1 + f.th0) / 2
-			local a1 = (i == #facets) and (math.pi / 2) or (f.th1 + facets[i + 1].th0) / 2
-			local phi = math.atan2(f.n:Dot(n2c), f.n:Dot(n1c))
-			pieces[#pieces + 1] = { w = f.n, d = f.d, phi = phi, a0 = a0, a1 = a1, first = i == 1, last = i == #facets }
-		end
-	else
-		-- (no facets found: evenly spaced slices on the true circle)
-		local N = math.clamp(math.floor((rc + rf) * 16), 24, 64)   -- (v2.40: more, thinner slices = smoother)
-		local dth = (math.pi / 2) / N
-		for i = 0, N - 1 do
-			local th = (i + 0.5) * dth
-			pieces[#pieces + 1] = { w = n1c * math.cos(th) + n2c * math.sin(th), d = rc, phi = th, a0 = i * dth, a1 = (i + 1) * dth, first = i == 0, last = i == N - 1 }
-		end
-	end
-	for _, P in ipairs(pieces) do
-		local w = P.w
-		local t = -n1c * math.sin(P.phi) + n2c * math.cos(P.phi)
-		local base = ctr + w * P.d
-		local span = math.max(math.abs(P.a1 - P.phi), math.abs(P.phi - P.a0))
-		local len = 2 * (P.d + rf) * math.tan(math.min(span, 1.2)) * 1.3 + 0.1
-		local seg = ENT.fillPrism(cf:PointToWorldSpace(base), cf:VectorToWorldSpace(t), cf:VectorToWorldSpace(w), cf:VectorToWorldSpace(up), len, rf, fillet)
-		if seg then
-			-- backing: rf tall, reaching back INTO the wall (hidden inside the block)
-			local bk = Instance.new("Part")
-			bk.Anchored, bk.CanCollide, bk.Transparency = true, false, 1
-			local bd = math.min(0.3, rc * 0.5)
-			bk.Size = V3(len, bd, rf)
-			bk.CFrame = CFrame.fromMatrix(cf:PointToWorldSpace(base - w * (bd / 2) + up * (rf / 2)), cf:VectorToWorldSpace(t), cf:VectorToWorldSpace(w))
-			bk.Parent = workspace
-			local okJ, rJ = pcall(function() return GeometryService:UnionAsync(seg, { bk }, ENT.FAST) end)
-			bk.Parent = nil
-			if okJ and type(rJ) == "table" and rJ[1] then seg.Parent = nil seg = rJ[1] seg.Parent = workspace end
-			local t0 = -n1c * math.sin(P.a0) + n2c * math.cos(P.a0)
-			local t1 = -n1c * math.sin(P.a1) + n2c * math.cos(P.a1)
-			local cuts = {}
-			cuts[#cuts + 1] = ENT.halfSpace(wctr, cf:VectorToWorldSpace(-t0), Sz)   -- (v2.40: first / last cut square at the round start too - no ramp past the straight fill)
-			cuts[#cuts + 1] = ENT.halfSpace(wctr, cf:VectorToWorldSpace(t1), Sz)
-			if #cuts > 0 then
-				local ok, res = pcall(function() return GeometryService:SubtractAsync(seg, cuts, ENT.FAST) end)
-				for _, c in ipairs(cuts) do c.Parent = nil end
-				if ok and type(res) == "table" and res[1] then seg.Parent = nil seg = res[1] seg.Parent = workspace end
-			end
-			out[#out + 1] = seg
-		end
-	end
-	return out
-end
 -- ===== v2.40 MITRE CORNERS (Dylan: "he cuts through him, and the same for the other guy - that's it") =====
--- a fill prism: runs along dir from mid (length L), filling the corner square r x r that opens along u and v
-function ENT.fillPrism(mid, dir, u, v, L, r, isF, grow)
-	local function wpart(size, wcf, shape)
-		local q = Instance.new("Part")
-		q.Anchored, q.CanCollide, q.Transparency = true, false, 1
-		if shape then q.Shape = shape end
-		q.Size = size
-		q.CFrame = wcf
-		q.Parent = workspace
-		return q
-	end
-	local function frame(c) return CFrame.fromMatrix(c, dir, u) end
-	-- (grow = a CUTTER: the square reaches a hair past both faces so no paper-thin skin is left)
-	local g = grow or 0
-	local sq = wpart(V3(L, r + g, r + g), frame(mid + u * ((r - g) / 2) + v * ((r - g) / 2)))
-	local other
-	if isF then
-		other = wpart(V3(L + 0.4, r * 2, r * 2), frame(mid + u * r + v * r), Enum.PartType.Cylinder)
-	else
-		local sd = r * math.sqrt(2)
-		other = wpart(V3(L + 0.4, sd, sd), frame(mid) * CFrame.Angles(math.pi / 4, 0, 0))
-	end
-	local ok, res = pcall(function()
-		if isF then return GeometryService:SubtractAsync(sq, { other }, ENT.FAST) end
-		return GeometryService:IntersectAsync(sq, { other }, ENT.FAST)
-	end)
-	sq.Parent, other.Parent = nil, nil
-	if ok and type(res) == "table" and res[1] then res[1].Parent = workspace return res[1] end
-	return nil
-end
--- everything on the +m side of the plane through C (a big block lying on that plane) - used as a cutter
-function ENT.halfSpace(C, m, size)
-	local a = math.abs(m.Y) < 0.9 and m:Cross(Vector3.yAxis).Unit or m:Cross(Vector3.xAxis).Unit
-	local q = Instance.new("Part")
-	q.Anchored, q.CanCollide, q.Transparency = true, false, 1
-	q.Size = V3(size, size, size)
-	q.CFrame = CFrame.fromMatrix(C + m * (size / 2), a, m)
-	q.Parent = workspace
-	return q
-end
--- the other fill that meets this end at a right-angle corner: B, "inner" / "outer", the exact corner point
-function ENT.cornerMate(A)
-	for _, B in ipairs(ENT.fillEndsNear(A.c, A.r * 3 + 1)) do
-		local near = (B.c - A.c).Magnitude < math.max(A.r, B.r) * 1.3 + 0.1
-		local square = math.abs(A.dir:Dot(B.dir)) < 0.3
-		if near and square and B.t == A.t then
-			local inner = (B.dir:Dot(A.u) < -0.9 or B.dir:Dot(A.v) < -0.9) and (A.dir:Dot(B.u) < -0.9 or A.dir:Dot(B.v) < -0.9)
-			local outer = (A.dir:Dot(B.u) > 0.9 or A.dir:Dot(B.v) > 0.9) and (B.dir:Dot(A.u) > 0.9 or B.dir:Dot(A.v) > 0.9)
-			if inner or outer then
-				local C = A.c + A.dir * (B.c - A.c):Dot(A.dir)   -- where the two edge lines cross
-				return B, inner and "inner" or "outer", C
-			end
-		end
-	end
-	return nil
-end
 -- v2.40: how far along the edge the inside corner really goes (the part it stands on may be shorter than the
 -- edge, or stop at a wall) -> from, to (block space, along the edge). The fill only goes where the corner is.
 function ENT.insideSpan(E, p, hitPos, u0, v0, r)
@@ -7581,7 +7959,7 @@ function ENT.insideSpan(E, p, hitPos, u0, v0, r)
 		probe.Parent = workspace
 		local f = false
 		for _, x in ipairs(workspace:GetPartsInPart(probe, op)) do
-			if x.Name ~= "DIM_Box" and x.Name ~= "DIM_Preview" and x.Transparency < 1 and x ~= TERRAIN then f = true break end
+			if not ENT.isBox(x.Name) and not ENT.isPrev(x.Name) and x.Transparency < 1 and x ~= TERRAIN then f = true break end
 		end
 		probe.Parent = nil
 		return f
@@ -7663,19 +8041,66 @@ end
 function ENT.edgeStart(kind)
 	if sk then exitSketch() end
 	if mode ~= "planes" then setMode("planes") end
+	if ENT.shellTool then ENT.shellStop() end
 	ENT.edgeTool = kind
-	setStatus((kind == "fillet" and "FILLET EDGE" or "CHAMFER EDGE") .. ": type the size in the panel's 'size' box, then click an edge of a block (it lights orange). Esc = stop.")
+	if ENT.eSelClear then pcall(ENT.eSelClear, true) end
+	setStatus((kind == "fillet" and "ROUND" or "CHAMFER") .. ": set the Size (PROPERTIES), then CLICK an edge - it's done straight away (green = the edge under the mouse). Click more edges to add more. Ctrl+Z undoes one. Esc = stop.")
 	if ENT.ribPaint then pcall(ENT.ribPaint) end
 end
 function ENT.edgeStop()
+	if ENT.eSelClear then pcall(ENT.eSelClear, true) end   -- v3.50
 	ENT.edgeTool = nil
 	ENT.edgeLine.Visible = false
+	if ENT.drawTopoEdge then pcall(ENT.drawTopoEdge, nil) end
+	ENT.topoHot = nil
 	dimTag.Enabled = false
 	if ENT.ribPaint then pcall(ENT.ribPaint) end
 	refreshStatus()
 end
 function ENT.edgeHover()
 	local hit = ENT.directHit()
+	-- v2.76 REAL EDGES first: on a PROTO part, any edge of its real shape (the whole edge lights up)
+	ENT.topoHot = nil
+	do
+		local cands = {}
+		if hit and hit.Instance then cands[#cands + 1] = hit.Instance end
+		if target and target:IsA("BasePart") and target ~= (hit and hit.Instance) then cands[#cands + 1] = target end
+		for _, cand in ipairs(cands) do
+			if cand:IsA("BasePart") and ENT.detailKind(cand) then
+				local T = ENT.partTopo(cand)
+				local E = T and ENT.edgePickScreen(T)   -- v3.50: in screen pixels, hidden edges skipped
+				-- v3.31 (Dylan: "the outside of a box should be green - supported"): a block's own box edges go the SAME
+				-- way as every other edge now (a step in the recipe: corners meet properly, no horn where the old way and
+				-- the new way met). Only an inside corner where ANOTHER part wraps round this block keeps the old way
+				-- (it can fill between the two parts and join them).
+				if E and ENT.isBoxEdge(cand, E) then
+					local BE = hit and hit.Instance == cand and ENT.edgeAt(cand, hit.Position)
+					if BE then
+						local key = tostring(cand) .. BE.k .. BE.sa .. BE.sb .. tostring(cand.CFrame) .. tostring(cand.Size)
+						local c = ENT.boxInCache
+						if not (c and c.key == key) then
+							local okI, u = pcall(ENT.edgeInside, BE, cand)
+							c = { key = key, inside = okI and u ~= nil }
+							ENT.boxInCache = c
+						end
+						if c.inside then E = nil end
+					end
+				end
+				if E then
+					ENT.topoHot = { p = cand, E = E }
+					ENT.drawTopoEdge(E)
+					ENT.edgeLine.Visible = false
+					local r = ENT.filletSize() or 0
+					local mid = E.pts[math.max(1, math.floor(#E.pts / 2))]
+					dimTag.StudsOffsetWorldSpace = mid
+					dimTag.T.Text = (ENT.edgeTool == "fillet" and "ROUND r " or "CHAMFER ") .. fmt(r) .. (E.convex and "" or "  (inside edge: fills)") .. (E.closed and "  - all the way round" or "")
+					dimTag.Enabled = true
+					return
+				end
+			end
+		end
+		ENT.drawTopoEdge(nil)
+	end
 	-- v2.40 POCKET EDGES first (looking into a cut)
 	ENT.pocketHot = nil
 	-- (from INSIDE a cut the mouse ray may not hit the part at all - then the picked part's cuts are checked)
@@ -7710,7 +8135,7 @@ function ENT.edgeHover()
 			ENT.edgeLine.CFrame = CFrame.lookAt(PE.a, PE.b)
 			ENT.edgeLine.Length = (PE.b - PE.a).Magnitude
 			ENT.edgeLine.Visible = true
-			ENT.edgeLine.Color3 = (PE.kind == "in") and Color3.fromRGB(80, 230, 120) or Color3.fromRGB(255, 150, 30)
+			ENT.edgeLine.Color3 = (PE.kind == "in") and Color3.fromRGB(160, 255, 200) or Color3.fromRGB(80, 230, 120)
 			dimTag.StudsOffsetWorldSpace = (PE.a + PE.b) / 2
 			dimTag.T.Text = (ENT.edgeTool == "fillet" and "FILLET r " or "CHAMFER ") .. fmt(r) .. ((PE.kind == "in") and "  (inside the cut: fills)" or "  (edge of the opening)")
 			dimTag.Enabled = true
@@ -7745,56 +8170,9 @@ function ENT.edgeHover()
 	ENT.edgeLine.Length = (b - a).Magnitude
 	ENT.edgeLine.Visible = true
 	dimTag.StudsOffsetWorldSpace = (a + b) / 2
-	ENT.edgeLine.Color3 = inside and Color3.fromRGB(80, 230, 120) or Color3.fromRGB(255, 150, 30)
+	ENT.edgeLine.Color3 = inside and Color3.fromRGB(160, 255, 200) or Color3.fromRGB(80, 230, 120)
 	dimTag.T.Text = (ENT.edgeTool == "fillet" and "FILLET r " or "CHAMFER ") .. fmt(r) .. (inside and (ENT.edgeJoin and nbp and "  (inside: fills + JOINS)" or "  (inside corner: fills)") or "")
 	dimTag.Enabled = true
-end
--- v2.39 FILLS WIN: an inside-corner fill rebuilt from its saved recipe (block space), so that a later rounding /
--- chamfer cut on the same block can put it straight back - fills have priority over cuts (no notches)
-function ENT.fillFromRecipe(cf, size, d)
-	local h = { size.X / 2, size.Y / 2, size.Z / 2 }
-	local k = d.k
-	local a, b = (k % 3) + 1, ((k + 1) % 3) + 1
-	local edgeC = AXV[a] * (d.a * h[a]) + AXV[b] * (d.b * h[b])
-	local s0, s1 = d.s0 or -h[k], d.s1 or h[k]   -- v2.40: only where the inside corner really is
-	local mid = cf:PointToWorldSpace(edgeC + AXV[k] * ((s0 + s1) / 2))
-	local dir = cf:VectorToWorldSpace(AXV[k])
-	local u = cf:VectorToWorldSpace(V3(d.ux, d.uy, d.uz))
-	local v = cf:VectorToWorldSpace(V3(d.vx, d.vy, d.vz))
-	local r, Lf = d.r, math.max(0.05, s1 - s0)
-	local function wpart(sz, wcf, shape)
-		local q = Instance.new("Part")
-		q.Anchored, q.CanCollide, q.Transparency = true, false, 1
-		if shape then q.Shape = shape end
-		q.Size = sz
-		q.CFrame = wcf
-		q.Parent = workspace
-		return q
-	end
-	local function frame(c) return CFrame.fromMatrix(c, dir, u) end
-	local sq = wpart(V3(Lf, r, r), frame(mid + u * (r / 2) + v * (r / 2)))
-	local other
-	if d.t == "fillet" then
-		other = wpart(V3(Lf + 0.4, r * 2, r * 2), frame(mid + u * r + v * r), Enum.PartType.Cylinder)
-	else
-		local sd = r * math.sqrt(2)
-		other = wpart(V3(Lf + 0.4, sd, sd), frame(mid) * CFrame.Angles(math.pi / 4, 0, 0))
-	end
-	local ok, res = pcall(function()
-		if d.t == "fillet" then return GeometryService:SubtractAsync(sq, { other }, ENT.FAST) end
-		return GeometryService:IntersectAsync(sq, { other }, ENT.FAST)
-	end)
-	sq.Parent = nil
-	other.Parent = nil
-	if ok and type(res) == "table" and res[1] then res[1].Parent = workspace return res[1] end
-	return nil
-end
--- v2.40: a wrap round a rounded corner is remembered on the block ({w=1, k, a, b, z}) so it's only ever made once
-function ENT.hasWrap(done, kc, sa, sb, zs)
-	for _, d in ipairs(done or {}) do
-		if d.w and d.k == kc and d.a == sa and d.b == sb and d.z == zs then return true end
-	end
-	return false
 end
 -- is there an inside fill running along axis kf, sitting at the 'endAx' end with sign endSign, at level sign lvSign on axis kc?
 function ENT.otherBand(done, kf, endAx, endSign, kc, lvSign)
@@ -7820,7 +8198,7 @@ function ENT.pocketBoxes(root)
 	for _, q in ipairs(parts) do
 		if q:IsA("BasePart") then
 			for _, ch in ipairs(q:GetChildren()) do
-				if ch.Name == "DIM_Outline" and ch:IsA("StringValue") and ENT.outKind(ch, q) == "cut" then
+				if ENT.isOutline(ch.Name) and ch:IsA("StringValue") and ENT.outKind(ch, q) == "cut" then
 					local P = ENT.prismCache[ch.Value]
 					if P == nil then
 						local data = ENT.outlineCache[ch.Value]
@@ -7886,6 +8264,16 @@ function ENT.pocketBoxes(root)
 								local gw = ENT.cutGrowOf(ch, q) half[1], half[2] = half[1] + gw, half[2] + gw
 							end
 							if half[1] < 0.02 or half[2] < 0.02 or half[3] < 0.02 then return end
+							-- v2.70: a "pocket" as big as the whole block isn't a pocket (its edges are the block's own)
+							do
+								local big = 0
+								for i = 1, 3 do
+									local ext = 0
+									for _, bax in ipairs({ bcf.XVector * bsz.X, bcf.YVector * bsz.Y, bcf.ZVector * bsz.Z }) do ext += math.abs(bax:Dot(ax[i])) end
+									if half[i] * 2 >= ext - 0.12 then big += 1 end
+								end
+								if big >= 3 then return end
+							end
 							local ctr = o0 + e1 * ((lo[1] + hi[1]) / 2) + e2 * ((lo[2] + hi[2]) / 2) + d * ((lo[3] + hi[3]) / 2)
 							local bh = { bsz.X / 2, bsz.Y / 2, bsz.Z / 2 }
 							local open = { {}, {}, {} }
@@ -8003,6 +8391,9 @@ function ENT.pocketEdgeKey(p, E)
 end
 -- fillet / chamfer a pocket edge: inside corner = a fill added, rim = rounded / cut off
 function ENT.pocketEdgeClick(E, p)
+	if not ENT.meshGate() then return end
+	-- v2.69: one at a time (clicking again while it's still rebuilding started 10 rebuilds in a second)
+	if ENT.rebuildBusy then setStatus("Still working on the last one - one moment.") return end
 	ENT.pocketLogNext = true
 	ENT.pocketBoxes(p)
 	local isF = ENT.edgeTool == "fillet"
@@ -8026,382 +8417,81 @@ function ENT.pocketEdgeClick(E, p)
 		return false
 	end
 	if doneAt(key) then setStatus(nm .. ": that edge is already done. Ctrl+Z to change it.") return end
-	local out
-	local ok = record("PROTO " .. (isF and "Fillet" or "Chamfer") .. " pocket edge", function()
-		local all = ENT.pocketEdges(p)
-		local function sameBox(N) return (N.box.ctr - E.box.ctr).Magnitude < 1e-3 end
-		-- what's done on this pocket (this edge counts as done now): key -> { r, f }
-		local function info(N)
-			local k = ENT.pocketEdgeKey(p, N)
-			if k == key then return { r = r, f = isF } end
-			local d, rr, tt = doneAt(k)
-			if not d then return nil end
-			return { r = rr or r, f = (tt == "f") or ((tt == nil or tt == "") and isF) }
-		end
-		local pieces = {}
-		if E.kind == "in" then
-			local mid = (E.a + E.b) / 2
-			local piece = ENT.fillPrism(mid, E.dir, E.u, E.v, L, r, isF)
-			if not piece then error("couldn't shape it") end
-			pieces[1] = piece
-		else
-			-- v2.40 (Dylan): ALL the done edges of the opening are (re)cut together: each one a hair bigger than the
-			-- wall (no skin left), and where two meet at a corner of the hole each is built on past the corner and cut on
-			-- the 45-degree line (picture frame)
-			local rims = {}
-			for _, N in ipairs(all) do
-				if N.kind == "rim" and sameBox(N) then
-					local I = info(N)
-					if I then rims[#rims + 1] = { N = N, r = I.r, f = I.f } end
-				end
-			end
-			for _, R in ipairs(rims) do
-				local N = R.N
-				local nMid = (N.a + N.b) / 2
-				local base = ENT.fillPrism(nMid, N.dir, N.u, N.v, (N.b - N.a).Magnitude + 0.02, R.r, R.f, 0.02)
-				if base then pieces[#pieces + 1] = base end
-				for _, C in ipairs({ N.a, N.b }) do
-					local t = (C - nMid).Unit
-					for _, Q in ipairs(rims) do
-						if Q ~= R and math.abs(Q.N.dir:Dot(N.dir)) < 0.1 and ((Q.N.a - C).Magnitude < 0.02 or (Q.N.b - C).Magnitude < 0.02) then
-							local tq = (C - (Q.N.a + Q.N.b) / 2).Unit
-							local m = (t - tq).Unit
-							local x = ENT.fillPrism(C + t * (R.r / 2), N.dir, N.u, N.v, R.r + 0.02, R.r, R.f, 0.02)
-							if x then
-								local cut = ENT.halfSpace(C, m, (R.r + Q.r) * 10 + 4)
-								local okM, rM = pcall(function() return GeometryService:SubtractAsync(x, { cut }, ENT.FAST) end)
-								cut.Parent, x.Parent = nil, nil
-								if okM and type(rM) == "table" and rM[1] then rM[1].Parent = workspace pieces[#pieces + 1] = rM[1] end
-							end
-						end
-					end
-				end
-			end
-			if #pieces == 0 then error("couldn't shape it") end
-		end
-		-- v2.40 THREE-WAY CORNERS (Dylan: "add the cube, then cut it from the 3 incoming directions"). Where a fill up an
-		-- inside corner of the cut meets a chamfered opening: a solid block goes back in at that corner (only where there's
-		-- material - wall, floor or fill - never in the open hole), then it's cut by the three chamfers coming in: the wall
-		-- edge's, the floor edge's and the fill's own front edge. A bit only goes if ALL THREE take it (no dug-out pyramid).
-		local adds, trims, finals = {}, {}, {}
-		local function minus(base, list)
-			local okM, rM = pcall(function() return GeometryService:SubtractAsync(base, list, ENT.FAST) end)
-			if okM and type(rM) == "table" and rM[1] then base.Parent = nil rM[1].Parent = workspace return rM[1] end
-			return base
-		end
-		local function inter(base, list)
-			local cur = base
-			for _, w in ipairs(list) do
-				local okI, r2 = pcall(function() return GeometryService:IntersectAsync(cur, { w }, ENT.FAST) end)
-				if cur ~= base then cur.Parent = nil end
-				if not (okI and type(r2) == "table" and r2[1]) then return nil end
-				cur = r2[1]
-				cur.Parent = workspace
-			end
-			return cur
-		end
-		local function boxAt(c, x, y, size)
-			local q = Instance.new("Part")
-			q.Anchored, q.CanCollide, q.Transparency = true, false, 1
-			q.Size = size
-			q.CFrame = CFrame.fromMatrix(c, x, y)
-			q.Parent = workspace
-			return q
-		end
-		for _, I in ipairs(all) do
-			if I.kind == "in" and sameBox(I) then
-				local II = info(I)
-				do   -- (v2.40: also corners with NO fill - two rounded / chamfered opening edges meeting = made the same clean way)
-					local iMid = (I.a + I.b) / 2
-					for _, C in ipairs({ I.a, I.b }) do
-						local rr, U = nil, nil
-						local rimsC
-						for _, R in ipairs(all) do
-							if R.kind == "rim" and sameBox(R) and ((R.a - C).Magnitude < 0.02 or (R.b - C).Magnitude < 0.02) then
-								local RI = info(R)
-								if RI then rr = math.max(rr or 0, RI.r) U = R.depth rimsC = rimsC or {} rimsC[#rimsC + 1] = { R = R, r = RI.r, f = RI.f } end
-							end
-						end
-						if rr and U and ((II and #rimsC >= 1) or #rimsC >= 2) then
-							local A, B, rI = I.u, I.v, (II and II.r or 0)   -- a = out from one wall, b = out from the other, U = in from the face
-							local Dz = rr + 0.3
-							local W = rr + rI + 0.02
-							local function cube()
-								return boxAt(C + A * ((rI - rr) / 2) + B * ((rI - rr) / 2) + U * (Dz / 2), A, B, V3(W, W, Dz))
-							end
-							-- (v2.40: a bit BIGGER box - the finishing cut reaches a hair past the corner block's edges so no fins
-							-- are left where the corner meets the rest of the edge)
-							local function bigCube()
-								return boxAt(C + A * ((rI - rr) / 2) + B * ((rI - rr) / 2) + U * (Dz / 2), A, B, V3(W + 0.6, W + 0.6, Dz + 0.1))
-							end
-							-- the block, minus the open hole (out past the fill's sloped face)
-							local blk = cube()
-							-- (the hole = everything out past the fill's REAL face - its round for a fillet, its slope for a chamfer)
-							local hole = boxAt(C + A * ((rI + 2) / 2) + B * ((rI + 2) / 2) + U * (Dz / 2), A, B, V3(rI + 2, rI + 2, Dz + 0.2))
-							local fillShape = II and ENT.fillPrism(C + U * (Dz / 2), I.dir, I.u, I.v, Dz + 0.4, rI, II.f)   -- (turned exactly like the fill itself, so its round's facets line up with the fill's - no step)
-							local holeCut
-							if not II then
-								holeCut = hole   -- (no fill: the whole open corner is the hole)
-							elseif fillShape then
-								local okH, rH = pcall(function() return GeometryService:SubtractAsync(hole, { fillShape }, ENT.FAST) end)
-								fillShape.Parent = nil
-								if okH and type(rH) == "table" and rH[1] then holeCut = rH[1] holeCut.Parent = workspace end
-							end
-							if holeCut ~= hole then hole.Parent = nil end
-							if holeCut then
-								local okS, rS = pcall(function() return GeometryService:SubtractAsync(blk, { holeCut }, ENT.FAST) end)
-								holeCut.Parent = nil
-								if okS and type(rS) == "table" and rS[1] then blk.Parent = nil blk = rS[1] blk.Parent = workspace end
-							end
-							-- what the three chamfers take off together (inside the block's box)
-							local s2 = math.sqrt(2)
-							local function rem(n, k) return ENT.halfSpace(C + n * (k / n:Dot(n)), -n.Unit, (W + Dz) * 6 + 4) end
-							-- each opening edge at this corner: a CHAMFER takes off a flat slice, a FILLET (round) takes off what's
-							-- outside its round (so the corner matches the rounded edges, not flat cuts)
-							local cutters = {}
-							for _, RC in ipairs(rimsC or {}) do
-								local R, rk = RC.R, RC.r
-								if RC.f then
-									local slab = bigCube()
-									local front = ENT.halfSpace(C + U * rk, -U, (W + Dz) * 6 + 4)
-									local sl = inter(slab, { front })
-									slab.Parent, front.Parent = nil, nil
-									if sl then
-										local keep1 = ENT.halfSpace(C + R.wall * rk, R.wall, (W + Dz) * 6 + 4)
-										local cyl = Instance.new("Part")
-										cyl.Anchored, cyl.CanCollide, cyl.Transparency = true, false, 1
-										cyl.Shape = Enum.PartType.Cylinder
-										cyl.Size = V3((W + Dz) * 3 + 2, rk * 2, rk * 2)
-										cyl.CFrame = CFrame.fromMatrix(C + U * rk + R.wall * rk, R.dir, R.u)   -- (turned exactly like that edge's own cutter - facets line up)
-										cyl.Parent = workspace
-										local okR, rR = pcall(function() return GeometryService:SubtractAsync(sl, { keep1, cyl }, ENT.FAST) end)
-										keep1.Parent, cyl.Parent, sl.Parent = nil, nil, nil
-										if okR and type(rR) == "table" and rR[1] then rR[1].Parent = workspace cutters[#cutters + 1] = rR[1] end
-									end
-								else
-									cutters[#cutters + 1] = rem(U + R.wall, rk)
-								end
-							end
-							-- the fill's own front edge: flat slice for a chamfer fill; for a FILLET fill, what's outside a round
-							-- running along its curved front edge (built from short round pieces)
-							if not II then
-								-- (no fill here)
-							elseif II.f then
-								local O = C + A * rI + B * rI           -- the fill's round centre line (at the face)
-								local rho = rI + rr
-								local slab = bigCube()
-								local front = ENT.halfSpace(C + U * rr, -U, (W + Dz) * 6 + 4)
-								local sl = inter(slab, { front })
-								slab.Parent, front.Parent = nil, nil
-								if sl then
-									local outs = {}
-									-- far side of the round (more than rr into the fill): kept
-									local big = boxAt(O + U * (Dz / 2), A, B, V3(rho * 4 + 4, rho * 4 + 4, Dz + 2))
-									local core = Instance.new("Part")
-									core.Anchored, core.CanCollide, core.Transparency = true, false, 1
-									core.Shape = Enum.PartType.Cylinder
-									core.Size = V3(Dz + 4, rho * 2 + 0.12, rho * 2 + 0.12)   -- (a hair bigger than the round's path: no curved sliver left)
-									core.CFrame = CFrame.fromMatrix(O + U * (Dz / 2), U, A)
-									core.Parent = workspace
-									local okK, rK = pcall(function() return GeometryService:SubtractAsync(big, { core }, ENT.FAST) end)
-									big.Parent, core.Parent = nil, nil
-									if okK and type(rK) == "table" and rK[1] then rK[1].Parent = workspace outs[#outs + 1] = rK[1] end
-									-- the round itself: a ring of short rods (+ balls at the joins) round the fill's curved front edge
-									local K = 16
-									local prev
-									for i2 = 0, K do
-										local th = math.pi + (math.pi / 2) * (i2 / K)
-										local P = O + (A * math.cos(th) + B * math.sin(th)) * rho + U * rr
-										local ball = Instance.new("Part")
-										ball.Anchored, ball.CanCollide, ball.Transparency = true, false, 1
-										ball.Shape = Enum.PartType.Ball
-										ball.Size = V3(rr * 2, rr * 2, rr * 2)
-										ball.CFrame = CFrame.new(P)
-										ball.Parent = workspace
-										outs[#outs + 1] = ball
-										if prev then
-											local d0 = P - prev
-											local rod = Instance.new("Part")
-											rod.Anchored, rod.CanCollide, rod.Transparency = true, false, 1
-											rod.Shape = Enum.PartType.Cylinder
-											rod.Size = V3(d0.Magnitude + 0.02, rr * 2, rr * 2)
-											rod.CFrame = CFrame.fromMatrix((P + prev) / 2, d0.Unit, U)
-											rod.Parent = workspace
-											outs[#outs + 1] = rod
-										end
-										prev = P
-									end
-									-- (v2.40, Dylan: "it shrinks near the end - make it full"): the round carries straight on past both
-									-- ends of the curve, along each wall - so it runs into the wall edge's round at full size, no narrowing
-									do
-										local ext = rr * 3 + 0.5
-										for _, e in ipairs({ { O - A * rho + U * rr, B }, { O - B * rho + U * rr, A } }) do
-											local P0, dir = e[1], e[2]
-											local rod = Instance.new("Part")
-											rod.Anchored, rod.CanCollide, rod.Transparency = true, false, 1
-											rod.Shape = Enum.PartType.Cylinder
-											rod.Size = V3(ext, rr * 2, rr * 2)
-											rod.CFrame = CFrame.fromMatrix(P0 + dir * (ext / 2), dir, U)
-											rod.Parent = workspace
-											outs[#outs + 1] = rod
-										end
-									end
-									local okF, rF = pcall(function() return GeometryService:SubtractAsync(sl, outs, ENT.FAST) end)
-									for _, x in ipairs(outs) do x.Parent = nil end
-									sl.Parent = nil
-									if okF and type(rF) == "table" and rF[1] then rF[1].Parent = workspace cutters[#cutters + 1] = rF[1] end
-								end
-							else
-								cutters[#cutters + 1] = rem(U * s2 - A - B, rr * s2 - rI)
-							end
-							local c2 = cube()
-							local cutPiece = inter(c2, cutters)
-							c2.Parent = nil
-							local c3 = bigCube()
-							local cutBig = inter(c3, cutters)
-							c3.Parent = nil
-							if cutBig then finals[#finals + 1] = cutBig end
-							for _, x in ipairs(cutters) do x.Parent = nil end
-							-- (v2.40: the corner is made as ONE finished piece on its own, then swapped in: the part's corner
-							-- box is cleared, the piece goes in - no layering cuts on cuts, which broke one corner)
-							local piece = blk
-							if cutPiece then
-								local okP, rP = pcall(function() return GeometryService:SubtractAsync(blk, { cutPiece }, ENT.FAST) end)
-								cutPiece.Parent = nil
-								if okP and type(rP) == "table" and rP[1] then blk.Parent = nil piece = rP[1] piece.Parent = workspace end
-							else
-								print("PROTO pocket: corner cut failed")
-							end
-							-- (never outside the part - a thin wall would let the corner box poke out the far side)
-							local pq = I.box.part
-							local pbox = boxAt(pq.CFrame.Position, pq.CFrame.RightVector, pq.CFrame.UpVector, pq.Size)
-							local clipped = inter(piece, { pbox })
-							pbox.Parent = nil
-							if clipped then piece.Parent = nil piece = clipped end
-							-- (v2.40, Dylan: "the corner fill should end the same as it starts"): the FILL itself is never cleared
-							-- and rebuilt here - only the walls round it are. The fill stays the real fill all the way along (no
-							-- step where the corner box ends) and just gets trimmed by the finishing cut.
-							local clearBox = cube()
-							if II then
-								local fs2 = ENT.fillPrism(C + U * (Dz / 2), I.dir, I.u, I.v, Dz + 0.4, rI, II.f)
-								if fs2 then
-									clearBox = minus(clearBox, { fs2 })
-									piece = minus(piece, { fs2 })
-									fs2.Parent = nil
-								end
-							end
-							adds[#adds + 1] = piece
-							trims[#trims + 1] = clearBox   -- (the corner box, minus the fill: cleared first)
-						end
-					end
-				end
-			end
-		end
-		local opts = { CollisionFidelity = ENT.CSG_OPTS.CollisionFidelity, RenderFidelity = Enum.RenderFidelity.Precise, SplitApart = false }
-		local okC, res = pcall(function()
-			if E.kind == "in" then return GeometryService:UnionAsync(p, pieces, opts) end
-			return GeometryService:SubtractAsync(p, pieces, opts)
-		end)
-		for _, x in ipairs(pieces) do x.Parent = nil end
-		local nIn, nRim, nDone = 0, 0, 0
-		for _, N in ipairs(all) do
-			if sameBox(N) then
-				if N.kind == "in" then nIn += 1 else nRim += 1 end
-				if info(N) then nDone += 1 end
-			end
-		end
-		print(("PROTO pocket: %s %s r %.2f | this pocket: %d inside edges, %d opening edges, %d done | pieces %d, corner trims %d | main op %s")
-			:format(E.kind, isF and "fillet" or "chamfer", r, nIn, nRim, nDone, #pieces, #trims, tostring(okC and type(res) == "table" and res[1] ~= nil)))
-		-- v2.40 FILLS WIN (Dylan: "just reapply when done, like on the outside"): every done fill up an inside corner of
-		-- this cut goes back in after the cut (a later opening edge nicked it = a gap), then the corners are rebuilt
-		if okC and type(res) == "table" and res[1] then
-			local refills = {}
-			for _, I in ipairs(all) do
-				if I.kind == "in" and sameBox(I) then
-					local II = info(I)
-					if II then
-						local fp = ENT.fillPrism((I.a + I.b) / 2, I.dir, I.u, I.v, (I.b - I.a).Magnitude, II.r, II.f)
-						if fp then refills[#refills + 1] = fp end
-					end
-				end
-			end
-			if #refills > 0 then
-				local mid0 = res[1]
-				mid0.Parent = workspace
-				local okR, rR = pcall(function() return GeometryService:UnionAsync(mid0, refills, opts) end)
-				if okR and type(rR) == "table" and rR[1] then mid0.Parent = nil res = rR else mid0.Parent = nil print("PROTO pocket: putting the fills back failed - " .. tostring(rR)) end
-			end
-			for _, x in ipairs(refills) do x.Parent = nil end
-		end
-		-- corners: clear each corner box, then put the finished corner piece in
-		if okC and type(res) == "table" and res[1] and #trims > 0 then
-			local mid0 = res[1]
-			mid0.Parent = workspace
-			local okT, rT = pcall(function() return GeometryService:SubtractAsync(mid0, trims, opts) end)
-			if okT and type(rT) == "table" and rT[1] then mid0.Parent = nil res = rT else mid0.Parent = nil print("PROTO pocket: clearing corners failed - " .. tostring(rT)) end
-		end
-		for _, x in ipairs(trims) do x.Parent = nil end
-		if okC and type(res) == "table" and res[1] and #adds > 0 then
-			local mid0 = res[1]
-			mid0.Parent = workspace
-			local okA, rA = pcall(function() return GeometryService:UnionAsync(mid0, adds, opts) end)
-			if okA and type(rA) == "table" and rA[1] then mid0.Parent = nil res = rA else mid0.Parent = nil print("PROTO pocket: corner piece failed - " .. tostring(rA)) end
-		end
-		for _, x in ipairs(adds) do x.Parent = nil end
-		-- the finishing cut, a hair past each corner block (takes off any fin left at the join)
-		if okC and type(res) == "table" and res[1] and #finals > 0 then
-			local mid0 = res[1]
-			mid0.Parent = workspace
-			local okF, rF = pcall(function() return GeometryService:SubtractAsync(mid0, finals, opts) end)
-			if okF and type(rF) == "table" and rF[1] then mid0.Parent = nil res = rF else mid0.Parent = nil print("PROTO pocket: finishing cut failed - " .. tostring(rF)) end
-		end
-		for _, x in ipairs(finals) do x.Parent = nil end
-		if not (okC and type(res) == "table" and res[1]) then error("couldn't " .. (E.kind == "in" and "add the fill" or "cut the edge") .. " - " .. tostring(res)) end
-		out = res[1]
-		out.Name = p.Name
-		for k2, v2 in pairs(p:GetAttributes()) do pcall(function() out:SetAttribute(k2, v2) end) end
-		local rel = p:GetAttribute("PROTO_BlockRel")
-		if typeof(rel) == "CFrame" then out:SetAttribute("PROTO_BlockRel", out.CFrame:ToObjectSpace(p.CFrame * rel)) end
-		table.insert(doneList, ENT.pocketEdgeKey(out, E) .. "|" .. tostring(r) .. "|" .. (isF and "f" or "c"))
-		pcall(function() out:SetAttribute("PROTO_PocketEdges", HttpService:JSONEncode(doneList)) end)
-		for _, ch in ipairs(p:GetChildren()) do
-			if ch:IsA("StringValue") and (ch.Name == "DIM_Outline" or ch.Name == "DIM_Bounds") then ENT.moveDimValue(ch, p.CFrame, out.CFrame, out)
-			elseif ch:IsA("StringValue") and ch.Name:sub(1, 4) == "DIM_" then ch:Clone().Parent = out end
-		end
-		pcall(function()
-			out.UsePartColor = true
-			out.Color, out.Material = p.Color, p.Material
-			out.CollisionFidelity = p.CollisionFidelity
-		end)
-		out.Anchored = p.Anchored
-		out.Parent = p.Parent
-		p.Parent = nil   -- (never Destroy - Ctrl+Z brings it back)
-	end)
-	if ok and out then
-		if target == p then setTarget(out) end
-		ENT.lastPocketPart = out
-		ENT.pocketPanelCache = nil
-		setStatus(nm .. " done (" .. fmt(r) .. ") on the " .. (E.kind == "in" and "inside corner of the cut" or "edge of the opening") .. ". Click another edge, or Esc. Ctrl+Z undoes it.")
+	-- v2.57 MESH-ONLY: a block PROTO rebuilt (it has a recipe) = the round / chamfer goes into that cut's own cutter and
+	-- the block is rebuilt in one go; otherwise an opening's edge = ONE cutter round the whole opening, ONE cut; an
+	-- inside edge of an old cut can't be done without joining, so it says so. (The old picture-frame pieces are gone.)
+	if ENT.rebuildable(p) and #ENT.cutsOf(p) > 0 then
+		if ENT.pocketRecipeEdge(E, p, r, isF) then return end
+		-- v2.70: not one of its cuts' edges - let the block edge tool have the click (no Roblox cut for recipe blocks)
+		return false
 	end
+	if E.kind == "rim" then
+		-- v3.41 (glitch sweep): mark busy so a second click can't start a second rebuild at the same time
+		ENT.rebuildBusy = true
+		local okR, doneR = pcall(ENT.pocketRimMesh, E, p, r, isF)
+		ENT.rebuildBusy = false
+		if okR and doneR then return end
+		if not okR then warn("PROTO " .. nm .. ": " .. tostring(doneR)) end
+		setStatus(nm .. ": couldn't do that opening edge.")
+		return
+	end
+	setStatus(nm .. ": this cut was made before PROTO remembered its cuts, so rounding its inside would mean joining a piece on (PROTO doesn't). Ctrl+Z the cut and cut it again, then round it.")
 end
+-- v3.57 (Dylan: "just make it click to add, that's it"): click an edge = it's chamfered / rounded straight away at the
+-- Size in PROPERTIES (no picking, no live preview, no Enter). The screen-pixel edge finding (v3.50) stays.
+-- (false = the v3.50 pick + live preview + Enter way again.)
+ENT.EDGE_OLD = true
 function ENT.edgeClick()
+	if not ENT.meshGate() then return end
+	if ENT.rebuildBusy then setStatus("Still working on the last one - one moment.") return end
+	-- v2.76: a real edge of a PROTO part (lit up by edgeHover)
+	if ENT.topoHot and ENT.topoHot.p and ENT.topoHot.p.Parent and not ENT.EDGE_OLD then
+		-- v3.50: pick first (orange), size live, Enter = make them all
+		local H = ENT.topoHot
+		ENT.eSelToggle(H.p, H.E)
+		return
+	end
+	if ENT.topoHot and ENT.topoHot.p and ENT.topoHot.p.Parent then
+		local H = ENT.topoHot
+		ENT.topoHot = nil
+		local isF = ENT.edgeTool == "fillet"
+		local nm = isF and "ROUND" or "CHAMFER"
+		local r = ENT.filletSize()
+		if not r or r <= 0 or r ~= r then setStatus(nm .. ": type a size above 0 in the 'size' box.") return end
+		ENT.rebuildBusy = true
+		setStatus(nm .. ": rebuilding the part with it...")
+		local ok, np, why = pcall(ENT.edgeStep, H.p, H.E, r, isF)
+		ENT.rebuildBusy = false
+		ENT.drawTopoEdge(nil)
+		if ok and np then
+			setStatus(nm .. " done (" .. fmt(r) .. ") - it's a step in the part's recipe (STEPS on the right: change it or take it out). Ctrl+Z undoes it."
+				.. (ENT.lastEdgeMoved and (" It went in before the " .. ENT.lastEdgeMoved .. " round(s) / chamfer(s) it runs into, so they follow round it.") or ""))
+		else
+			setStatus(nm .. ": " .. tostring(ok and why or np))
+			warn("PROTO " .. nm .. ": " .. tostring(ok and why or np))
+		end
+		pcall(ENT.edgeHover)
+		return
+	end
 	ENT.newWraps = nil
+	ENT.edgeSave = nil
 	local hit = ENT.directHit()
 	-- v2.40: an edge of a cut's pocket under the mouse comes first
 	if ENT.pocketHot and ENT.pocketHot.p and ENT.pocketHot.p.Parent then
 		local H = ENT.pocketHot
 		ENT.pocketHot = nil
-		ENT.pocketEdgeClick(H.E, H.p)
-		ENT.edgeHover()
-		return
+		if ENT.pocketEdgeClick(H.E, H.p) ~= false then
+			ENT.edgeHover()
+			return
+		end
 	end
 	if not hit then return end
 	local p = hit.Instance
 	local E = ENT.edgeAt(p, hit.Position)
 	local nm = (ENT.edgeTool == "fillet") and "FILLET" or "CHAMFER"
 	if not E then
-		if ENT.blockOf(p) then setStatus(nm .. ": click closer to an edge (it lights up orange).")
-		else setStatus(nm .. ": this works on block parts (and blocks it already rounded) - not on wedges, balls, cylinders or meshes yet.") end
+		if ENT.blockOf(p) then setStatus(nm .. ": click closer to an edge (it lights up green).")
+		else setStatus(nm .. ": hover an edge until it lights up green, then click. Works on blocks, cylinders and anything PROTO built - not on wedges, balls or meshes PROTO didn't make.") end
 		return
 	end
 	local r = ENT.filletSize()
@@ -8422,402 +8512,12 @@ function ENT.edgeClick()
 			end
 		end
 	end
-	local out
-	local ok = record("PROTO " .. (isF and "Fillet" or "Chamfer") .. " edge", function()
-		local cf, h, k, a, b = E.cf, E.h, E.k, E.a, E.b
-		local L = h[k] * 2 + 0.4
-		local edgeC = AXV[a] * (E.sa * h[a]) + AXV[b] * (E.sb * h[b])
-		local n1, n2 = AXV[a] * E.sa, AXV[b] * E.sb   -- the two faces' outward directions (block space)
-		-- turn that puts a part's X along the edge
-		local alongX = (k == 1) and CFrame.new() or (k == 2) and CFrame.Angles(0, 0, math.pi / 2) or CFrame.Angles(0, math.pi / 2, 0)
-		local function mk(size, lcf, shape)
-			local q = Instance.new("Part")
-			q.Anchored = true
-			q.CanCollide = false
-			q.Transparency = 1
-			if shape then q.Shape = shape end
-			q.Size = size
-			q.CFrame = cf * lcf
-			q.Parent = workspace
-			return q
-		end
-		local u, v, nbPart = ENT.edgeInside(E, p)
-		if u then
-			-- INSIDE CORNER (like SolidWorks): the fillet / chamfer ADDS material into the corner, it never cuts
-			-- into the block. Fill = the r x r corner square (minus the round for a fillet / cut to a triangle)
-			local s0, s1 = ENT.insideSpan(E, p, hit.Position, u, v, r)
-			local dir = cf:VectorToWorldSpace(AXV[k])
-			local tname = isF and "fillet" or "chamfer"
-			local function endPt(t) return cf:PointToWorldSpace(edgeC + AXV[k] * t) end
-			-- 1) each end: does another fill meet it at a corner? An OUTSIDE corner = this fill is built on r past the
-			-- corner (into the corner square) so it can be cut there
-			local mates = {}
-			for _, e in ipairs({ { -1, s0 }, { 1, s1 } }) do
-				local B, kind, C = ENT.cornerMate({ c = endPt(e[2]), dir = dir * e[1], u = u, v = v, r = r, t = tname })
-				if B then
-					mates[#mates + 1] = { B = B, kind = kind, C = C, out = dir * e[1], side = e[1] }
-					if kind == "inner" and isF then
-						-- v2.40 (Dylan): two FILLETS in an inside corner - this one ENDS where the other one STARTS
-						-- (where its round leaves the wall), instead of both crossing through each other
-						local lc = cf:PointToObjectSpace(C)
-						local tC = ({ lc.X, lc.Y, lc.Z })[k]
-						if e[1] < 0 then s0 = math.max(s0, tC + B.r) else s1 = math.min(s1, tC - B.r) end
-						mates[#mates].skipCut = true
-					end
-					if kind == "outer" then
-						-- built on to EXACTLY r past the true corner (measured from the corner, not from where this
-						-- fill happened to stop - that left a tiny lip sticking out)
-						local lc = cf:PointToObjectSpace(C)
-						local tC = ({ lc.X, lc.Y, lc.Z })[k]
-						if e[1] < 0 then s0 = tC else s1 = tC end   -- (v2.40: the body stops AT the corner; its bit past the corner is its own mitred piece below)
-					end
-				end
-			end
-			-- v2.40 ORDER-PROOF: the upright corner at an end of this edge was ROUNDED already -> this fill stops exactly
-			-- where the round starts and wraps round the bend (same as doing it the other way round)
-			local wraps = {}
-			local roundEnd = {}
-			do
-				local doneP = {}
-				pcall(function() doneP = HttpService:JSONDecode(p:GetAttribute("PROTO_EdgesDone") or "[]") end)
-				local lu, lv = cf:VectorToObjectSpace(u), cf:VectorToObjectSpace(v)
-				for _, d in ipairs(doneP) do
-					if not d.i and d.t == "fillet" and d.k ~= k then
-						local kc = d.k
-						local ac, bc = (kc % 3) + 1, ((kc + 1) % 3) + 1
-						local sg = { 0, 0, 0 }
-						sg[ac], sg[bc] = d.a, d.b
-						-- that rounded edge must sit at one END of this edge, on the same face this fill leans on
-						local endSign = sg[k]
-						local faceAx = (a == kc) and b or a
-						local faceSign = (a == kc) and E.sb or E.sa
-						if endSign ~= 0 and sg[faceAx] == faceSign then
-							local n1c, n2c = AXV[ac] * d.a, AXV[bc] * d.b
-							local up = (math.abs(lu:Dot(AXV[kc])) > 0.9) and lu or lv
-							local lvSign = (a == kc) and E.sa or E.sb
-							local level = lvSign * h[kc]
-							if endSign < 0 then s0 = -h[k] + d.r else s1 = h[k] - d.r end
-							roundEnd[endSign] = true   -- (that end goes round the bend - no mitre / corner piece there)
-							-- v2.40 (Dylan: "only when it sees the other 2" / "it makes 2"): the wrap goes in ONCE per rounded
-							-- corner + level, and only when the fill on the OTHER face is there too
-							if ENT.otherBand(doneP, faceAx, k, endSign, kc, lvSign) and not ENT.hasWrap(doneP, kc, d.a, d.b, lvSign) then
-								wraps[#wraps + 1] = { cf = cf, kc = kc, n1c = n1c, n2c = n2c, rc = d.r, level = level, up = up }
-								ENT.newWraps = ENT.newWraps or {}
-								table.insert(ENT.newWraps, { w = 1, k = kc, a = d.a, b = d.b, z = lvSign })
-							end
-						end
-					end
-				end
-			end
-			E.s0, E.s1 = s0, s1
-			local mid = cf:PointToWorldSpace(edgeC + AXV[k] * ((s0 + s1) / 2))
-			local Lf = math.max(0.05, s1 - s0)
-			local fill = ENT.fillPrism(mid, dir, u, v, Lf, r, isF)
-			if not fill then error("couldn't shape the fill") end
-			local extra = {}
-			print(("PROTO fill: %s on %s k=%d span %.2f..%.2f wraps=%d roundEnds=%s/%s mates=%d"):format(tname, p:GetFullName(), k, s0, s1, #wraps, tostring(roundEnd[-1]), tostring(roundEnd[1]), #mates))
-			for _, W in ipairs(wraps) do
-				local okW, pcs = pcall(ENT.wrapPieces, W.cf, h, W.kc, W.n1c, W.n2c, W.rc, W.level, W.up, r, isF, p)
-				if okW and pcs then for _, x in ipairs(pcs) do extra[#extra + 1] = x end end
-			end
-			-- 2) THE MITRE: this fill is cut through on the 45-degree line where it meets the other one, and (outside
-			-- corners) the other one's missing bit past its end is built and cut on the same line from its side
-			for _, M in ipairs(mates) do
-				if M.skipCut then continue end
-				if roundEnd[M.side] then continue end   -- (v2.40: the other fill across a ROUNDED corner isn't a mitre mate)
-				local m = (M.out - M.B.dir).Unit   -- this fill keeps the side (p - C) . m <= 0
-				local S = r * 10 + 4
-				-- v2.40: a mitred corner piece = r long past the corner, cut on the 45-degree line. If the cut fails the
-				-- piece is DROPPED (an uncut piece stuck out past the corner)
-				local function mitrePiece(mid, d0, u0, v0, rr, keepN)
-					local piece = ENT.fillPrism(mid, d0, u0, v0, rr, rr, isF)
-					if not piece then return end
-					for _ = 1, 2 do
-						local cut = ENT.halfSpace(M.C, keepN, S)
-						local okC, rC = pcall(function() return GeometryService:SubtractAsync(piece, { cut }, ENT.FAST) end)
-						cut.Parent = nil
-						if okC and type(rC) == "table" and rC[1] then
-							piece.Parent = nil
-							rC[1].Parent = workspace
-							extra[#extra + 1] = rC[1]
-							return
-						end
-					end
-					piece.Parent = nil
-					print("PROTO mitre: corner piece cut failed - left out")
-				end
-				if M.kind == "outer" then
-					local B = M.B
-					-- this fill's own piece past the corner (along its edge line), and the other one's (along its edge line)
-					mitrePiece(M.C + M.out * (r / 2), M.out, u, v, r, m)
-					local cB = B.c + B.dir * (M.C - B.c):Dot(B.dir)
-					mitrePiece(cB + B.dir * (B.r / 2), B.dir, B.u, B.v, B.r, -m)
-				else
-					local cutA = ENT.halfSpace(M.C, m, S)
-					local okA, rA = pcall(function() return GeometryService:SubtractAsync(fill, { cutA }, ENT.FAST) end)
-					cutA.Parent = nil
-					if okA and type(rA) == "table" and rA[1] then fill.Parent = nil fill = rA[1] fill.Parent = workspace end
-				end
-				print(("PROTO mitre: %s %s corner at %.2f, %.2f, %.2f | this dir %s | other end %s dir %s r %.2f | block %s"):format(tname, M.kind, M.C.X, M.C.Y, M.C.Z, tostring(M.out), tostring(M.B.c), tostring(M.B.dir), M.B.r, p:GetFullName()))
-			end
-			local opts = { CollisionFidelity = ENT.CSG_OPTS.CollisionFidelity, RenderFidelity = Enum.RenderFidelity.Precise, SplitApart = false }
-			-- JOIN PARTS on: the block, the fill AND the part it stands on become one solid
-			local others = { fill }
-			for _, x in ipairs(extra) do table.insert(others, x) end
-			if ENT.edgeJoin and nbPart and nbPart:IsA("BasePart") then table.insert(others, nbPart) end
-			local okU, res = pcall(function() return GeometryService:UnionAsync(p, others, opts) end)
-			fill.Parent = nil
-			for _, x in ipairs(extra) do x.Parent = nil end
-			if not (okU and type(res) == "table" and res[1]) then error("couldn't add the fill - " .. tostring(res)) end
-			out = res[1]
-			if ENT.edgeJoin and nbPart and table.find(others, nbPart) then
-				local oldM = nbPart.Parent
-				nbPart.Parent = nil   -- (joined into the new solid; Ctrl+Z brings it back)
-				-- its build group is now empty (only the invisible box left) -> that goes too
-				if oldM and oldM:IsA("Model") and #ENT.ownParts(oldM) == 0 and oldM ~= p.Parent then oldM.Parent = nil end
-				ENT.joinedNote = nbPart.Name
-			end
-		end
-		local cutter
-		if out then
-			-- (inside corner done above)
-		elseif isF then
-			-- the bit to take away = the corner square MINUS the round (a cylinder sitting r in from both faces)
-			local g = math.min(0.02, r * 0.1)
-			local sq = mk(V3(L, r + g, r + g), CFrame.new(edgeC - n1 * (r - g) / 2 - n2 * (r - g) / 2) * alongX)
-			-- (the square's Y / Z after the turn don't matter - it's square)
-			local cyl = mk(V3(L + 0.4, r * 2, r * 2), CFrame.new(edgeC - n1 * r - n2 * r) * alongX, Enum.PartType.Cylinder)
-			local okc, res = pcall(function() return GeometryService:SubtractAsync(sq, { cyl }, ENT.FAST) end)
-			sq.Parent = nil
-			cyl.Parent = nil
-			if not (okc and type(res) == "table" and res[1]) then error("couldn't shape the round - " .. tostring(res)) end
-			cutter = res[1]
-			cutter.Parent = workspace
-		else
-			-- a square turned 45 degrees round the edge: it takes off a triangle r along both faces
-			local sd = r * math.sqrt(2)
-			cutter = mk(V3(L, sd, sd), CFrame.new(edgeC) * alongX * CFrame.Angles(math.pi / 4, 0, 0))
-		end
-		-- v2.39 VERTEX BLENDS (SolidWorks-style): this block remembers which edges are already rounded. Where THREE
-		-- rounded edges meet at a corner, the corner is rounded too (a ball corner), so it doesn't leave a point
-		local cutters = { cutter }
-		local done = {}
-		pcall(function() done = HttpService:JSONDecode(p:GetAttribute("PROTO_EdgesDone") or "[]") end)
-		local function isDone(ax, s1, s2, kind)
-			for _, d in ipairs(done) do
-				if d.k == ax and d.a == s1 and d.b == s2 and d.t == kind and math.abs(d.r - r) < 1e-3 and not d.i then return true end
-			end
-			return false
-		end
-		if not out and isF then
-			for _, sk in ipairs({ -1, 1 }) do
-				local sg = { 0, 0, 0 }
-				sg[k], sg[a], sg[b] = sk, E.sa, E.sb
-				local function edgeSigns(ax) local x, y = (ax % 3) + 1, ((ax + 1) % 3) + 1 return sg[x], sg[y] end
-				local a1, a2 = edgeSigns(a)
-				local b1, b2 = edgeSigns(b)
-				if isDone(a, a1, a2, "fillet") and isDone(b, b1, b2, "fillet") then
-					local sv = V3(sg[1], sg[2], sg[3])
-					local vtx = V3(sg[1] * h[1], sg[2] * h[2], sg[3] * h[3])
-					local cube = mk(V3(r + 0.02, r + 0.02, r + 0.02), CFrame.new(vtx - sv * (r - 0.02) / 2))
-					local ball = mk(V3(r * 2, r * 2, r * 2), CFrame.new(vtx - sv * r), Enum.PartType.Ball)
-					local okb, rb = pcall(function() return GeometryService:SubtractAsync(cube, { ball }, ENT.FAST) end)
-					cube.Parent = nil
-					ball.Parent = nil
-					if okb and type(rb) == "table" and rb[1] then rb[1].Parent = workspace table.insert(cutters, rb[1]) end
-				end
-			end
-		end
-		-- v2.40 (Dylan): a cut on an edge that runs ACROSS fills (rounding a block's upright corner, with fills round
-		-- its bottom) cuts through those fills too: the fills (and their corner piece) stop where the round starts on
-		-- each face, so nothing is left sticking into the space the round cleared. Fills running ALONGSIDE the cut
-		-- edge still win (no bites).
-		local crossR = 0
-		-- v2.40: a fill only counts if it really MEETS this edge: it runs out from one END of this edge, along one of
-		-- this edge's two faces, and reaches the corner (rounding the TOP edge must not touch fills at the bottom)
-		local function meetsEdge(d)
-			if not (d.i and d.ux and d.r and d.k ~= k) then return false end
-			local kd = d.k
-			if kd ~= a and kd ~= b then return false end
-			local ad, bd = (kd % 3) + 1, ((kd + 1) % 3) + 1
-			local sgn = { 0, 0, 0 }
-			sgn[ad], sgn[bd] = d.a, d.b
-			if sgn[k] == 0 then return false end
-			local m = (kd == a) and b or a          -- the face axis the fill and this edge share
-			local mySign = (m == a) and E.sa or E.sb
-			if sgn[m] ~= mySign then return false end
-			local myOn = ((kd == a) and E.sa or E.sb) * h[kd]   -- where this edge sits along the fill
-			local s0, s1 = d.s0 or -h[kd], d.s1 or h[kd]
-			return myOn >= s0 - r - 0.1 and myOn <= s1 + r + 0.1
-		end
-		if not out then
-			for _, d in ipairs(done) do if meetsEdge(d) then crossR = math.max(crossR, d.r) end end
-			if crossR > 0 then
-				-- one cutter: everything on the corner side of the 45-degree line where the round / chamfer starts on both
-				-- faces - so both fills get their ends cut ON THAT ANGLE (in line with the new corner face), and the
-				-- corner piece between them goes
-				if isF then
-					-- ROUNDED corner: the fills stop square, exactly where the round starts on each face (a curved
-					-- piece added after the cut carries them round the bend)
-					local rf = crossR + 0.05
-					local function sz(along, wa, wb)
-						local t = { 0, 0, 0 }
-						t[k], t[a], t[b] = along, wa, wb
-						return V3(t[1], t[2], t[3])
-					end
-					cutters[#cutters + 1] = mk(sz(L, rf, rf + r), CFrame.new(edgeC + n1 * (rf / 2) + n2 * ((rf - r) / 2)))
-					cutters[#cutters + 1] = mk(sz(L, rf + r, rf), CFrame.new(edgeC + n1 * ((rf - r) / 2) + n2 * (rf / 2)))
-				end
-				if not isF then
-					-- CHAMFERED corner (v2.40, Dylan: "redo the one going down the new face"): the fills turn the corner
-					-- along the new slanted face. Each side's fill is cut on the half-angle line where it meets the
-					-- slanted face (22.5 degrees each side), and a new fill piece runs along the slanted face (added
-					-- after the cut, cut on the same lines from its side)
-					local S = (r + crossR * 2) * 3 + 2
-					local J1, J2 = edgeC - n2 * r, edgeC - n1 * r      -- where the chamfer starts on face 1 / face 2
-					local t2 = (n2 - n1).Unit                            -- along the slanted face, J1 -> J2
-					local b1 = (n2 + t2).Unit                            -- mitre at J1 (face 1 fill keeps (p - J1).b1 <= 0)
-					local b2 = (n1 - t2).Unit                            -- mitre at J2 (face 2 fill keeps (p - J2).b2 <= 0)
-					ENT.chamferTurn = { J1 = J1, J2 = J2, t2 = t2, b1 = b1, b2 = b2 }
-					local blockBox = mk(E.size + V3(0.002, 0.002, 0.002), CFrame.new())
-					for _, M in ipairs({ { J1, b1, n1 }, { J2, b2, n2 } }) do
-						local big = mk(V3(L, S, S), CFrame.fromMatrix(M[1] + M[2] * (S / 2), AXV[k], M[2]))
-						-- only on ITS fill's side: in front of its own face (behind that face = the other fill / the block)
-						local behind = mk(V3(L, S * 2, S * 2), CFrame.fromMatrix(edgeC - M[3] * S, AXV[k], M[3]))
-						local okT, rT = pcall(function() return GeometryService:SubtractAsync(big, { blockBox, behind }, ENT.FAST) end)
-						big.Parent, behind.Parent = nil, nil
-						if okT and type(rT) == "table" and rT[1] then rT[1].Parent = workspace cutters[#cutters + 1] = rT[1] end
-					end
-					blockBox.Parent = nil
-				end
-			end
-		end
-		if not out then
-			local opts = { CollisionFidelity = ENT.CSG_OPTS.CollisionFidelity, RenderFidelity = Enum.RenderFidelity.Precise, SplitApart = false }
-			local okS, res = pcall(function() return GeometryService:SubtractAsync(p, cutters, opts) end)
-			for _, c in ipairs(cutters) do c.Parent = nil end
-			if not (okS and type(res) == "table" and res[1]) then error("couldn't cut the edge - " .. tostring(res)) end
-			out = res[1]
-			-- FILLS WIN: any inside-corner fills on this block go straight back in (the cut may have nicked them)
-			local fills = {}
-			for _, d in ipairs(done) do
-				-- (v2.40: only fills running alongside this edge AND close enough for the cut to have touched them -
-				-- rebuilding far-away fills from their old recipe undid later trims / wraps = the bottom broke)
-				local near = false
-				if d.i and d.ux and d.k == k then
-					if d.a == E.sa then near = 2 * h[b] <= r + (d.r or 0) + 0.1
-					elseif d.b == E.sb then near = 2 * h[a] <= r + (d.r or 0) + 0.1 end
-				end
-				if near then
-					local f = ENT.fillFromRecipe(cf, E.size, d)
-					if f then table.insert(fills, f) end
-				end
-			end
-			-- v2.40 CHAMFERED corner + fills running across it: a fill along the slanted face, mitred to both sides
-			if (not isF) and crossR > 0 and ENT.chamferTurn then
-				local T = ENT.chamferTurn
-				ENT.chamferTurn = nil
-				local lvls = {}
-				for _, d in ipairs(done) do
-					if meetsEdge(d) then
-						local kd = d.k
-						local ad, bd = (kd % 3) + 1, ((kd + 1) % 3) + 1
-						local zs = (ad == k) and d.a or ((bd == k) and d.b or nil)
-						if zs and not lvls[tostring(zs)] then
-							local U, Vv = V3(d.ux, d.uy, d.uz), V3(d.vx, d.vy, d.vz)
-							lvls[tostring(zs)] = { z = zs * h[k], up = (math.abs(U:Dot(AXV[k])) > 0.9) and U or Vv, rf = d.r, f = d.t == "fillet" }
-						end
-					end
-				end
-				local nc = (n1 + n2).Unit
-				for _, lv in pairs(lvls) do
-					local function lev(pt) return pt - AXV[k] * pt:Dot(AXV[k]) + AXV[k] * lv.z end
-					local j1, j2 = lev(T.J1), lev(T.J2)
-					local len = (j2 - j1).Magnitude + lv.rf * 4
-					local seg = ENT.fillPrism(cf:PointToWorldSpace((j1 + j2) / 2), cf:VectorToWorldSpace(T.t2), cf:VectorToWorldSpace(nc), cf:VectorToWorldSpace(lv.up), len, lv.rf, lv.f)
-					if seg then
-						local Sz = lv.rf * 10 + 4
-						local c1 = ENT.halfSpace(cf:PointToWorldSpace(j1), cf:VectorToWorldSpace(-T.b1), Sz)
-						local c2 = ENT.halfSpace(cf:PointToWorldSpace(j2), cf:VectorToWorldSpace(-T.b2), Sz)
-						local okD, rD = pcall(function() return GeometryService:SubtractAsync(seg, { c1, c2 }, ENT.FAST) end)
-						seg.Parent, c1.Parent, c2.Parent = nil, nil, nil
-						if okD and type(rD) == "table" and rD[1] then rD[1].Parent = workspace table.insert(fills, rD[1]) end
-					end
-				end
-			end
-			-- v2.40 ROUNDED corner + fills running across it: the fill WRAPS round the bend (like skirting round a
-			-- rounded wall) - short pieces stood round the curve, each one facing out from it
-			if isF and crossR > 0 then
-				local levels = {}
-				for _, d in ipairs(done) do
-					if meetsEdge(d) then
-						-- which end of the cut edge this fill sits at (its corner's position along the cut edge)
-						local kd = d.k
-						local ad, bd = (kd % 3) + 1, ((kd + 1) % 3) + 1
-						local zs = (ad == k) and d.a or ((bd == k) and d.b or nil)
-						if zs then
-							local key = tostring(zs)
-							-- its "up" = whichever of its two directions runs along the cut edge (away from the floor)
-							local U, Vv = V3(d.ux, d.uy, d.uz), V3(d.vx, d.vy, d.vz)
-							local up = (math.abs(U:Dot(AXV[k])) > 0.9) and U or Vv
-							if not levels[key] then levels[key] = { z = zs * h[k], v = up, rf = d.r, f = d.t == "fillet", runs = {} } end
-							levels[key].runs[kd] = true
-						end
-					end
-				end
-				for _, lv in pairs(levels) do
-					local zs = (lv.z >= 0) and 1 or -1
-					-- (only when BOTH faces have their fill at this level, and never twice)
-					if not (lv.runs[a] and lv.runs[b]) then continue end
-					if ENT.hasWrap(done, k, E.sa, E.sb, zs) then continue end
-					ENT.newWraps = ENT.newWraps or {}
-					table.insert(ENT.newWraps, { w = 1, k = k, a = E.sa, b = E.sb, z = zs })
-					out.Parent = workspace   -- (so its rounded wall can be felt with rays)
-					print(("PROTO wrap (round after fills): k=%d level %.2f rf %.2f"):format(k, lv.z, lv.rf))
-					local okW, pcs = pcall(ENT.wrapPieces, cf, h, k, n1, n2, r, lv.z, lv.v, lv.rf, lv.f, out)
-					if okW and pcs then for _, x in ipairs(pcs) do table.insert(fills, x) end end
-				end
-			end
-			if #fills > 0 then
-				out.Parent = workspace
-				local okF, rf = pcall(function() return GeometryService:UnionAsync(out, fills, opts) end)
-				for _, f in ipairs(fills) do f.Parent = nil end
-				if okF and type(rf) == "table" and rf[1] then out.Parent = nil out = rf[1] end
-			end
-		end
-		out.Name = p.Name
-		for key, v in pairs(p:GetAttributes()) do pcall(function() out:SetAttribute(key, v) end) end
-		-- remember the original block so the next edge can be done too
-		out:SetAttribute("PROTO_BlockRel", out.CFrame:ToObjectSpace(cf))
-		out:SetAttribute("PROTO_BlockSize", E.size)
-		local rec = { k = E.k, a = E.sa, b = E.sb, t = isF and "fillet" or "chamfer", r = r, i = (u ~= nil) or nil, s0 = E.s0, s1 = E.s1 }
-		if u then
-			-- the fill's recipe in block space (which way its corner opens), so a later cut can rebuild it
-			local ul, vl = cf:VectorToObjectSpace(u), cf:VectorToObjectSpace(v)
-			local function rd(x) return math.round(x) end
-			rec.ux, rec.uy, rec.uz = rd(ul.X), rd(ul.Y), rd(ul.Z)
-			rec.vx, rec.vy, rec.vz = rd(vl.X), rd(vl.Y), rd(vl.Z)
-		end
-		table.insert(done, rec)
-		for _, wr in ipairs(ENT.newWraps or {}) do table.insert(done, wr) end
-		ENT.newWraps = nil
-		pcall(function() out:SetAttribute("PROTO_EdgesDone", HttpService:JSONEncode(done)) end)
-		for _, ch in ipairs(p:GetChildren()) do
-			if ch:IsA("StringValue") and (ch.Name == "DIM_Outline" or ch.Name == "DIM_Bounds") then ENT.moveDimValue(ch, p.CFrame, out.CFrame, out)
-			elseif ch:IsA("StringValue") and ch.Name:sub(1, 4) == "DIM_" then ch:Clone().Parent = out end
-		end
-		pcall(function() out.UsePartColor = true end)
-		out.Anchored = p.Anchored
-		out.Parent = p.Parent
-		p.Parent = nil   -- (never Destroy - Ctrl+Z brings it back)
-	end)
-	if ok and out then
-		ENT.spanCache = nil
-		if target == p then setTarget(out) end
-		ENT.edgeHover()
-		setStatus(nm .. " done (" .. fmt(r) .. ")" .. (ENT.joinedNote and (" - joined with " .. ENT.joinedNote .. " into one solid") or "") .. ". Click another edge, or Esc. Ctrl+Z undoes it.")
-		ENT.joinedNote = nil
-	end
+	-- v2.52 MESH MODE: the block + all its edges are rebuilt as ONE piece (no pieces, no joining) - ENT.edgeMesh
+	-- v2.57 MESH-ONLY: the ONLY way (the old piece-by-piece edge code is gone)
+	ENT.rebuildBusy = true
+	local okE, errE = pcall(ENT.edgeMesh, p, E, r, isF, hit.Position)
+	ENT.rebuildBusy = false
+	if not okE then warn("PROTO: " .. tostring(errE)) setStatus("Error: " .. tostring(errE)) end
 end
 -- v2.38: the real part face under the mouse - no planes, panels or invisible boxes in the way
 function ENT.directHit()
@@ -8830,7 +8530,7 @@ function ENT.directHit()
 		local res = workspace:Raycast(ray.Origin, ray.Direction * 5000, params)
 		if not res then return nil end
 		local q = res.Instance
-		if q == TERRAIN or q.Locked or q.Name == "DIM_Box" or q.Name == "DIM_Preview" or not q:IsA("BasePart") then
+		if q == TERRAIN or q.Locked or ENT.isBox(q.Name) or ENT.isPrev(q.Name) or not q:IsA("BasePart") then
 			table.insert(skip, q)
 		else
 			return res
@@ -9026,77 +8726,6 @@ function ENT.triangulate(pts)
 	if #v == 3 and cross2(v[1], v[2], v[3]) > 1e-9 then tris[#tris + 1] = { v[1], v[2], v[3] } end
 	return tris
 end
--- one flat triangle a,b,c (world) made thick (depth) out of two wedges  (EgoMoose method)
-function ENT.triWedges(a, b, c, depth, shift, host, parent, rim)
-	-- grow each triangle a hair so neighbouring wedges overlap: no hairline gaps (they left thin ridges in cuts)
-	-- every edge pushed out by GROW (thin slivers get properly wider, not just longer)
-	-- rim = { ab, bc, ca } true where that edge is on the shape's outline: those edges are NOT moved (no bumps)
-	-- small + capped: big moves made bumps (v1.60), no moves left seams (v1.61)
-	local GROW = ENT.cutting and 0.03 or 0.02
-	local gAB = (rim and rim[1]) and 0 or GROW
-	local gBC = (rim and rim[2]) and 0 or GROW
-	local gCA = (rim and rim[3]) and 0 or GROW
-	local function outN(p, q, other)
-		local e = (q - p)
-		if e.Magnitude < 1e-6 then return nil end
-		e = e.Unit
-		local d = p - other
-		local n = d - e * d:Dot(e)
-		return n.Magnitude > 1e-6 and n.Unit or nil
-	end
-	local nAB, nBC, nCA = outN(a, b, c), outN(b, c, a), outN(c, a, b)
-	local function move(v, n1, d1, n2, d2)
-		if not (n1 and n2) then return v end
-		local cc = n1:Dot(n2)
-		local den = 1 - cc * cc
-		local x
-		if den < 1e-6 then x = n1 * math.max(d1, d2) else
-			x = n1 * ((d1 - cc * d2) / den) + n2 * ((d2 - cc * d1) / den)
-		end
-		if x.Magnitude > GROW * 1.5 then x = x.Unit * GROW * 1.5 end
-		return v + x
-	end
-	local free = rim and rim[4] or {}
-	local function moveF(v, isFree, ...)
-		if isFree then
-			local cap0 = GROW
-			GROW = GROW * 25   -- a corner in the middle of the shape: nothing to bump into
-			local r = move(v, ...)
-			GROW = cap0
-			return r
-		end
-		return move(v, ...)
-	end
-	a, b, c = moveF(a, free[1], nAB, gAB, nCA, gCA), moveF(b, free[2], nAB, gAB, nBC, gBC), moveF(c, free[3], nBC, gBC, nCA, gCA)
-	local ab, ac, bc = b - a, c - a, c - b
-	local abd, acd, bcd = ab:Dot(ab), ac:Dot(ac), bc:Dot(bc)
-	if abd > acd and abd > bcd then
-		c, a = a, c
-	elseif acd > bcd and acd > abd then
-		a, b = b, a
-	end
-	ab, ac, bc = b - a, c - a, c - b
-	local right = ac:Cross(ab).Unit
-	local up = bc:Cross(right).Unit
-	local back = bc.Unit
-	local height = math.abs(ab:Dot(up))
-	if height < 0.001 then return end
-	local z1, z2 = math.abs(ab:Dot(back)), math.abs(ac:Dot(back))
-	if z1 >= 0.001 then
-		local w1 = Instance.new("WedgePart")
-		ENT.styleFrom(w1, host)
-		w1.Size = V3(depth, height, z1)
-		w1.CFrame = CFrame.fromMatrix((a + b) / 2 + shift, right, up, back)
-		w1.Parent = parent
-	end
-	if z2 >= 0.001 then
-		local w2 = Instance.new("WedgePart")
-		ENT.styleFrom(w2, host)
-		w2.Size = V3(depth, height, z2)
-		w2.CFrame = CFrame.fromMatrix((a + c) / 2 + shift, -right, up, -back)
-		w2.Parent = parent
-	end
-end
 ENT.FAST = { CollisionFidelity = Enum.CollisionFidelity.Box, RenderFidelity = Enum.RenderFidelity.Precise, SplitApart = false }
 local CSG_OPTS = {
 	CollisionFidelity = ENT.collEnum(),
@@ -9126,95 +8755,6 @@ function ENT.hull2(pts)
 	for _, p in ipairs(upper) do table.insert(lower, p) end
 	return lower
 end
-function ENT.convexSolid(q, D, shift, into)
-	local pl, host = sk.pl, sk.host
-	-- if the outline is convex apart from tiny wobbles, build its hull (dents under 2% of the area get filled)
-	if #q >= 3 then
-		local h = ENT.hull2(q)
-		if #h >= 3 and polyArea(h) <= polyArea(q) * 1.02 then q = h end
-	end
-	-- straight-edged shape that bulges out everywhere (hexagon, any polygon, angled rect...):
-	-- build it as ONE clean piece = the overlap of big blocks, one block per edge. No wedges, no seams.
-	local n = #q
-	local convex = n >= 3 and n <= 96
-	if convex then
-		local area, sign = 0, 0
-		for i = 1, n do local a, b = q[i], q[i % n + 1] area += a.X * b.Y - b.X * a.Y end
-		sign = area > 0 and 1 or -1
-		for i = 1, n do
-		local a, b, c = q[i], q[i % n + 1], q[(i + 1) % n + 1]
-		if cross2(a, b, c) * sign < -1e-6 then convex = false break end
-		end
-		if convex then
-		local lo, hi = V2(math.huge, math.huge), V2(-math.huge, -math.huge)
-		for _, p2 in ipairs(q) do lo = V2(math.min(lo.X, p2.X), math.min(lo.Y, p2.Y)) hi = V2(math.max(hi.X, p2.X), math.max(hi.Y, p2.Y)) end
-		local big = (hi - lo).Magnitude * 2 + 4
-		local blocks = {}
-		for i = 1, n do
-			local a, b = q[i], q[i % n + 1]
-			local e = b - a
-			if e.Magnitude > 1e-4 then
-			local dir = e.Unit
-			local nin = V2(-dir.Y, dir.X) * sign   -- points into the shape
-			local ux = pl.u * dir.X + pl.v * dir.Y
-			local vy = pl.u * nin.X + pl.v * nin.Y
-			local blk = Instance.new("Part")
-			ENT.styleFrom(blk, host)
-			blk:SetAttribute("DIM_T", blk.Transparency)
-			blk.Transparency = 1
-			blk.Size = V3(big * 2, big, D)
-			blk.CFrame = CFrame.fromMatrix(W((a + b) / 2 + nin * (big / 2)) + shift, ux, vy)   -- 3rd axis worked out (always right-handed)
-			blk.Parent = into
-			table.insert(blocks, blk)
-			end
-		end
-		if #blocks < 3 then
-			for _, b in ipairs(blocks) do b.Parent = nil end
-			return false
-		end
-		-- overlap them ONE AT A TIME (passing them all at once overlaps the first with the rest joined together = far too big)
-		local col, mat, mv = blocks[1].Color, blocks[1].Material, blocks[1].MaterialVariant
-		local tr = blocks[1]:GetAttribute("DIM_T") or 0
-		local cur, ok = blocks[1], true
-		for i = 2, #blocks do
-			local okI, res = pcall(function() return GeometryService:IntersectAsync(cur, { blocks[i] }, ENT.cutting and ENT.FAST or CSG_OPTS) end)
-			if okI and type(res) == "table" and res[1] then
-			res[1].Parent = into
-			if cur ~= blocks[1] then cur.Parent = nil end
-			cur = res[1]
-			else
-			ok = false
-			break
-			end
-		end
-		-- a step failed: throw away the half-finished piece too (it was being left behind as a giant jagged shape)
-		if not ok and cur and cur ~= blocks[1] then cur.Parent = nil cur = nil end
-		for _, b in ipairs(blocks) do b.Parent = nil end
-		-- safety: if the result is bigger than the shape could ever be, don't trust it (use wedges instead)
-		if ok and cur and cur ~= blocks[1] then
-			local z = cur.Size
-			if math.max(z.X, z.Y, z.Z) > (hi - lo).Magnitude + D + 1 then
-			cur.Parent = nil
-			ok = false
-			end
-		end
-		if ok and cur and cur ~= blocks[1] then
-			local np = cur
-			np.Anchored = true
-			np.Transparency = tr
-			np:SetAttribute("DIM_T", nil)
-			pcall(function()
-			np.UsePartColor = true
-			np.Color, np.Material, np.MaterialVariant = col, mat, mv
-			end)
-			np.Parent = into
-			return true
-		end
-		-- intersect failed -> fall back to wedges below
-		end
-	end
-	return false
-end
 -- v2.43 (Dylan): drop in-between points on straight edges (where another drawing touched, or where a double line
 -- started mid-side) and back-and-forth spikes. Those split the area into needle-thin triangles, and the seams between
 -- them left a thin "random wall" standing inside a hole after the hole was cut out.
@@ -9241,201 +8781,6 @@ function ENT.simplifyPoly(pts)
 		end
 	end
 	return q
-end
-local function buildShape(s, D, shift, into)
-	local pl, host
-	if ENT.plOv then pl, host = ENT.plOv, ENT.hostOv else pl, host = sk.pl, sk.host end
-	if s.kind == "face" and s.src then s = s.src end   -- untouched shape: build the real rect / circle / ellipse
-	-- v2.43: split areas AND closed line shapes (a double line's inside / outside, polylines) get their in-between
-	-- points dropped; a 4-corner one is then built as ONE block (a fan of triangles left thin walls on its seams
-	-- when it was used to cut a hole)
-	if (s.kind == "face" or (s.kind == "poly" and not s.open and not s.spline)) and s.pts and #s.pts >= 4 then
-		local sq = ENT.simplifyPoly(s.pts)
-		if #sq >= 3 and #sq < #s.pts then s = { kind = "face", open = false, pts = sq }
-		elseif #sq == 4 and s.kind == "poly" then s = { kind = "face", open = false, pts = sq } end
-	end
-	if s.kind == "face" and #s.pts == 4 then
-		-- a split piece that is a rectangle (any angle) -> one block, not wedges
-		local q = s.pts
-		local e1, e2, e3 = q[2] - q[1], q[3] - q[2], q[4] - q[3]
-		if e1.Magnitude > 1e-3 and e2.Magnitude > 1e-3 and math.abs(e1.Unit:Dot(e2.Unit)) < 1e-3 and math.abs(e2.Unit:Dot(e3.Unit)) < 1e-3
-			and (q[1] + q[3] - q[2] - q[4]).Magnitude < 1e-3 then   -- v2.36: opposite sides equal (a right trapezoid is NOT a block)
-			local c = (q[1] + q[3]) / 2
-			local ux = pl.u * e1.Unit.X + pl.v * e1.Unit.Y
-			local vy = pl.n:Cross(ux)
-			local p = Instance.new("Part")
-			ENT.styleFrom(p, host)
-			p.Size = V3(e1.Magnitude, e2.Magnitude, D)
-			p.CFrame = CFrame.fromMatrix(W(c) + shift, ux, vy)
-			p.Parent = into
-			return true
-		end
-	end
-	if s.kind == "rect" then
-		local p = Instance.new("Part")
-		ENT.styleFrom(p, host)
-		p.Size = V3(s.w, s.h, D)
-		p.CFrame = CFrame.fromMatrix(W(s.c) + shift, pl.u, pl.v)
-		p.Parent = into
-	elseif s.kind == "circle" then
-		local p = Instance.new("Part")
-		ENT.styleFrom(p, host)
-		p.Shape = Enum.PartType.Cylinder
-		p.Size = V3(D, s.r * 2, s.r * 2)
-		p.CFrame = CFrame.fromMatrix(W(s.c) + shift, pl.n, pl.u)
-		p.Parent = into
-	elseif s.kind == "ellipse" and (function()
-		-- best way: a round cylinder turned into a union (unions CAN be stretched), then stretched into the ellipse = ONE smooth part
-		local ux = pl.u * math.cos(s.rot) + pl.v * math.sin(s.rot)
-		local cf = CFrame.fromMatrix(W(s.c) + shift, pl.n, ux)
-		local cyl = Instance.new("Part")
-		ENT.styleFrom(cyl, host)
-		cyl.Shape = Enum.PartType.Cylinder
-		cyl.Size = V3(D, s.a * 2, s.a * 2)
-		cyl.CFrame = cf
-		cyl.Parent = into
-		local twin = cyl:Clone()
-		twin.Parent = into
-		local ok, res = pcall(function() return GeometryService:UnionAsync(cyl, { twin }, ENT.cutting and ENT.FAST or CSG_OPTS) end)
-		cyl.Parent = nil
-		twin.Parent = nil
-		if not (ok and type(res) == "table" and res[1]) then return false end
-		local u = res[1]
-		u.Anchored = true
-		pcall(function()
-			u.UsePartColor = true
-			u.Color, u.Material, u.MaterialVariant = cyl.Color, cyl.Material, cyl.MaterialVariant
-		end)
-		-- v2.46 fix (Dylan: "somebody forgot some dimensions"): the union's OWN axes aren't always the cylinder's
-		-- (it can come back squared with the world). Stretch along whichever of its axes really is the cylinder's
-		-- length / long side / short side, and keep its own turn - else the ellipse came out as a squashed slab.
-		local rc = u.CFrame
-		local axes = { rc.RightVector, rc.UpVector, rc.LookVector }
-		local vy = pl.n:Cross(ux)
-		local want = {}
-		for k = 1, 3 do
-			local d = axes[k]
-			if math.abs(d:Dot(pl.n)) > 0.999 then want[k] = D
-			elseif math.abs(d:Dot(ux)) > 0.999 then want[k] = s.a * 2
-			elseif math.abs(d:Dot(vy)) > 0.999 then want[k] = s.b * 2 end
-		end
-		if not (want[1] and want[2] and want[3]) then u.Parent = nil return false end   -- turned some other way: use slices
-		u.Size = V3(want[1], want[2], want[3])
-		u.CFrame = rc - rc.Position + (W(s.c) + shift)
-		u.Parent = into
-		return true
-	end)() then
-		-- (built above)
-	elseif s.kind == "ellipse" and (function()
-		local ux2, vy2 = V2(math.cos(s.rot), math.sin(s.rot)), V2(-math.sin(s.rot), math.cos(s.rot))
-		local q = {}
-		for i = 0, 47 do local t = 2 * PI * i / 48 q[#q + 1] = s.c + ux2 * (math.cos(t) * s.a) + vy2 * (math.sin(t) * s.b) end
-		local cw = W(s.c)
-		for i = 1, 48 do ENT.triWedges(cw, W(q[i]), W(q[i % 48 + 1]), D, shift, host, into, { false, true, false }) end
-		return #into:GetChildren() > 0
-	end)() then
-		-- (built above: 48 thin slices round the centre, glued in one go = fast, like splines)
-	elseif s.kind == "ellipse" then
-		-- backup if the union fails: slices across the long axis,
-		-- each slice = one block + a right-angle wedge top and bottom (clean, no thin slivers)
-		local ux2, vy2 = V2(math.cos(s.rot), math.sin(s.rot)), V2(-math.sin(s.rot), math.cos(s.rot))
-		local ux = pl.u * ux2.X + pl.v * ux2.Y
-		local vy = pl.n:Cross(ux)
-		local function E(x, y) return W(s.c + ux2 * x + vy2 * y) end
-		local N = 24
-		local function hAt(x) return s.b * math.sqrt(math.max(0, 1 - (x / s.a) ^ 2)) end
-		for k = 0, N - 1 do
-			local x0, x1 = -s.a * math.cos(PI * k / N), -s.a * math.cos(PI * (k + 1) / N)
-			local h0, h1 = hAt(x0), hAt(x1)
-			local hm = math.min(h0, h1)
-			if hm > 0.001 and x1 - x0 > 0.001 then
-				local blk = Instance.new("Part")
-				ENT.styleFrom(blk, host)
-				blk.Size = V3(x1 - x0, hm * 2, D)
-				blk.CFrame = CFrame.fromMatrix(E((x0 + x1) / 2, 0) + shift, ux, vy)
-				blk.Parent = into
-			end
-			if math.abs(h1 - h0) > 0.001 then
-				local xh = (h1 > h0) and x1 or x0
-				for _, sg in ipairs({ 1, -1 }) do
-					ENT.triWedges(E(x0, hm * sg), E(x1, hm * sg), E(xh, math.max(h0, h1) * sg), D, shift, host, into)
-				end
-			end
-		end
-	elseif s.kind == "slot" then
-		-- block + 2 round ends
-		local ux = pl.u * math.cos(s.rot) + pl.v * math.sin(s.rot)
-		local vy = pl.n:Cross(ux)
-		local blk = Instance.new("Part")
-		ENT.styleFrom(blk, host)
-		blk.Size = V3(s.L, s.r * 2, D)
-		blk.CFrame = CFrame.fromMatrix(W(s.c) + shift, ux, vy)
-		blk.Parent = into
-		for _, sgn in ipairs({ 1, -1 }) do
-			local cy = Instance.new("Part")
-			ENT.styleFrom(cy, host)
-			cy.Shape = Enum.PartType.Cylinder
-			cy.Size = V3(D, s.r * 2, s.r * 2)
-			cy.CFrame = CFrame.fromMatrix(W(s.c) + ux * (s.L / 2 * sgn) + shift, pl.n, ux)
-			cy.Parent = into
-		end
-	else
-		-- straight-edged shape that bulges out everywhere (hexagon, polygon, angled rect, a dome under a spline...):
-		-- one clean block-overlap piece; anything else (inward corners, very many points) -> wedges
-		-- free shapes (lines, splines, polygons, split-up areas): ALWAYS the triangle way (fast, one glue step)
-		local q0 = outline(s)
-		local q = {}
-		for _, p2 in ipairs(q0) do if #q == 0 or (p2 - q[#q]).Magnitude > 1e-4 then q[#q + 1] = p2 end end
-		if #q > 3 and (q[1] - q[#q]).Magnitude <= 1e-4 then table.remove(q) end
-		if #q > 3 and not s.spline then   -- v2.43: no in-between points on straight edges (needle triangles)
-			local sq = ENT.simplifyPoly(q)
-			if #sq >= 3 then q = sq end
-		end
-		if #q < 3 then return false end
-		-- best: a fan from a middle point that sees every edge (circles, lenses, domes, polygons...) = even, chunky triangles
-		local tris = ENT.fanTris(q) or ENT.triangulate(q)
-		if not tris then return false end
-		local idx = {}
-		local function key(p2) return string.format("%.4f,%.4f", p2.X, p2.Y) end
-		for i, p2 in ipairs(q) do idx[key(p2)] = i end
-		local nq = #q
-		local function onRim(p1, p2)
-			local i, j = idx[key(p1)], idx[key(p2)]
-			if not (i and j) then return false end
-			local d = math.abs(i - j)
-			return d == 1 or d == nq - 1
-		end
-		for _, t in ipairs(tris) do
-			-- 4th entry: which corners are NOT on the outline (the fan's middle point) -> those may move further
-			local free = { not idx[key(t[1])], not idx[key(t[2])], not idx[key(t[3])] }
-			ENT.triWedges(W(t[1]), W(t[2]), W(t[3]), D, shift, host, into, { onRim(t[1], t[2]), onRim(t[2], t[3]), onRim(t[3], t[1]), free })
-		end
-	end
-	return true
-end
--- one shape -> ONE part (pieces glued with a union if it needed several wedges)
-function ENT.solidOf(s, D, shift, into)
-	local f = Instance.new("Folder")
-	f.Parent = into
-	if not buildShape(s, D, shift, f) then f.Parent = nil return nil end
-	local pieces = f:GetChildren()
-	local result
-	if #pieces == 1 then
-		result = pieces[1]
-	elseif #pieces > 1 then
-		local rest = {}
-		for i = 2, #pieces do rest[i - 1] = pieces[i] end
-		local ok, res = pcall(function() return GeometryService:UnionAsync(pieces[1], rest, ENT.cutting and ENT.FAST or CSG_OPTS) end)
-		if ok and type(res) == "table" and res[1] then
-			result = res[1]
-			for _, pc in ipairs(pieces) do pc.Parent = nil end
-		else
-			warn("PROTO: couldn't glue " .. #pieces .. " pieces into one shape - " .. tostring(res))
-		end
-	end
-	if result then result.Parent = into end
-	f.Parent = nil
-	return result
 end
 function ENT.keepLook(np, from)
 	np.Anchored = true
@@ -9566,63 +8911,6 @@ function ENT.reportFails()
 		table.concat(names, ", "), #L > 4 and (" and " .. (#L - 4) .. " more") or ""))
 	ENT.failList = {}
 end
-function ENT.mergeTargets(targets, made)
-	local out, done = {}, {}
-	for _, p in ipairs(targets) do
-		local m = p.Parent
-		if m and m:IsA("Model") and m.Name:sub(1, 4) == "DIM_" and m ~= made and not (made and m:IsDescendantOf(made)) then
-			if not done[m] then
-				done[m] = true
-				local parts = {}
-				for _, c in ipairs(m:GetChildren()) do if c:IsA("BasePart") and not c.Locked then table.insert(parts, c) end end
-				if #parts > 1 then
-					local rest = {}
-					for i = 2, #parts do rest[i - 1] = parts[i] end
-					local ok, res = pcall(function()
-						return GeometryService:UnionAsync(parts[1], rest, { CollisionFidelity = Enum.CollisionFidelity.Box, RenderFidelity = Enum.RenderFidelity.Automatic, SplitApart = false })
-					end)
-					if ok and type(res) == "table" and res[1] then
-						local u = res[1]
-						u.Name = parts[1].Name
-						u.Anchored = parts[1].Anchored
-						u.Parent = m
-						for _, q in ipairs(parts) do q.Parent = nil end
-						print(("PROTO: glued %d pieces of %s into one solid before cutting"):format(#parts, m.Name))
-						table.insert(out, u)
-					else
-						warn("PROTO: couldn't glue " .. m.Name .. " (" .. tostring(res) .. ") - cutting its pieces one by one")
-						for _, q in ipairs(parts) do table.insert(out, q) end
-					end
-				else
-					table.insert(out, p)
-				end
-			end
-		else
-			table.insert(out, p)
-		end
-	end
-	return out
-end
-function ENT.debris(np, regions, z0, z1, small)
-	local pl = sk.pl
-	local function inside(p3, tol)
-		local dz = (p3 - pl.o):Dot(pl.n)
-		if dz < math.min(z0, z1) - tol or dz > math.max(z0, z1) + tol then return false end
-		local p2 = to2D(pl, p3)
-		for _, r in ipairs(regions) do if ENT.inArea(r, p2, tol) then return true end end
-		return false
-	end
-	if small then   -- v2.36: tolerance relative to the piece (a flat 1 stud ate real small end pieces next to the cut)
-		local z = np.Size
-		return inside(np.Position, math.clamp(math.min(z.X, z.Y, z.Z) * 0.25, 0.05, 1))
-	end
-	if not inside(np.Position, 0.25) then return false end
-	local h = np.Size / 2
-	for _, sx in ipairs({ -1, 1 }) do for _, sy in ipairs({ -1, 1 }) do for _, sz in ipairs({ -1, 1 }) do
-		if not inside(np.CFrame * V3(h.X * sx, h.Y * sy, h.Z * sz), 0.6) then return false end
-	end end end
-	return true
-end
 -- an edge of the cut that runs along the part's own edge -> pushed 1 stud out past the part,
 -- so the cutter clearly overlaps the outside and no paper-thin wall is left behind
 function ENT.pastEdge(pts, out, sign)
@@ -9668,23 +8956,7 @@ end
 -- SolidWorks-style: an area cut out by real shapes is built from those REAL shapes (exact cylinders / blocks),
 -- not from triangles:  area = (shapes it is inside, overlapped) minus (shapes that border it from outside)
 local PRIM = { rect = true, circle = true, ellipse = true, slot = true, ngon = true }
-function ENT.primOK(f)
-	if not (f and f.kind == "face" and not f.src and f.srcShapes) then return false end
-	for sh in pairs(f.srcShapes) do
-		if not PRIM[sh.kind] or sh.open or sh.guide then return false end
-	end
-	return true
-end
 -- ===== MESH CUTTER (Roblox beta "Solid Modeling On Meshes") =====
--- one sealed prism mesh straight from the outline: no pieces, no joins (what SolidWorks-style kernels do)
-function ENT.wantMesh(r)
-	local sh = r.whole or (r.inside and #r.inside == 1 and r.inside[1])
-	if not sh then return false end
-	local real = (sh.kind == "face" and sh.src) or sh
-	if real.kind == "rect" or real.kind == "circle" or real.kind == "ellipse" or real.kind == "slot" then return false end   -- exact parts already
-	if ENT.primOK(sh) then return false end   -- built exactly from real shapes already
-	return true
-end
 -- q = outline in frame XY, z0..z1 along frame Z  -> MeshPart (nil on failure)
 function ENT.prismRaw(q0, z0, z1, frame, flip)
 	local q = {}
@@ -9753,169 +9025,8194 @@ function ENT.meshDetect()
 	end
 	return false
 end
-function ENT.toggleMesh()
-	if not ENT.SHOW_MESH then ENT.meshCut = false return end
-	if ENT.meshCut then
-		ENT.meshCut = false
-	else
-		setStatus("Checking for the Solid Modeling On Meshes beta...")
-		if ENT.meshFlip == nil and not ENT.meshDetect() then
-			U.meshBtn.Text = "Mesh cutter (beta): off"
-			setStatus("Mesh cutter needs the Roblox beta: File > Beta Features > tick 'Solid Modeling On Meshes' > Save > restart Studio. Normal cuts still work.")
-			return
-		end
-		ENT.meshCut = true
-	end
-	U.meshBtn.Text = ENT.meshCut and "Mesh cutter (beta): ON" or "Mesh cutter (beta): off"
-	U.meshBtn.BackgroundColor3 = ENT.meshCut and COL.warn or COL.btn
-	setStatus(ENT.meshCut and "MESH CUTTER ON: line / spline cuts use one sealed mesh (perfect). WARNING: the cut part becomes a MeshPart, and Roblox does NOT save those yet (beta) - test place only!" or "Mesh cutter off: normal cuts (these save and publish fine).")
-end
--- build the mesh cutter for one area of the cut
-function ENT.meshRegion(r, it, grow, into)
-	local sh = r.whole or r.inside[1]
-	local g = grow and ENT.grown(sh, grow) or sh
-	local pl = sk.pl
-	local frame = CFrame.fromMatrix(pl.o, pl.u, pl.v)
-	if (pl.u:Cross(pl.v) - pl.n).Magnitude > 1e-3 then return false end
-	local ok, mp = pcall(function()
-		return ENT.prismRaw(outline(g), it.mid - it.D / 2, it.mid + it.D / 2, frame, ENT.meshFlip)
+-- ===== v2.48 MESH SAVE (PROTO's own code) =====
+-- Meshes PROTO makes (the mesh cutter's cut parts) are uploaded to Roblox as real Mesh assets, so they stay in the
+-- place and show in the published game (an unsaved mesh = a checkered cube in game). Saving happens once, straight
+-- after the cut is done - never on a timer.
+-- Needs: Game Settings > Security > Allow Mesh / Image APIs, and Studio's beta "CreateAssetAsync Lua API".
+-- Roblox refuses uploads from plugins installed from the Creator Store, so there the mesh cutter stays off and
+-- PROTO uses normal parts (everything else still works).
+ENT.MS = { api = nil, mesh = nil, solid = nil, store = false, upOK = false, busy = false, queue = {} }
+pcall(function() ENT.MS.upOK = plugin:GetSetting("PROTO_meshUpOK") == true end)
+ENT.MS_BETA = "File > Beta Features > tick \"CreateAssetAsync Lua API\" > Save > close and reopen Studio."
+ENT.MS_API = "Game Settings > Security > turn on \"Allow Mesh / Image APIs\" (the place has to be published to Roblox first)."
+ENT.MS_STORE = "Roblox doesn't let plugins installed from the Creator Store save meshes yet, so Mesh mode stays off. Normal parts and cuts work and save fine."
+-- what's switched on? (deep = also test that Studio can cut with a mesh)
+function ENT.msCheck(deep)
+	local M = ENT.MS
+	local okA, has = pcall(function() return AssetService.CreateAssetAsync ~= nil end)
+	M.api = okA and has == true
+	M.mesh = pcall(function()
+		local em = AssetService:CreateEditableMesh()
+		if not em then error("no mesh") end
+		pcall(function() em:Destroy() end)
 	end)
-	if not (ok and mp) then warn("PROTO mesh cutter failed, using the normal way: " .. tostring(mp)) return false end
-	mp.Name = "DIM_MeshCutter"
-	mp.Parent = into
+	if deep and M.mesh and M.solid == nil then
+		local okD, yes = pcall(ENT.meshDetect)
+		M.solid = okD and yes == true
+	end
+	return M
+end
+-- a line per check, for the panel and the Output
+function ENT.msReport()
+	local M = ENT.MS
+	local function row(ok, good, bad) return (ok and "[OK] " or "[X] ") .. (ok and good or bad) end
+	local t = {
+		row(M.mesh, "Mesh / Image APIs are on", "Mesh / Image APIs are off: " .. ENT.MS_API),
+		row(M.api, "CreateAssetAsync beta is on", "CreateAssetAsync beta is off: " .. ENT.MS_BETA),
+	}
+	if M.solid ~= nil then table.insert(t, row(M.solid, "Studio can cut with meshes", "Studio couldn't cut with a mesh here (File > Beta Features > \"Solid Modeling On Meshes\", if you see it)")) end
+	if M.store then table.insert(t, "[X] " .. ENT.MS_STORE)
+	elseif M.upOK then table.insert(t, "[OK] Saving meshes to Roblox works") end
+	return table.concat(t, "\n")
+end
+-- why an upload failed, in plain words (and remembers a store refusal)
+function ENT.msWhy(err)
+	local s = tostring(err)
+	local l = s:lower()
+	if l:find("store") then ENT.MS.store = true return ENT.MS_STORE end
+	if l:find("not enabled") or l:find("beta") or l:find("not a valid member") then return "the CreateAssetAsync beta is off: " .. ENT.MS_BETA end
+	if l:find("permission") or l:find("not allowed") then return "Roblox said no (" .. s .. "). " .. ENT.MS_API end
+	return s
+end
+-- upload one EditableMesh -> asset id (or nil, error)
+function ENT.msUpload(em, name)
+	local ok, res, id = pcall(function()
+		return AssetService:CreateAssetAsync(em, Enum.AssetType.Mesh, { Name = name or "PROTO mesh", Description = "Made with PROTO" })
+	end)
+	if not ok then return nil, ENT.msWhy(res) end
+	if res ~= Enum.CreateAssetResult.Success then return nil, ENT.msWhy(id or res) end
+	return id
+end
+-- a MeshPart using the uploaded mesh (a fresh upload can take a moment to be ready, so it tries a few times)
+function ENT.msPartFromId(id, fid)
+	local last
+	-- v3.48: a mesh that was JUST uploaded can take Roblox a while to get ready ("Failed to load mesh asset") - wait
+	-- longer between tries (about 30 seconds in all) instead of giving up after 6
+	local waits = { 1, 1.5, 2, 3, 4, 5, 6, 8 }
+	for try = 1, #waits + 1 do
+		for _, mk in ipairs({
+			function() return Content.fromUri("rbxassetid://" .. tostring(id)) end,
+			function() return Content.fromAssetId(id) end,
+		}) do
+			local ok, mp = pcall(function()
+				-- v2.67: RenderFidelity Automatic = Roblox shows simpler versions of the mesh far away (free triangles)
+				local o = { RenderFidelity = Enum.RenderFidelity.Automatic }
+				if fid then o.CollisionFidelity = fid end
+				return AssetService:CreateMeshPartAsync(mk(), o)
+			end)
+			if not (ok and mp) then
+				-- (if this Studio won't take RenderFidelity here, make it the old way)
+				ok, mp = pcall(function()
+					if fid then return AssetService:CreateMeshPartAsync(mk(), { CollisionFidelity = fid }) end
+					return AssetService:CreateMeshPartAsync(mk())
+				end)
+			end
+			if ok and mp then return mp end
+			last = mp
+		end
+		if waits[try] then task.wait(waits[try]) end
+	end
+	return nil, tostring(last)
+end
+-- v2.61: a Roblox cut result (GeometryService Subtract / Intersect on meshes) has NO mesh source at all
+-- (ContentSourceType None, empty MeshId - seen in Studio 12 Oct). Roblox keeps its shape inside the part, like a
+-- union, so there's nothing for PROTO to read or upload.
+function ENT.msIsCSG(p)
+	if not (p and p:IsA("MeshPart")) then return false end
+	local csg = false
+	pcall(function()
+		csg = p.MeshContent.SourceType == Enum.ContentSourceType.None and tostring(p.MeshId) == ""
+	end)
+	return csg
+end
+-- is this a mesh that only lives in this Studio session (not uploaded yet)?
+function ENT.msUnsaved(p)
+	if not (p and p:IsA("MeshPart")) then return false end
+	if ENT.msIsCSG(p) then return false end   -- v2.61: Roblox's own cut result - kept by Roblox
+	local saved = false
+	pcall(function()
+		local mc = p.MeshContent
+		saved = mc.SourceType == Enum.ContentSourceType.Uri and tostring(mc.Uri):find("rbxassetid://%d") ~= nil
+	end)
+	if not saved then pcall(function() saved = tostring(p.MeshId):find("%d%d%d") ~= nil end) end
+	return not saved
+end
+-- read a part's mesh -> EditableMesh, owned (true = ours to free), error
+function ENT.msMeshOf(p)
+	local mc
+	pcall(function() mc = p.MeshContent end)
+	if not mc then return nil, false, "the part has no mesh to read" end
+	local okO, obj = pcall(function() return mc.SourceType == Enum.ContentSourceType.Object and mc.Object or nil end)
+	if okO and obj and obj:IsA("EditableMesh") then return obj, false end
+	local ok, em = pcall(function() return AssetService:CreateEditableMeshAsync(mc) end)
+	if ok and em then return em, true end
+	-- (v2.58: say what kind of mesh it was - a cut result from Roblox can't be read back)
+	local kind = "?"
+	pcall(function() kind = tostring(mc.SourceType) .. " " .. tostring(mc.Uri) .. " / MeshId " .. tostring(p.MeshId) end)
+	return nil, false, "couldn't read the mesh: " .. tostring(em) .. " [" .. kind .. "]"
+end
+-- v2.67 SHARED MESHES: a fingerprint of a mesh's shape. Points are measured inside the mesh's own box (0..1), so the
+-- same shape at any size gets the same fingerprint - and the MeshPart stretches it to its Size. Identical shapes then
+-- use ONE saved mesh: no second upload, and Roblox draws every copy of one mesh very cheaply.
+function ENT.meshSig(em)
+	local verts = em:GetVertices()
+	if #verts == 0 then return nil end
+	local pos = {}
+	local lo, hi = Vector3.new(math.huge, math.huge, math.huge), Vector3.new(-math.huge, -math.huge, -math.huge)
+	for _, v in ipairs(verts) do
+		local q = em:GetPosition(v)
+		pos[v] = q
+		lo, hi = lo:Min(q), hi:Max(q)
+	end
+	local sz = hi - lo
+	local function n(x, a, b) return (b - a) > 1e-9 and (x - a) / (b - a) or 0 end
+	local M = 4294967296
+	local h1, h2, nf = 7, 13, 0
+	local hc, coloured = 5, false
+	for _, f in ipairs(em:GetFaces()) do
+		nf += 1
+		for _, v in ipairs(em:GetFaceVertices(f)) do
+			local q = pos[v]
+			for _, c in ipairs({ n(q.X, lo.X, hi.X), n(q.Y, lo.Y, hi.Y), n(q.Z, lo.Z, hi.Z) }) do
+				local k = math.floor(c * 1e4 + 0.5) % M
+				h1 = (h1 * 31 + k) % M
+				h2 = (h2 * 131 + k + 7) % M
+			end
+		end
+		-- v3.44 (paint check): the face COLOURS are part of it too - a repainted part has the same shape, and the old
+		-- saved mesh (old colours) came back when it saved
+		local okC, ids = pcall(function() return em:GetFaceColors(f) end)
+		if okC and type(ids) == "table" then
+			for _, id in ipairs(ids) do
+				local okG, col = pcall(function() return em:GetColor(id) end)
+				if okG and typeof(col) == "Color3" then
+					coloured = true
+					hc = (hc * 257 + math.floor(col.R * 255 + 0.5) * 65536 + math.floor(col.G * 255 + 0.5) * 256 + math.floor(col.B * 255 + 0.5)) % M
+				end
+			end
+		end
+	end
+	-- (the box's proportions are part of it too: a 2x1 shape stretched is not the same as a 1x1 shape)
+	local ratio = string.format("%.3f:%.3f", sz.Y / math.max(sz.X, 1e-9), sz.Z / math.max(sz.X, 1e-9))
+	-- (v3.45: "k2-" = keys made since colours count - older keys could point at a mesh with someone's old paint on it)
+	return "k2-" .. string.format("%08x%08x-%d-%s", h1, h2, nf, ratio) .. (coloured and string.format("-c%08x", hc) or "")
+end
+function ENT.meshCacheGet(sig)
+	if not sig then return nil end
+	ENT.meshCache = ENT.meshCache or (function()
+		local t = {}
+		pcall(function() local v = plugin:GetSetting("PROTO_meshCache") if type(v) == "table" then t = v end end)
+		return t
+	end)()
+	return ENT.meshCache[sig]
+end
+function ENT.meshCachePut(sig, id)
+	if not sig or not id then return end
+	ENT.meshCacheGet(sig)
+	ENT.meshCache[sig] = tostring(id)
+	-- keep the newest 400
+	ENT.meshCacheOrder = ENT.meshCacheOrder or {}
+	table.insert(ENT.meshCacheOrder, sig)
+	local n = 0
+	for _ in pairs(ENT.meshCache) do n += 1 end
+	if n > 400 then
+		local old = table.remove(ENT.meshCacheOrder, 1)
+		if old and ENT.meshCache[old] then ENT.meshCache[old] = nil n -= 1 end
+		-- v3.41 (glitch sweep): after a restart the order list is empty (it isn't saved), so drop any old entries
+		-- until it's back to 400 (keeping the one just added)
+		while n > 400 do
+			local k = next(ENT.meshCache)
+			if k == sig then k = next(ENT.meshCache, k) end
+			if k == nil then break end
+			ENT.meshCache[k] = nil
+			n -= 1
+		end
+	end
+	pcall(function() plugin:SetSetting("PROTO_meshCache", ENT.meshCache) end)
+end
+-- save ONE part: upload its mesh, then swap in a MeshPart that uses the saved mesh (same place, size, look).
+-- The old part is taken out (Parent = nil, never destroyed) so Ctrl+Z can bring it back.
+-- v3.41 (glitch sweep): split in two - the SLOW part (upload + loading the new MeshPart, seconds) runs with no undo
+-- recording open; the QUICK swap-in (ENT.msSwapSaved) is the only part inside the recording. (One recording per plugin
+-- at a time: holding it open during the upload left every other PROTO action in those seconds without one.)
+function ENT.msSavePart(p)
+	local np, id = ENT.msLoadPart(p)
+	if not np then return false, id end
+	return ENT.msSwapSaved(p, np, id)
+end
+-- the slow half: upload the part's mesh (or reuse a saved one) and load a MeshPart that uses it -> np, id (or nil, error).
+-- The MeshPart isn't put in the world yet.
+function ENT.msLoadPart(p)
+	local em, owned, err = ENT.msMeshOf(p)
+	if not em then return nil, err end
+	-- v2.67: the same shape saved before? use that mesh (no upload)
+	local okS, sig = pcall(ENT.meshSig, em)
+	sig = okS and sig or nil
+	local id, uerr = ENT.meshCacheGet(sig), nil
+	local reused = id ~= nil
+	if not id then id, uerr = ENT.msUpload(em, "PROTO " .. p.Name) end
+	if owned then pcall(function() em:Destroy() end) end
+	if not id then return nil, uerr end
+	ENT.msFresh = ENT.msFresh or {}
+	if not reused then ENT.meshCachePut(sig, id) ENT.msFresh[tostring(id)] = os.clock() end
+	local z = p.Size
+	local fid = ENT.collEnum()
+	if math.min(z.X, z.Y, z.Z) < 0.05 then fid = Enum.CollisionFidelity.Box end
+	local np, perr = ENT.msPartFromId(id, fid)
+	local fresh = ENT.msFresh[tostring(id)]
+	if not np and reused and fresh and os.clock() - fresh < 300 then
+		-- v3.48: uploaded a moment ago - Roblox is still getting it ready. Not uploaded again; tried again shortly.
+		return nil, "Roblox is still getting mesh " .. tostring(id) .. " ready - PROTO tries again in a moment"
+	end
+	if not np and reused then
+		-- (the remembered mesh can't be loaded any more - forget it and upload this one)
+		ENT.meshCache[sig] = nil
+		pcall(plugin.SetSetting, plugin, "PROTO_meshCache", ENT.meshCache)   -- v3.41 (glitch sweep): forget it after a restart too
+		local em2, owned2 = ENT.msMeshOf(p)
+		if em2 then
+			-- v3.41 (glitch sweep): keep the upload's real error (it was thrown away)
+			id, uerr = ENT.msUpload(em2, "PROTO " .. p.Name)
+			if owned2 then pcall(function() em2:Destroy() end) end
+			if not id then return nil, uerr end
+			ENT.meshCachePut(sig, id) np, perr = ENT.msPartFromId(id, fid)
+		end
+		reused = false
+	end
+	if not np then return nil, "saved as mesh " .. tostring(id) .. " but couldn't load it back (" .. tostring(perr) .. ") - try Save meshes now" end
+	if reused then print(("PROTO mesh: %s is the same shape as one saved before - using mesh %s again (no upload)"):format(p.Name, tostring(id))) end
+	return np, id
+end
+-- the quick half: put the loaded MeshPart in the old part's place (same place, size, look); the old part is taken out
+-- (Parent = nil, never destroyed) so Ctrl+Z can bring it back
+function ENT.msSwapSaved(p, np, id)
+	np.Size = p.Size
+	np.CFrame = p.CFrame
+	for _, k in ipairs({ "Anchored", "CanCollide", "CanQuery", "CanTouch", "CastShadow", "Color", "Material", "MaterialVariant",
+		"Reflectance", "Transparency", "Massless", "CollisionGroup", "Locked", "PivotOffset" }) do
+		pcall(function() np[k] = p[k] end)
+	end
+	np.Name = p.Name
+	for k, v in pairs(p:GetAttributes()) do pcall(function() np:SetAttribute(k, v) end) end
+	pcall(function() np:SetAttribute("PROTO_MeshUnsaved", nil) end)
+	pcall(function() np:SetAttribute("PROTO_Mesh", tostring(id)) end)
+	for _, tg in ipairs(p:GetTags()) do pcall(function() np:AddTag(tg) end) end
+	for _, ch in ipairs(p:GetChildren()) do ch.Parent = np end
+	np.Parent = p.Parent
+	pcall(ENT.reweld, p, np, np)   -- v3.65: a skin's own weld (or a host's skins) hold the new part
+	-- v3.41 (glitch sweep): point at the new part BEFORE the old one goes (the old one leaving cleared the target).
+	-- (target is switched first, the full setTarget runs after - so it never sees old + new side by side in one group)
+	local wasTarget = (target == p)
+	if wasTarget then target = np end
+	local wasHost = (sk and sk.host == p)
+	if wasHost then sk.host = np end   -- v3.41 (glitch sweep): the open sketch follows the new part too
+	-- v3.44 (paint check): remember old -> new, so a brush stroke that started on the old part lands on the new one
+	ENT.swappedTo = ENT.swappedTo or setmetatable({}, { __mode = "k" })
+	ENT.swappedTo[p] = np
+	p.Parent = nil
+	if wasTarget then pcall(setTarget, np) end
+	if wasHost then pcall(ENT.computeRefLines) end
+	return true, np, id
+end
+-- save a list of parts (one undo step). Runs in the background; a second call while busy waits its turn.
+function ENT.msSaveList(list, quiet)
+	local M = ENT.MS
+	if M.busy then for _, p in ipairs(list) do table.insert(M.queue, p) end return end
+	M.busy = true
+	pcall(ENT.saveBtnUpd)
+	local selBefore = {}
+	pcall(function() selBefore = Selection:Get() end)   -- v3.54: what was selected stays selected (not every saved part)
+	local good, bad, lastErr, made = 0, 0, nil, {}
+	while list and #list > 0 do
+		local todo = {}
+		for _, p in ipairs(list) do if p.Parent and ENT.msUnsaved(p) then table.insert(todo, p) end end
+		list = nil
+		if #todo > 0 then
+			setStatus("Saving " .. #todo .. " mesh part(s) to Roblox...")
+			-- v3.41 (glitch sweep): 1) the slow uploads + loads first, with NO undo recording open
+			local ready, notSaved = {}, {}
+			local function failed(p, why)
+				bad += 1
+				lastErr = why
+				-- v3.48: not ready yet (just uploaded) = try again by itself later
+				local w = tostring(why)
+				if w:find("couldn't load it back", 1, true) or w:find("getting mesh", 1, true) then
+					M.notReady = M.notReady or {}
+					table.insert(M.notReady, p)
+				end
+				table.insert(notSaved, p)
+				warn(("PROTO mesh: couldn't save %s - %s"):format(p.Name, tostring(lastErr)))
+			end
+			for _, p in ipairs(todo) do
+				local ok, np, id = pcall(ENT.msLoadPart, p)
+				if ok and np then table.insert(ready, { p = p, np = np, id = id })
+				else failed(p, ok and id or np) end
+			end
+			-- 2) then the quick swap-ins, inside one short recording (one undo step)
+			do
+				local rec
+				pcall(function() rec = CHS:TryBeginRecording("PROTO_SaveMesh", "PROTO Save mesh - " .. #todo .. " part(s)") end)
+				for _, R in ipairs(ready) do
+					local p = R.p
+					if not p.Parent then
+						-- (deleted or already replaced while it uploaded: skip it; the new MeshPart was never in the world)
+						pcall(function() R.np:Destroy() end)
+						print(("PROTO mesh: %s was removed while it saved - nothing swapped in."):format(p.Name))
+					else
+						local ok, a, b, c = pcall(ENT.msSwapSaved, p, R.np, R.id)
+						if ok and a then
+							good += 1
+							table.insert(made, b)
+							print(("PROTO mesh: saved %s as mesh %s - it will show in the published game."):format(p.Name, tostring(c)))
+						else
+							failed(p, ok and b or a)
+						end
+					end
+				end
+				for _, p in ipairs(notSaved) do pcall(function() p:SetAttribute("PROTO_MeshUnsaved", true) end) end
+				if rec then pcall(function() CHS:FinishRecording(rec, Enum.FinishRecordingOperation.Commit) end)
+				else pcall(function() CHS:SetWaypoint("PROTO Save mesh") end) end
+			end
+		end
+		if #M.queue > 0 then list = M.queue M.queue = {} end
+	end
+	M.busy = false
+	if good > 0 and not M.upOK then M.upOK = true pcall(function() plugin:SetSetting("PROTO_meshUpOK", true) end) end
+	if M.store and ENT.meshCut then ENT.meshCut = false ENT.msButton() end
+	-- v3.48: parts whose new mesh Roblox hadn't got ready yet: tried again by themselves in 30 seconds (twice at most)
+	do
+		local again = {}
+		ENT.msRetries = ENT.msRetries or setmetatable({}, { __mode = "k" })
+		for _, p in ipairs(M.notReady or {}) do
+			if p.Parent and ENT.msUnsaved(p) and (ENT.msRetries[p] or 0) < 2 then
+				ENT.msRetries[p] = (ENT.msRetries[p] or 0) + 1
+				table.insert(again, p)
+			end
+		end
+		M.notReady = {}
+		if #again > 0 then
+			print(("PROTO mesh: %d part(s) - Roblox is still getting the new mesh ready; PROTO tries again in 30 seconds."):format(#again))
+			if #again >= bad then
+				-- (only that - nothing really wrong yet: no scary "NOT saved" warning)
+				bad = 0
+				if not quiet then setStatus("Roblox is still getting " .. #again .. " new mesh(es) ready - PROTO saves them by itself in 30 seconds.") end
+			end
+			task.delay(30, function()
+				local still = {}
+				for _, p in ipairs(again) do if p.Parent and ENT.msUnsaved(p) then table.insert(still, p) end end
+				if #still > 0 then ENT.msSaveList(still, true) end
+			end)
+		end
+	end
+	if bad > 0 then
+		warn("PROTO mesh: " .. bad .. " part(s) are NOT saved - they'll show as checkered cubes in the published game. Fix the reason above, then press SAVE (top bar), or Ctrl+Z and do it again.")
+		if not quiet then setStatus("[MESH NOT SAVED] " .. bad .. " part(s): " .. tostring(lastErr) .. "  Ctrl+Z it, or fix it and press SAVE (top bar).") end
+	elseif good > 0 and not quiet then
+		setStatus("Saved " .. good .. " mesh part(s) to Roblox - they stay in the place and show in the published game.")
+	end
+	if #made > 0 then
+		local sw, any, sel = ENT.swappedTo or {}, false, {}
+		for _, o in ipairs(selBefore) do
+			if sw[o] and sw[o].Parent then table.insert(sel, sw[o]) any = true
+			elseif o.Parent then table.insert(sel, o) end
+		end
+		if any then pcall(function() Selection:Set(sel) end) end
+	end
+	for p in pairs(ENT.msPend or {}) do if not (p.Parent and ENT.msUnsaved(p)) then ENT.msPend[p] = nil end end
+	pcall(ENT.saveBtnUpd)
+	return good, bad, lastErr
+end
+-- does this list have any part that still needs saving?
+function ENT.msPending(list)
+	for _, p in ipairs(list or {}) do if p.Parent and ENT.msUnsaved(p) then return true end end
+	return false
+end
+-- after a mesh cut: save what it made
+function ENT.msAfterCut(results)
+	local todo = {}
+	for _, p in ipairs(results or {}) do
+		if p.Parent and ENT.msIsCSG(p) then
+			pcall(function() p:SetAttribute("PROTO_MeshUnsaved", nil) p:SetAttribute("PROTO_CSG", true) end)
+			if not ENT.csgNoted then
+				ENT.csgNoted = true
+				print("PROTO mesh: cut parts are kept by Roblox inside the place (like a union) - PROTO doesn't upload those.")
+			end
+		elseif p.Parent and ENT.msUnsaved(p) then
+			pcall(function() p:SetAttribute("PROTO_MeshUnsaved", true) end)
+			table.insert(todo, p)
+		end
+	end
+	if #todo > 0 and not ENT.autoSave then
+		-- v3.54 (Dylan: "it saves too often - make a save button so they can choose when it updates"): MANUAL by
+		-- default. The part stays as it is (no swap = no glitch) and the Save button at the top counts it.
+		ENT.msPend = ENT.msPend or {}
+		for _, p in ipairs(todo) do ENT.msPend[p] = true end
+		pcall(ENT.saveBtnUpd)
+		local n = ENT.unsavedCount()
+		if n >= 10 and n % 10 == 0 then
+			setStatus(n .. " parts not saved yet - press SAVE (top bar) before you publish, or they show as checkered cubes in the game.")
+		end
+		return #todo
+	end
+	if #todo > 0 then
+		-- v3.48: saved once the part has been left alone for a moment - painting / changing a part 20 times in a row
+		-- used to upload 20 meshes (most thrown away straight after), and Roblox then struggled to load the new ones
+		ENT.msPend = ENT.msPend or {}
+		for _, p in ipairs(todo) do ENT.msPend[p] = true end
+		ENT.msPendGen = (ENT.msPendGen or 0) + 1
+		local gen = ENT.msPendGen
+		task.delay(2.5, function()
+			if gen ~= ENT.msPendGen then return end   -- (something newer came in - that one saves)
+			local list = {}
+			for q in pairs(ENT.msPend) do if q.Parent and ENT.msUnsaved(q) then table.insert(list, q) end end
+			ENT.msPend = {}
+			if #list > 0 then ENT.msSaveList(list) end
+		end)
+	end
+	return #todo
+end
+-- TEST > Save meshes now: every PROTO mesh in the place that isn't saved yet
+function ENT.msSaveAll()
+	local todo = {}
+	for _, d in ipairs(workspace:GetDescendants()) do
+		if d:IsA("MeshPart") and d:GetAttribute("PROTO_MeshUnsaved") and ENT.msUnsaved(d) then table.insert(todo, d) end
+	end
+	if #todo == 0 then setStatus("No unsaved PROTO meshes in this place - all good.") return end
+	ENT.msCheck(false)
+	if not ENT.MS.api then setStatus("Can't save yet: " .. ENT.MS_BETA) return end
+	if not ENT.MS.mesh then setStatus("Can't save yet: " .. ENT.MS_API) return end
+	ENT.msSaveList(todo)
+end
+-- v3.54 SAVE BUTTON: how many PROTO meshes are waiting to be saved (only made / changed since PROTO started)
+ENT.autoSave = false
+pcall(function() ENT.autoSave = plugin:GetSetting("PROTO_autoSave") == true end)
+function ENT.unsavedCount()
+	local n = 0
+	ENT.msPend = ENT.msPend or {}
+	for p in pairs(ENT.msPend) do
+		if p.Parent and ENT.msUnsaved(p) then n += 1 else ENT.msPend[p] = nil end
+	end
+	return n
+end
+function ENT.saveBtnUpd()
+	local b = ENT.ribSaveBtn
+	if not b then return end
+	local n = ENT.unsavedCount()
+	if ENT.MS and ENT.MS.busy then
+		b.Text = "Saving..."
+		b.TextColor3 = ENT.RC.Y
+		b.BackgroundTransparency = 1
+	elseif n > 0 then
+		b.Text = "Save (" .. n .. ")"
+		b.TextColor3 = Color3.fromRGB(20, 20, 24)
+		b.BackgroundColor3 = ENT.RC.O
+		b.BackgroundTransparency = 0
+	else
+		b.Text = "Saved"
+		b.TextColor3 = ENT.RC.D
+		b.BackgroundTransparency = 1
+	end
+	if ENT.ribAutoBtn then
+		ENT.ribAutoBtn.Text = ENT.autoSave and "Auto: on" or "Auto: off"
+		ENT.ribAutoBtn.TextColor3 = ENT.autoSave and ENT.RC.G or ENT.RC.D
+	end
+end
+-- the Save button: every PROTO mesh not saved yet goes to Roblox now
+function ENT.saveNow()
+	if ENT.MS and ENT.MS.busy then setStatus("Already saving - one moment.") return end
+	local n = ENT.unsavedCount()
+	ENT.msSaveAll()
+	if n == 0 then setStatus("Nothing to save - every PROTO mesh is saved.") end
+	pcall(ENT.saveBtnUpd)
+end
+function ENT.autoSaveToggle()
+	ENT.autoSave = not ENT.autoSave
+	pcall(function() plugin:SetSetting("PROTO_autoSave", ENT.autoSave) end)
+	pcall(ENT.saveBtnUpd)
+	if ENT.autoSave then
+		setStatus("AUTO SAVE on: each change saves by itself a moment after you stop (the part flickers when it swaps).")
+		if ENT.unsavedCount() > 0 then ENT.saveNow() end
+	else
+		setStatus("AUTO SAVE off: press SAVE (top bar) when you want your changes saved to Roblox. Closing PROTO saves too.")
+	end
+end
+-- one small test upload, the first time the mesh cutter is turned on (remembered afterwards)
+function ENT.msTestUpload()
+	local em
+	local ok, err = pcall(function()
+		em = AssetService:CreateEditableMesh()
+		local s = 0.5
+		local v = {}
+		for i = 0, 7 do v[i] = em:AddVertex(V3((i % 2 == 0) and -s or s, (math.floor(i / 2) % 2 == 0) and -s or s, (i < 4) and -s or s)) end
+		for _, f in ipairs({ { 0, 2, 3, 1 }, { 4, 5, 7, 6 }, { 0, 1, 5, 4 }, { 2, 6, 7, 3 }, { 0, 4, 6, 2 }, { 1, 3, 7, 5 } }) do
+			em:AddTriangle(v[f[1]], v[f[2]], v[f[3]])
+			em:AddTriangle(v[f[1]], v[f[3]], v[f[4]])
+		end
+	end)
+	if not ok then pcall(function() if em then em:Destroy() end end) return false, ENT.msWhy(err) end
+	local id, uerr = ENT.msUpload(em, "PROTO mesh check")
+	pcall(function() em:Destroy() end)
+	if not id then return false, uerr end
+	ENT.MS.upOK = true
+	pcall(function() plugin:SetSetting("PROTO_meshUpOK", true) end)
+	print("PROTO mesh: test upload worked (mesh " .. tostring(id) .. ") - meshes can be saved to Roblox from this Studio.")
 	return true
 end
--- the area between the two loops of ONE double line and nothing else -> build that wall
--- (the picked area = inside the outer loop A, outside the inner loop B; nothing else drawn across A)
-function ENT.wallFaceSolid(f, D, shift, into)
-	if not (f and f.kind == "face" and f.srcShapes) then return false end
-	local A, n = nil, 0
-	for sh in pairs(f.srcShapes) do A = sh n += 1 end
-	if n ~= 1 or not (A and A.wi) or not A.pts then return false end
-	if #f.pts ~= #outline(A) then return false end   -- something else is drawn across the wall: the normal way
-	local B
-	for _, sh in ipairs(sk.shapes) do
-		if sh ~= A and sh.wi == A.wi and sh.pts and #sh.pts == #A.pts then B = sh break end
-	end
-	if not B then return false end
-	if not pointInPoly(ENT.centroid(B.pts), A.pts) then return false end   -- B must be the inner loop
-	return ENT.wallSolid(A, B, D, shift, into) ~= nil
+function ENT.msButton()
+	if not U.meshBtn then return end
+	U.meshBtn.Text = ENT.meshCut and "Mesh: READY" or "Mesh: CHECK AGAIN"
+	U.meshBtn.BackgroundColor3 = ENT.meshCut and COL.go or COL.warn
+	-- v2.56: no button while it's working - it only shows up (to check again) when a beta feature is off
+	U.meshBtn.Visible = not ENT.meshCut
+	if U.meshRow then U.meshRow.Visible = not ENT.meshCut end
+	if U.meshInfo then U.meshInfo.Visible = not ENT.meshCut end
 end
--- v2.43: the wall between two matching loops of a double line: one quad per straight section (mitred corners)
-function ENT.wallSolid(A, B, D, shift, into)
-	local pa, pb = A.pts, B.pts
-	if not (pa and pb) or #pa ~= #pb or #pa < 3 then return nil end
-	local n = #pa
-	local f = Instance.new("Folder")
-	f.Parent = into
-	for i = 1, n do
-		local j = i % n + 1
-		local q = { pa[i], pa[j], pb[j], pb[i] }
-		local ar = 0
-		for k = 1, 4 do local u, v = q[k], q[k % 4 + 1] ar += u.X * v.Y - v.X * u.Y end
-		if math.abs(ar) > 1e-4 then
-			if ar < 0 then q = { q[4], q[3], q[2], q[1] } end
-			buildShape({ kind = "face", open = false, pts = q }, D, shift, f)
+-- the Check button: runs every check and shows the list in the panel + Output
+function ENT.msShowCheck()
+	setStatus("Checking mesh saving...")
+	ENT.msCheck(true)
+	local t = ENT.msReport()
+	if U.meshInfo then U.meshInfo.Text = t end
+	print("PROTO mesh check:\n" .. t)
+	local M = ENT.MS
+	if M.mesh and M.api and M.solid and not M.store then
+		setStatus(M.upOK and "Mesh saving is ready - you can build." or "Looks ready - the first build does one small test upload.")
+	else
+		setStatus("Mesh saving isn't ready yet - see the list in ALL TOOLS > EXTRUDE (and Output). Help > Fixes explains each step.")
+	end
+end
+function ENT.toggleMesh()
+	-- v2.55 MESH-ONLY: this button = check / finish setup (there's no "off" - PROTO only builds meshes)
+	if ENT.meshCut then
+		ENT.msShowCheck()
+		setStatus("Mesh: READY - every shape is ONE mesh, cuts are ONE cut, nothing is joined.")
+		return
+	end
+	setStatus("Checking mesh saving...")
+	local M = ENT.msCheck(true)
+	if U.meshInfo then U.meshInfo.Text = ENT.msReport() end
+	local why = (not M.mesh and ENT.MS_API) or (not M.api and ENT.MS_BETA) or (M.store and ENT.MS_STORE)
+		or (not M.solid and "Studio couldn't cut with a mesh here. If File > Beta Features has \"Solid Modeling On Meshes\", tick it and restart Studio.")
+
+	if why then
+		ENT.meshCut = false
+		ENT.msButton()
+		setStatus("PROTO can't build yet: " .. why)
+		warn("PROTO setup: " .. why)
+		return
+	end
+	ENT.meshCut = true
+	ENT.msButton()
+	print("PROTO: Mesh READY - every shape is ONE mesh, cuts are ONE cut, nothing is joined.")
+	setStatus("Mesh: READY - you can build. Every shape is ONE mesh, cuts are ONE cut, nothing is joined, and each is saved to Roblox straight after.")
+end
+-- v2.55: nothing builds until mesh saving is ready (no old way to fall back to)
+function ENT.meshGate()
+	if ENT.meshCut then return true end
+	local why = "turn on the beta features first: File > Beta Features > CreateAssetAsync Lua API (restart Studio), and Game Settings > Security > Allow Mesh / Image APIs. Then press Mesh: CHECK AGAIN (or restart Studio)."
+	setStatus("PROTO can't build yet - " .. why)
+	warn("PROTO: " .. why)
+	return false
+end
+-- v2.54 (Dylan: "all i see are unions" - Mesh mode started OFF every time): Mesh mode is ON unless you turned it off.
+-- When Studio opens, PROTO checks everything it needs and switches it on by itself, and Output says which version is
+-- running and whether Mesh mode is on (and if not, why).
+function ENT.meshStartup()
+	if game:GetService("RunService"):IsRunning() then return end
+	local tag = "PROTO " .. DIM_VERSION .. " (Build " .. tostring(ENT.BUILD_NUMBER) .. ")"
+	local M = ENT.msCheck(true)
+	if U.meshInfo then U.meshInfo.Text = ENT.msReport() end
+	local why = (not M.mesh and ENT.MS_API) or (not M.api and ENT.MS_BETA)
+		or (not M.solid and "Studio couldn't cut with a mesh here.")
+	-- (v2.56, Dylan: "start on mesh" - no test upload first, no button: the first real save tells us if it can't)
+	if why then
+		warn(tag .. ": can't build yet - " .. why)
+		ENT.msButton()
+		return
+	end
+	ENT.meshCut = true
+	ENT.msButton()
+	print(tag .. ": Mesh READY - every shape is ONE mesh, cuts are ONE cut, nothing is joined.")
+end
+task.delay(3, function() pcall(ENT.meshStartup) end)
+-- ===== v2.48 ONE-PIECE MESH EXTRUDE (Dylan: "no more lines, no more constructed shapes - one whole thing") =====
+-- With mesh mode on, an extrude of any shape that isn't a plain rectangle / circle / ellipse (polygons, splines,
+-- slots, arcs, split areas, double-line walls, shapes with holes in them) is built as ONE sealed mesh: no wedge
+-- pieces, no seam lines across the faces. It's saved to Roblox straight after (same as a mesh cut).
+-- Rectangles, circles and ellipses stay real parts: they're one piece already, exact, and the edge tools work on them.
+
+-- which shape an area is, if mesh mode should build it (nil = use the normal way)
+function ENT.meshExtrudeShape(r)
+	if ENT.cutting or not (ENT.SHOW_MESH and ENT.meshCut) then return nil end
+	if not r.whole and #r.inside > 1 then r.inside = ENT.innermost(r.inside) end   -- v2.90: nested drawings
+	if not r.whole and #r.inside ~= 1 then return nil end
+	local sh = r.whole or r.inside[1]
+	local real = (sh.kind == "face" and sh.src) or sh
+	if real.kind == "rect" or real.kind == "circle" then
+		-- a plain one is one exact part already; WITH holes in it, one mesh beats a block + a cut (v2.50)
+		-- (v2.53: an ellipse is a mesh - its part was two cylinders joined and stretched)
+		if r.whole then return nil end
+		local okH, holes = pcall(ENT.meshHoles, r, outline(sh))
+		if not (okH and holes and #holes > 0) then return nil end
+	end
+	return sh
+end
+-- the closed shapes sitting wholly inside the outline = holes. One that crosses the outline = can't do it (nil).
+function ENT.meshHoles(r, outer)
+	if r.whole then return {} end
+	-- v2.91 (Dylan: "can't cut through even if it all lined up"): an area NEXT TO this one shares its edge - those
+	-- shared points sit ON the outline, and counted as "inside" they made it look like the drawings crossed, so the
+	-- cut refused. Now only points clearly inside / clearly outside count; points on the outline are neither.
+	local function onOutline(p)
+		for i = 1, #outer do
+			local a, b = outer[i], outer[i % #outer + 1]
+			local ab = b - a
+			local l2 = ab:Dot(ab)
+			if l2 > 0 then
+				local t = math.clamp((p - a):Dot(ab) / l2, 0, 1)
+				if ((a + ab * t) - p).Magnitude < 0.03 then return true end
+			elseif (p - a).Magnitude < 0.03 then return true end
+		end
+		return false
+	end
+	local cands = {}
+	for _, s in ipairs(closedShapes()) do
+		if not table.find(r.inside, s) then
+			local q = outline(s)
+			local inN, outN = 0, 0
+			for _, p in ipairs(q) do
+				if not onOutline(p) then
+					if pointInPoly(p, outer) then inN += 1 else outN += 1 end
+				end
+			end
+			-- (all its points on the outline: is its middle inside? then it's a hole the same shape as a bit of edge)
+			if inN == 0 and outN == 0 and #q >= 3 and pointInPoly(ENT.centroid(q), outer) then inN = 1 end
+			if #q >= 3 and inN > 0 and outN == 0 then table.insert(cands, q)
+			elseif inN > 0 and outN > 0 then ENT.cutWhy = "a drawing crosses the edge of the area you picked" return nil end
 		end
 	end
-	local pieces = f:GetChildren()
-	local result
-	if #pieces == 1 then result = pieces[1]
-	elseif #pieces > 1 then
-		local rest = {}
-		for i = 2, #pieces do rest[i - 1] = pieces[i] end
-		local ok, res = pcall(function() return GeometryService:UnionAsync(pieces[1], rest, ENT.cutting and ENT.FAST or CSG_OPTS) end)
-		if ok and type(res) == "table" and res[1] then
-			result = res[1]
-			for _, pc in ipairs(pieces) do pc.Parent = nil end
-		else
-			warn("PROTO: couldn't join the wall pieces - " .. tostring(res))
+	-- a shape inside another hole is an island (its own area), not a second hole
+	local holes = {}
+	for i, q in ipairs(cands) do
+		local nested = false
+		for j, o in ipairs(cands) do if i ~= j and pointInPoly(q[1], o) then nested = true break end end
+		if not nested then table.insert(holes, q) end
+	end
+	return holes
+end
+-- outline + holes -> triangles. Each hole is joined to the outline by a thin "bridge" first, then it's one loop
+-- that gets cut into triangles ear by ear. Returns pts, tris (index triples), loops (outline CCW, holes CW).
+function ENT.triHoles(outer, holes)
+	local E = 1e-7
+	local function area(q) local A = 0 for i = 1, #q do local a, b = q[i], q[i % #q + 1] A += a.X * b.Y - b.X * a.Y end return A / 2 end
+	local function clean(q)
+		local o = {}
+		for _, p in ipairs(q) do if #o == 0 or (p - o[#o]).Magnitude > 1e-4 then o[#o + 1] = p end end
+		if #o > 1 and (o[1] - o[#o]).Magnitude <= 1e-4 then table.remove(o) end
+		return o
+	end
+	local function rev(q) local o = {} for i = #q, 1, -1 do o[#o + 1] = q[i] end return o end
+	local pts, loops = {}, {}
+	local function addLoop(q) local ids = {} for _, p in ipairs(q) do pts[#pts + 1] = p ids[#ids + 1] = #pts end table.insert(loops, ids) return ids end
+	outer = clean(outer)
+	if #outer < 3 then return nil end
+	if area(outer) < 0 then outer = rev(outer) end
+	local loop = table.clone(addLoop(outer))
+	local hs = {}
+	for _, h in ipairs(holes or {}) do
+		h = clean(h)
+		if #h >= 3 and math.abs(area(h)) > 1e-6 then
+			if area(h) > 0 then h = rev(h) end
+			table.insert(hs, addLoop(h))
 		end
 	end
-	if result then result.Parent = into end
-	f.Parent = nil
-	return result
-end
-function ENT.primRegion(f, D, shift, into, grow)
-	if not ENT.primOK(f) then return false end
-	-- a point surely inside the area
-	local tris = ENT.triangulate(f.pts)
-	if not (tris and tris[1]) then return false end
-	local bt, ba = tris[1], 0
-	for _, t in ipairs(tris) do local a = cross2(t[1], t[2], t[3]) if a > ba then bt, ba = t, a end end
-	local P = (bt[1] + bt[2] + bt[3]) / 3
-	local inside, outside = {}, {}
-	for sh in pairs(f.srcShapes) do
-		if pointInPoly(P, outline(sh)) then table.insert(inside, sh) else table.insert(outside, sh) end
+	local function cr(o, a, b) return (a.X - o.X) * (b.Y - o.Y) - (a.Y - o.Y) * (b.X - o.X) end
+	local function same(a, b) return (a - b).Magnitude < 1e-6 end
+	local function crosses(p1, p2, q1, q2)
+		if same(p1, q1) or same(p1, q2) or same(p2, q1) or same(p2, q2) then return false end
+		local d1, d2 = cr(q1, q2, p1), cr(q1, q2, p2)
+		local d3, d4 = cr(p1, p2, q1), cr(p1, p2, q2)
+		return ((d1 > E and d2 < -E) or (d1 < -E and d2 > E)) and ((d3 > E and d4 < -E) or (d3 < -E and d4 > E))
 	end
-	if #inside == 0 then return false end
-	local g = grow or 0
-	local made = {}
-	-- v2.43 (Dylan): a double line all round = just ADD the wall (each straight section one piece, corners joined),
-	-- instead of a solid with the inside cut out (the hole's triangle seams left thin walls standing)
-	local wallA, wallB
-	if g == 0 then
-		for ia, a in ipairs(inside) do
-			if a.wi then
-				for k, b in ipairs(outside) do
-					if b ~= a and b.wi == a.wi then
-						wallA, wallB = a, b
-						table.remove(outside, k)
-						table.remove(inside, ia)
-						table.insert(inside, 1, a)
+	local function blocked(M, P, rings)
+		for _, ring in ipairs(rings) do
+			for k = 1, #ring do
+				if crosses(M, P, pts[ring[k]], pts[ring[k % #ring + 1]]) then return true end
+			end
+		end
+		return false
+	end
+	local function maxX(ids) local m = -math.huge for _, i in ipairs(ids) do m = math.max(m, pts[i].X) end return m end
+	table.sort(hs, function(a, b) return maxX(a) > maxX(b) end)
+	for hi, h in ipairs(hs) do
+		local mi = 1
+		for i = 2, #h do if pts[h[i]].X > pts[h[mi]].X then mi = i end end
+		local M = pts[h[mi]]
+		local rings = { loop }
+		for k = hi, #hs do table.insert(rings, hs[k]) end
+		local best, bd = nil, math.huge
+		for li, id in ipairs(loop) do
+			local d = (pts[id] - M).Magnitude
+			if d < bd and not blocked(M, pts[id], rings) then best, bd = li, d end
+		end
+		if not best then return nil end
+		local nl = {}
+		for i = 1, best do nl[#nl + 1] = loop[i] end
+		for k = 0, #h do nl[#nl + 1] = h[(mi - 1 + k) % #h + 1] end   -- round the hole, back to M
+		for i = best, #loop do nl[#nl + 1] = loop[i] end               -- back over the bridge to P
+		loop = nl
+	end
+	-- ear cutting: walk round the loop cutting off corners. Only a dented (reflex) corner can sit inside an ear, so
+	-- only those are checked - fast enough for big spline shapes.
+	local function inTri(p, a, b, c) return cr(a, b, p) >= -E and cr(b, c, p) >= -E and cr(c, a, p) >= -E end
+	local V, tris = loop, {}
+	local i, miss = 1, 0
+	while #V > 3 do
+		local n = #V
+		if i > n then i = 1 end
+		local ia, ib, ic = V[(i - 2) % n + 1], V[i], V[i % n + 1]
+		local a, b, c = pts[ia], pts[ib], pts[ic]
+		local ear = cr(a, b, c) > E
+		if ear then
+			for j = 1, n do
+				local id = V[j]
+				if id ~= ia and id ~= ib and id ~= ic then
+					local p = pts[id]
+					if cr(pts[V[(j - 2) % n + 1]], p, pts[V[j % n + 1]]) <= E and not (same(p, a) or same(p, b) or same(p, c)) and inTri(p, a, b, c) then
+						ear = false
 						break
 					end
 				end
 			end
-			if wallA then break end
 		end
-	end
-	local base = wallA and ENT.wallSolid(wallA, wallB, D, shift, into)
-	if wallA and not base then table.insert(outside, wallB) end   -- couldn't: the old way
-	base = base or ENT.solidOf(g ~= 0 and ENT.grown(inside[1], g) or inside[1], D, shift, into)
-	if not base then return false end
-	local opts = ENT.cutting and ENT.FAST or CSG_OPTS
-	for i = 2, #inside do
-		local tool = ENT.solidOf(g ~= 0 and ENT.grown(inside[i], g) or inside[i], D + 0.2, shift, into)
-		if not tool then base.Parent = nil return false end
-		local ok, res = pcall(function() return GeometryService:IntersectAsync(base, { tool }, opts) end)
-		tool.Parent = nil
-		if not (ok and type(res) == "table" and res[1]) then base.Parent = nil return false end
-		ENT.keepLook(res[1], base)
-		res[1].Parent = into
-		base.Parent = nil
-		base = res[1]
-	end
-	local pieces = { base }
-	if #outside > 0 then
-		local tools = {}
-		for _, sh in ipairs(outside) do
-			-- cutting: the bordering shapes shrink a hair so the cut area grows into them (clean edge)
-			local t = ENT.solidOf(g ~= 0 and ENT.grown(sh, -g) or sh, D + 0.2, shift, into)
-			if t then table.insert(tools, t) end
-		end
-		local o2 = { CollisionFidelity = opts.CollisionFidelity, RenderFidelity = opts.RenderFidelity, SplitApart = true }
-		local ok, res = pcall(function() return GeometryService:SubtractAsync(base, tools, o2) end)
-		for _, t in ipairs(tools) do t.Parent = nil end
-		if not (ok and type(res) == "table" and res[1]) then base.Parent = nil return false end
-		-- the other shapes can split it into several bits: keep the bit(s) this area is in
-		pieces = {}
-		local wp = toWorld(sk.pl, P) + shift
-		for _, np in ipairs(res) do
-			local lp = np.CFrame:PointToObjectSpace(wp)
-			local h = np.Size / 2 + V3(0.05, 0.05, 0.05)
-			if math.abs(lp.X) <= h.X and math.abs(lp.Y) <= h.Y and math.abs(lp.Z) <= h.Z then
-				ENT.keepLook(np, base)
-				np.Parent = into
-				table.insert(pieces, np)
-			else
-				np.Parent = nil
+		if ear then
+			tris[#tris + 1] = { ia, ib, ic }
+			table.remove(V, i)
+			if i > 1 then i -= 1 end
+			miss = 0
+		else
+			i += 1
+			miss += 1
+			if miss > n then
+				-- went all the way round with no ear: drop a flat (zero-area) corner and carry on, else give up
+				local dropped = false
+				for k = 1, n do
+					if math.abs(cr(pts[V[(k - 2) % n + 1]], pts[V[k]], pts[V[k % n + 1]])) <= E then table.remove(V, k) dropped = true break end
+				end
+				if not dropped then return nil end
+				miss = 0
 			end
 		end
-		base.Parent = nil
-		if #pieces == 0 then return false end
+	end
+	if #V == 3 and cr(pts[V[1]], pts[V[2]], pts[V[3]]) > E then tris[#tris + 1] = { V[1], V[2], V[3] } end
+	if #tris == 0 then return nil end
+	return pts, tris, loops
+end
+-- ===== v2.59 ONE-PIECE PREVIEW (Dylan: "i see an array of tiny parts - you can do one whole part now") =====
+-- The see-through fills while you sketch (orange = closed areas, blue = picked) and the EXTRUDE / CUT ghost used to
+-- be dozens of thin strips. Now each one is ONE mesh: the areas are cut into triangles once (when the drawing changes),
+-- built as one piece, and shown see-through on top of everything with a Highlight. Pulling the depth only stretches
+-- it - no rebuild. It's PROTO's own helper: never saved with the place (Archivable off), can't be clicked or hit.
+-- v2.59b: 0.98-transparent + Highlight showed NOTHING in Studio, so the piece now draws its own colour.
+
+-- the drawing split into areas that don't overlap: each closed outline minus the outlines sitting straight inside it.
+-- polys = list of outlines. Returns { { outer, holes, pts, tris, loops, mid = a point surely inside it }, ... }
+function ENT.pvAreasFrom(polys)
+	local function area(q) local A = 0 for i = 1, #q do local a, b = q[i], q[i % #q + 1] A += a.X * b.Y - b.X * a.Y end return math.abs(A / 2) end
+	local function midOf(pts, tris)
+		local mid, big = nil, -1
+		for _, t in ipairs(tris) do
+			local a, b, c = pts[t[1]], pts[t[2]], pts[t[3]]
+			local A2 = math.abs((b.X - a.X) * (c.Y - a.Y) - (b.Y - a.Y) * (c.X - a.X))
+			if A2 > big then big, mid = A2, (a + b + c) / 3 end
+		end
+		return mid
+	end
+	local info = {}
+	for _, q in ipairs(polys) do
+		if #q >= 3 and area(q) > 1e-6 then
+			local pts, tris = ENT.triHoles(q, {})
+			if pts then info[#info + 1] = { q = q, A = area(q), ip = midOf(pts, tris) } end
+		end
+	end
+	-- the outline straight round each one (smallest bigger outline holding all of it) -> it's a hole in that one
+	local function allIn(q, o) for _, p in ipairs(q) do if not pointInPoly(p, o) then return false end end return true end
+	for _, f in ipairs(info) do
+		local best
+		for _, g in ipairs(info) do
+			if g ~= f and g.A > f.A and (not best or g.A < best.A) and pointInPoly(f.ip, g.q) and allIn(f.q, g.q) then best = g end
+		end
+		f.parent = best
+	end
+	local out = {}
+	for _, f in ipairs(info) do
+		local holes = {}
+		for _, g in ipairs(info) do if g.parent == f then holes[#holes + 1] = g.q end end
+		local pts, tris, loops = ENT.triHoles(f.q, holes)
+		if not pts then holes = {} pts, tris, loops = ENT.triHoles(f.q, {}) end   -- a hole touching the edge: fill it whole
+		if pts then
+			out[#out + 1] = { outer = f.q, holes = holes, pts = pts, tris = tris, loops = loops, mid = midOf(pts, tris) }
+		end
+	end
+	return out
+end
+-- areas -> ONE mesh, 1 stud deep (z -0.5..0.5) so depth is just the part's size. Returns mp, em, lo, hi (2D bounds)
+function ENT.pvMesh(areas)
+	local lo, hi = V2(math.huge, math.huge), V2(-math.huge, -math.huge)
+	for _, A in ipairs(areas) do
+		for _, p in ipairs(A.pts) do lo = V2(math.min(lo.X, p.X), math.min(lo.Y, p.Y)) hi = V2(math.max(hi.X, p.X), math.max(hi.Y, p.Y)) end
+	end
+	if hi.X - lo.X < 1e-4 or hi.Y - lo.Y < 1e-4 then return nil end
+	local c = (lo + hi) / 2
+	local em = AssetService:CreateEditableMesh()
+	local function tri(a, b, d) if ENT.meshFlip then em:AddTriangle(a, d, b) else em:AddTriangle(a, b, d) end end
+	for _, A in ipairs(areas) do
+		local top, bot = {}, {}
+		for i, p in ipairs(A.pts) do
+			local d = p - c
+			top[i] = em:AddVertex(V3(d.X, d.Y, 0.5))
+			bot[i] = em:AddVertex(V3(d.X, d.Y, -0.5))
+		end
+		for _, t in ipairs(A.tris) do
+			tri(top[t[1]], top[t[2]], top[t[3]])
+			tri(bot[t[1]], bot[t[3]], bot[t[2]])
+		end
+		for _, ring in ipairs(A.loops) do
+			local n = #ring
+			for k = 1, n do
+				local i, j = ring[k], ring[k % n + 1]
+				tri(bot[i], bot[j], top[j])
+				tri(bot[i], top[j], top[i])
+			end
+		end
+	end
+	local ok, mp = pcall(function() return AssetService:CreateMeshPartAsync(Content.fromObject(em)) end)
+	if not (ok and mp) then pcall(function() em:Destroy() end) return nil end
+	return mp, em, lo, hi
+end
+ENT.PV = ENT.PV or {}
+local function pvPlace(s)
+	local mp = s.part
+	if not mp then return end
+	if not s.on then   -- v3.51: (the old shape stays up while a new one is made - it used to blink off)
+		if mp.Parent then mp.Parent = nil end
+		return
+	end
+	local lo, hi, z0, z1 = s.lo, s.hi, s.z0, s.z1
+	local size = V3(hi.X - lo.X, hi.Y - lo.Y, math.max(math.abs(z1 - z0), 0.01))
+	local c = (lo + hi) / 2
+	local cf = s.frame * CFrame.new(c.X, c.Y, (z0 + z1) / 2)
+	if mp.Size ~= size then mp.Size = size end
+	if mp.CFrame ~= cf then mp.CFrame = cf end
+	if mp.Color ~= s.col then mp.Color = s.col s.hl.FillColor = s.col end
+	if mp.Transparency ~= s.tr then mp.Transparency = s.tr end
+	local home = workspace
+	if mp.Parent ~= home then mp.Parent = home end
+end
+-- show (or hide: key = nil) one preview piece. name = "fill" / "pick" / "ghost". key changes = new shape (rebuilt
+-- in the background); same key = only moved / stretched. frame = the sketch's CFrame (x, y on the plane), z0..z1 along it.
+function ENT.pvShow(name, key, areas, frame, z0, z1, col, tr)
+	local s = ENT.PV[name]
+	if not s then s = {} ENT.PV[name] = s end
+	if not key or not areas or #areas == 0 then
+		s.on, s.want = false, nil
+		pvPlace(s)
+		return
+	end
+	s.on, s.want, s.areas, s.frame, s.z0, s.z1, s.col, s.tr = true, key, areas, frame, z0, z1, col, tr
+	if s.key == key then pvPlace(s) return end
+	pvPlace(s)   -- v3.51: the old shape stays up (stretched to the new depth) while the new one is made
+	if s.busy then return end
+	s.busy = true
+	task.spawn(function()
+		while s.want and s.want ~= s.key do
+			local k, list = s.want, s.areas
+			local ok, mp, em, lo, hi = pcall(ENT.pvMesh, list)
+			if not (ok and mp) and not ENT.pvWarned then
+				ENT.pvWarned = true
+				warn("PROTO: couldn't make the preview fill (" .. tostring(ok and "no mesh" or mp) .. ")")
+			end
+			-- PROTO's own preview piece, never a user part
+			if s.part then pcall(function() s.part:Destroy() end) end
+			if s.em then pcall(function() s.em:Destroy() end) end
+			s.part, s.em, s.hl, s.key = nil, nil, nil, k
+			if ok and mp then
+				mp.Name = "PROTO_Preview"
+				mp.Anchored = true
+				mp.CanCollide = false
+				mp.CanTouch = false
+				mp.CanQuery = false
+				mp.CastShadow = false
+				mp.Locked = true
+				mp.Archivable = false
+				mp.Material = Enum.Material.SmoothPlastic
+				-- v2.59b: the piece draws its own colour (a nearly invisible part showed nothing in Studio);
+				-- a faint Highlight on top still shows it where it's inside a part (a cut going in)
+				local hl = Instance.new("Highlight")
+				hl.Adornee = mp
+				hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+				hl.FillTransparency = 0.85
+				hl.OutlineTransparency = 1
+				hl.Archivable = false
+				hl.Parent = mp
+				s.part, s.em, s.hl, s.lo, s.hi = mp, em, hl, lo, hi
+			end
+		end
+		s.busy = false
+		pvPlace(s)
+	end)
+end
+function ENT.pvClear()
+	for _, s in pairs(ENT.PV) do
+		s.on, s.want = false, nil
+		if s.part then pcall(function() s.part:Destroy() end) end
+		if s.em then pcall(function() s.em:Destroy() end) end
+		s.part, s.em, s.hl, s.key = nil, nil, nil, nil
+	end
+end
+-- ===== end v2.59 ONE-PIECE PREVIEW =====
+-- outline + holes, z0..z1 along the sketch normal -> one sealed MeshPart (unsaved; ENT.msAfterCut saves it)
+-- Flat top and bottom; the sides are smooth round curves and sharp at corners. UVs tile every 8 studs.
+function ENT.meshPrism(outer, holes, z0, z1, frame)
+	local pts, tris, loops = ENT.triHoles(outer, holes)
+	if not pts then return nil, "couldn't fill the shape with triangles" end
+	local lo, hi = V2(math.huge, math.huge), V2(-math.huge, -math.huge)
+	for _, p in ipairs(pts) do lo = V2(math.min(lo.X, p.X), math.min(lo.Y, p.Y)) hi = V2(math.max(hi.X, p.X), math.max(hi.Y, p.Y)) end
+	local c2, zc, hz = (lo + hi) / 2, (z0 + z1) / 2, math.abs(z1 - z0) / 2
+	if hz < 1e-3 then return nil, "no depth" end
+	local flip = ENT.meshFlip
+	local T = 8
+	local em = AssetService:CreateEditableMesh()
+	local ntri = 0
+	local function tri(a, b, c, ua, ub, uc)
+		ntri += 1
+		local f = flip and em:AddTriangle(a, c, b) or em:AddTriangle(a, b, c)
+		if ua then pcall(function()
+			if flip then em:SetFaceUVs(f, { ua, uc, ub }) else em:SetFaceUVs(f, { ua, ub, uc }) end
+		end) end
+	end
+	local function uv(x, y) local id pcall(function() id = em:AddUV(V2(x / T, y / T)) end) return id end
+	-- top and bottom (own corners, so the edges round them stay sharp)
+	local top, bot, tuv = {}, {}, {}
+	for i, p in ipairs(pts) do
+		local d = p - c2
+		top[i] = em:AddVertex(V3(d.X, d.Y, hz))
+		bot[i] = em:AddVertex(V3(d.X, d.Y, -hz))
+		tuv[i] = uv(p.X, p.Y)
+	end
+	-- the bridges re-use the same points, so faces join up exactly
+	local key = {}
+	for i, p in ipairs(pts) do
+		local k = math.floor(p.X * 1e5 + 0.5) .. "," .. math.floor(p.Y * 1e5 + 0.5)
+		key[i] = key[k] or i
+		key[k] = key[k] or i
+	end
+	for _, t in ipairs(tris) do
+		local a, b, c = key[t[1]], key[t[2]], key[t[3]]
+		tri(top[a], top[b], top[c], tuv[a], tuv[b], tuv[c])
+		tri(bot[a], bot[c], bot[b], tuv[a], tuv[c], tuv[b])
+	end
+	-- sides: one strip per loop; a corner sharper than 35 degrees gets its own edge (flat shading), gentle bends share
+	-- (smooth shading, so a spline or circle looks round)
+	local SHARP = math.cos(math.rad(35))
+	for _, ring in ipairs(loops) do
+		local n = #ring
+		local dirs = {}
+		for k = 1, n do
+			local a, b = pts[ring[k]], pts[ring[k % n + 1]]
+			dirs[k] = (b - a).Magnitude > 1e-9 and (b - a).Unit or V2(1, 0)
+		end
+		local along = 0
+		local prevB, prevT
+		local firstB, firstT
+		for k = 1, n do
+			local a, b = pts[ring[k]], pts[ring[k % n + 1]]
+			local smoothIn = dirs[(k - 2) % n + 1]:Dot(dirs[k]) > SHARP
+			local la, lb = a - c2, b - c2
+			local Ba, Ta
+			if smoothIn and prevB then Ba, Ta = prevB, prevT
+			else Ba, Ta = em:AddVertex(V3(la.X, la.Y, -hz)), em:AddVertex(V3(la.X, la.Y, hz)) end
+			if k == 1 then firstB, firstT = Ba, Ta end
+			local smoothOut = dirs[k]:Dot(dirs[k % n + 1]) > SHARP
+			local Bb, Tb
+			if k == n and smoothOut then Bb, Tb = firstB, firstT
+			else Bb, Tb = em:AddVertex(V3(lb.X, lb.Y, -hz)), em:AddVertex(V3(lb.X, lb.Y, hz)) end
+			local len = (b - a).Magnitude
+			local u0, u1 = uv(along, z0), uv(along + len, z0)
+			local v0, v1 = uv(along, z1), uv(along + len, z1)
+			along += len
+			tri(Ba, Bb, Tb, u0, u1, v1)
+			tri(Ba, Tb, Ta, u0, v1, v0)
+			prevB, prevT = Bb, Tb
+			if not smoothOut then prevB, prevT = nil, nil end
+		end
+	end
+	local ok, mp = pcall(function() return AssetService:CreateMeshPartAsync(Content.fromObject(em)) end)
+	if not ok or not mp then pcall(function() em:Destroy() end) return nil, tostring(mp) end
+	mp.Anchored = true
+	mp.Size = V3(hi.X - lo.X, hi.Y - lo.Y, hz * 2)
+	mp.CFrame = frame * CFrame.new(c2.X, c2.Y, zc)
+	mp:SetAttribute("PROTO_Tris", ntri)
+	return mp, em
+end
+-- build one area as a single mesh (true = done; false = use the normal way)
+-- v2.65 LOW-POLY CURVES (Dylan: "why so many triangles?"). Drawings keep smooth curves on screen (a circle is 96 sides,
+-- an oval 64), but meshes are built from a lighter copy: points are dropped while the outline stays within a small
+-- distance of the drawing. Detail (Optimise) sets how many sides a round shape ends up with: LOW 12, MED 24, HIGH 48.
+-- That distance is never more than 0.05 studs, so small details on big shapes are kept.
+-- v2.68 DETAIL BY SIZE (Dylan: "yes detail by size"): detail is a LEVEL 1-10 = how far a flat side may stray from the
+-- true curve (level 1 = 0.2 studs ... level 10 = 0.005 studs). A tiny bolt hits that with 6 sides, a big column needs
+-- more - so every round shape gets the sides ITS size needs. Never fewer than 6; never more than 24 (levels 1-3),
+-- 40 (4-6) or 64 (7-10). Optimise Detail: LOW = level 3, MED = 5, HIGH = 8.
+function ENT.curveLevel()
+	local d = ENT.opt and ENT.opt.detail
+	return (d == "LOW" and 3) or (d == "HIGH" and 8) or 5
+end
+ENT.curveSides = ENT.curveLevel   -- (old name)
+function ENT.levelErr(L) return 0.2 * (0.025 ^ ((math.clamp(L, 1, 10) - 1) / 9)) end
+function ENT.levelMax(L) return (L <= 3 and 24) or (L <= 6 and 40) or 64 end
+-- sides a full circle of radius r gets at level L
+function ENT.sidesFor(r, L)
+	L = L or ENT.curveLevel()
+	local E = ENT.levelErr(L)
+	if r <= E * 2 then return 6 end
+	local n = math.ceil(math.pi / math.acos(1 - E / r) - 1e-6)
+	return math.clamp(n, 6, ENT.levelMax(L))
+end
+-- v2.68: new points placed EVENLY round each curved stretch (not picked from the drawing's points - those only allow
+-- 96 / 48 / 32 / 24... sides). The outline is split at its sharp corners (kept exactly); each stretch between them
+-- gets the points its curve needs: spread so every piece strays the same small distance (tight bends get more).
+function ENT.resamplePts(q, L)
+	local n = #q
+	if n <= 8 then return q end
+	local SHARP = math.rad(35)
+	local function turn(i)
+		local a, b, c = q[(i - 2) % n + 1], q[i], q[i % n + 1]
+		local d1, d2 = b - a, c - b
+		if d1.Magnitude < 1e-9 or d2.Magnitude < 1e-9 then return 0 end
+		return math.acos(math.clamp(d1.Unit:Dot(d2.Unit), -1, 1))
+	end
+	local ang, corners = {}, {}
+	for i = 1, n do ang[i] = turn(i) if ang[i] > SHARP then corners[#corners + 1] = i end end
+	if #corners == 0 then corners = { 1 } end
+	local out = {}
+	for ci, c0 in ipairs(corners) do
+		local c1 = corners[ci % #corners + 1]
+		-- the stretch c0 -> c1 (all the way round when there's only one corner)
+		local idx = { c0 }
+		local i = c0
+		repeat i = i % n + 1 idx[#idx + 1] = i until i == c1
+		local m = #idx - 1
+		local S, T, Wt = 0, 0, 0
+		local seg, w = {}, {}
+		for j = 1, m do seg[j] = (q[idx[j + 1]] - q[idx[j]]).Magnitude S += seg[j] end
+		-- each bend's weight = sqrt(how far it turns x the length it covers): spacing points evenly by this weight
+		-- keeps every piece the same distance from the true curve, tight bends and gentle ones alike
+		for j = 2, m do
+			local a2 = ang[idx[j]]
+			T += a2
+			w[j] = math.sqrt(a2 * (seg[j - 1] + seg[j]) / 2)
+			Wt += w[j]
+		end
+		out[#out + 1] = q[c0]
+		if T > 1e-6 and S > 1e-9 then
+			local E = ENT.levelErr(L)
+			local k = math.ceil(Wt / math.sqrt(8 * E) - 1e-6)
+			-- (a full circle never gets fewer than 6 sides, nor more than the level's most)
+			k = math.clamp(k, math.max(1, math.ceil(T * 6 / (2 * math.pi) - 1e-6)), math.max(1, math.ceil(T * ENT.levelMax(L) / (2 * math.pi) - 1e-6)))
+			if k > 1 then
+				-- weight spread over arc length: knots at the middles of the segments
+				local ks, kt = { 0, seg[1] / 2 }, { 0, 0 }
+				local acc, th = seg[1], 0
+				for j = 2, m do
+					th += w[j]
+					ks[#ks + 1] = acc + seg[j] / 2
+					kt[#kt + 1] = th
+					acc += seg[j]
+				end
+				ks[#ks + 1], kt[#kt + 1] = S, Wt
+				local function pointAt(sv)
+					local a3 = 0
+					for j = 1, m do
+						if sv <= a3 + seg[j] or j == m then
+							local f = seg[j] > 1e-12 and math.clamp((sv - a3) / seg[j], 0, 1) or 0
+							return q[idx[j]] + (q[idx[j + 1]] - q[idx[j]]) * f
+						end
+						a3 += seg[j]
+					end
+				end
+				local kk = 2
+				for st = 1, k - 1 do
+					local want = Wt * st / k
+					while kk < #kt and kt[kk] < want do kk += 1 end
+					local t0, t1, s0, s1 = kt[kk - 1], kt[kk], ks[kk - 1], ks[kk]
+					local sv = (t1 - t0) > 1e-12 and (s0 + (s1 - s0) * (want - t0) / (t1 - t0)) or s1
+					out[#out + 1] = pointAt(sv)
+				end
+			end
+		end
+	end
+	return #out >= 3 and out or q
+end
+function ENT.lowPts(q, L, keepIdx)
+	local n = #q
+	if not q or n <= 8 then return q end
+	L = L or ENT.curveLevel()
+	if not keepIdx then return ENT.resamplePts(q, L) end
+	-- (keepIdx: a cut with rounded / chamfered edges - pick from the drawing's own points so its sides keep their numbers)
+	local lo, hi = V2(math.huge, math.huge), V2(-math.huge, -math.huge)
+	for _, p in ipairs(q) do lo = V2(math.min(lo.X, p.X), math.min(lo.Y, p.Y)) hi = V2(math.max(hi.X, p.X), math.max(hi.Y, p.Y)) end
+	local R = math.max(hi.X - lo.X, hi.Y - lo.Y) / 2
+	-- how far the outline may stray: what a circle this size needs at this level
+	local tol = R * (1 - math.cos(math.pi / ENT.sidesFor(R, L)))
+	if tol <= 1e-6 then return q end
+	tol *= 1.02   -- (so a circle lands exactly on the side count, not one short of it)
+	local function dist(p, a, b)
+		local ab = b - a
+		local l2 = ab.X * ab.X + ab.Y * ab.Y
+		if l2 < 1e-12 then return (p - a).Magnitude end
+		local t = math.clamp(((p - a).X * ab.X + (p - a).Y * ab.Y) / l2, 0, 1)
+		return (a + ab * t - p).Magnitude
+	end
+	-- start at the sharpest corner, then walk round: from each kept point go as far as the outline stays close
+	local start, sharp = 1, -2
+	for i = 1, n do
+		local a, b, c = q[(i - 2) % n + 1], q[i], q[i % n + 1]
+		local d1, d2 = b - a, c - b
+		if d1.Magnitude > 1e-9 and d2.Magnitude > 1e-9 then
+			local turn = 1 - d1.Unit:Dot(d2.Unit)
+			if turn > sharp then start, sharp = i, turn end
+		end
+	end
+	local keep = {}
+	local i = 0
+	while i < n do
+		keep[(start - 1 + i) % n + 1] = true
+		local j = i + 2
+		while j <= n do
+			local A, B = q[(start - 1 + i) % n + 1], q[(start - 1 + j) % n + 1]
+			local okAll = true
+			for k = i + 1, j - 1 do
+				if dist(q[(start - 1 + k) % n + 1], A, B) > tol then okAll = false break end
+			end
+			if not okAll then break end
+			j += 1
+		end
+		i = j - 1
+	end
+	local out, idx = {}, {}
+	for i = 1, n do if keep[i] then out[#out + 1] = q[i] idx[#idx + 1] = i end end
+	if #out < 3 then return q end
+	return out, idx   -- (idx = which of the original points were kept, in order)
+end
+function ENT.lowList(list, sides)
+	local o = {}
+	for i, q in ipairs(list or {}) do o[i] = ENT.lowPts(q, sides) end
+	return o
+end
+function ENT.meshExtrudeRegion(r, it, into)
+	local sh = ENT.meshExtrudeShape(r)
+	if not sh then return false end
+	local pl, host = sk.pl, sk.host
+	if (pl.u:Cross(pl.v) - pl.n).Magnitude > 1e-3 then return false end
+	local ok, mp, why = pcall(function()
+		local outer = outline(sh)
+		local holes = r.mergedHoles or ENT.meshHoles(r, outer)   -- (v3.46: joined areas bring their own holes)
+		if not holes then return nil, "a shape crosses the outline" end
+		-- v2.66: the part remembers the drawing at FULL detail (its recipe), the mesh uses the light copy
+		local frame = CFrame.fromMatrix(pl.o, pl.u, pl.v)
+		local z0, z1 = it.mid - it.D / 2, it.mid + it.D / 2
+		local sides = ENT.curveLevel()   -- (a level since v2.68)
+		local m, w = ENT.meshPrism(ENT.lowPts(outer, sides), ENT.lowList(holes, sides), z0, z1, frame)
+		if m then
+			local hs = {}
+			for i, h in ipairs(holes) do hs[i] = ENT.enc2(h) end
+			m:SetAttribute("PROTO_Kind", "ext")
+			m:SetAttribute("PROTO_Data", HttpService:JSONEncode({ outer = ENT.enc2(outer), holes = hs, z0 = z0, z1 = z1 }))
+			m:SetAttribute("PROTO_BaseRel", m.CFrame:ToObjectSpace(frame))
+			m:SetAttribute("PROTO_Level", sides)
+		end
+		return m, w
+	end)
+	if not (ok and mp) then
+		warn("PROTO mesh extrude: built it the normal way instead (" .. tostring(ok and why or mp) .. ")")
+		return false
+	end
+	ENT.styleFrom(mp, host)
+	pcall(function() mp.CollisionFidelity = ENT.collEnum() end)
+	mp.Name = "PROTO_Extrude"
+	mp:SetAttribute("PROTO_MeshUnsaved", true)
+	mp.Parent = into
+	return true
+end
+-- ===== v2.50 ONE-MESH BUILDERS: any solid given as triangles -> ONE sealed MeshPart (no pieces, no gluing) =====
+-- tris = { { a, b, c, g = group }, ... } in world space. Points are shared where they meet (same place + same group),
+-- so the solid is sealed; a different group = a sharp edge there (flat shading), same group = smooth.
+-- Every face is turned to face outwards (by the solid's volume). UVs: box-projected, tiling every 8 studs.
+ENT.MAX_TRIS = 20000
+-- (asIs = v2.67: the triangles already face the right way and may not be closed - don't turn them by volume)
+function ENT.meshFromTris(tris, frame, asIs)
+	frame = frame or CFrame.new()
+	-- v3.50: a live preview only wants the triangles (nothing made)
+	if ENT.captureTris then ENT.captured = { tris = tris, frame = frame } return nil, "captured" end
+	local list = {}
+	local lo, hi = V3(math.huge, math.huge, math.huge), V3(-math.huge, -math.huge, -math.huge)
+	for _, t in ipairs(tris) do
+		local a, b, c = frame:PointToObjectSpace(t[1]), frame:PointToObjectSpace(t[2]), frame:PointToObjectSpace(t[3])
+		if (b - a):Cross(c - a).Magnitude > 1e-9 then
+			list[#list + 1] = { a, b, c, t.g, t.col, t.cols }   -- (v2.72: t.col = this face's painted colour; v3.02: t.cols = per corner)
+			for _, p in ipairs({ a, b, c }) do lo = lo:Min(p) hi = hi:Max(p) end
+		end
+	end
+	if #list < 4 then return nil, "not enough faces" end
+	-- v2.63: Roblox's limit for one mesh (it said "Triangle count above limit")
+	if #list > ENT.MAX_TRIS then return nil, ("too many triangles (%d) - Roblox allows %d in one mesh"):format(#list, ENT.MAX_TRIS) end
+	local vol = 0
+	for _, t in ipairs(list) do vol += t[1]:Dot(t[2]:Cross(t[3])) end
+	local inside = vol < 0
+	local ctr = (lo + hi) / 2
+	local em = AssetService:CreateEditableMesh()
+	local ids, colIds = {}, {}
+	local function vid(p, g)
+		local k = math.floor(p.X * 1e4 + 0.5) .. "," .. math.floor(p.Y * 1e4 + 0.5) .. "," .. math.floor(p.Z * 1e4 + 0.5) .. "|" .. tostring(g)   -- (whole numbers: no "-0" vs "0" split)
+		local id = ids[k]
+		if not id then id = em:AddVertex(p - ctr) ids[k] = id end
+		return id
+	end
+	local T = 8
+	for _, t in ipairs(list) do
+		local a, b, c = t[1], t[2], t[3]
+		local cs = t[6]
+		local swapped = not asIs and inside ~= (ENT.meshFlip == true)
+		if swapped then b, c = c, b end
+		local f = em:AddTriangle(vid(a, t[4]), vid(b, t[4]), vid(c, t[4]))
+		if cs then
+			-- v3.02 BRUSH: a colour at each corner - Roblox blends them across the triangle
+			pcall(function()
+				local c1, c2, c3 = cs[1], cs[2], cs[3]
+				if swapped then c2, c3 = c3, c2 end
+				local function cid(col)
+					local key = col:ToHex()
+					local id = colIds[key]
+					if not id then id = em:AddColor(col, 1) colIds[key] = id end
+					return id
+				end
+				em:SetFaceColors(f, { cid(c1), cid(c2), cid(c3) })
+			end)
+		elseif t[5] then
+			-- v2.72 COLOUR PER FACE: the colour lives in the mesh itself
+			pcall(function()
+				local key = t[5]:ToHex()
+				local cid = colIds[key]
+				if not cid then cid = em:AddColor(t[5], 1) colIds[key] = cid end
+				em:SetFaceColors(f, { cid, cid, cid })
+			end)
+		end
+		pcall(function()
+			local n = (b - a):Cross(c - a)
+			local ax, ay, az = math.abs(n.X), math.abs(n.Y), math.abs(n.Z)
+			local function uv(p)
+				if ax >= ay and ax >= az then return V2(p.Z / T, p.Y / T) elseif ay >= az then return V2(p.X / T, p.Z / T) end
+				return V2(p.X / T, p.Y / T)
+			end
+			em:SetFaceUVs(f, { em:AddUV(uv(a)), em:AddUV(uv(b)), em:AddUV(uv(c)) })
+		end)
+	end
+	local ok, mp = pcall(function() return AssetService:CreateMeshPartAsync(Content.fromObject(em)) end)
+	if not ok or not mp then pcall(function() em:Destroy() end) return nil, tostring(mp) end
+	mp.Anchored = true
+	local sz = hi - lo
+	mp.Size = V3(math.max(sz.X, 0.01), math.max(sz.Y, 0.01), math.max(sz.Z, 0.01))
+	mp.CFrame = frame * CFrame.new(ctr)
+	mp:SetAttribute("PROTO_Tris", #list)
+	return mp, em
+end
+-- smooth groups round a closed loop of 2D points: a bend sharper than 35 degrees starts a new group (sharp edge)
+function ENT.meshGroups(q, base)
+	local n = #q
+	local SHARP = math.cos(math.rad(35))
+	local function dir(i) local a, b = q[i], q[i % n + 1] local v = b - a return v.Magnitude > 1e-9 and v.Unit or V2(1, 0) end
+	local sharp, any = {}, false
+	for i = 1, n do sharp[i] = dir((i - 2) % n + 1):Dot(dir(i)) <= SHARP any = any or sharp[i] end
+	local g = {}
+	if not any then for i = 1, n do g[i] = base end return g end
+	local s = 1
+	while not sharp[s] do s += 1 end
+	local cur = base
+	for k = 0, n - 1 do
+		local i = (s - 1 + k) % n + 1
+		if sharp[i] then cur += 1 end
+		g[i] = cur
+	end
+	return g
+end
+-- LATHE: spin outline loops (2D: X = along the axis, Y = distance from it) round the axis -> ONE mesh.
+-- loops[1] = the outline, the rest = holes. Less than 360 = flat end faces from the outline (holes and all).
+function ENT.latheTris(loops, angle, steps, Aw, dw, e1, e2)
+	local full = angle >= 359.999
+	local rad = math.rad(math.min(angle, 360))
+	local function P(p, k)
+		if full and k == steps then k = 0 end
+		local a = rad * k / steps
+		local r = math.max(p.Y, 0)
+		return Aw + dw * p.X + (e1 * math.cos(a) + e2 * math.sin(a)) * r
+	end
+	local function area(q) local A = 0 for i = 1, #q do local a, b = q[i], q[i % #q + 1] A += a.X * b.Y - b.X * a.Y end return A / 2 end
+	local function rev(q) local o = {} for i = #q, 1, -1 do o[#o + 1] = q[i] end return o end
+	local tris = {}
+	local base = 0
+	for li, q in ipairs(loops) do
+		-- the outline goes anticlockwise, holes clockwise (so every side faces out of the solid)
+		if (li == 1) ~= (area(q) > 0) then q = rev(q) loops[li] = q end
+		local g = ENT.meshGroups(q, base)
+		base += #q + 1
+		for i = 1, #q do
+			local a, b = q[i], q[i % #q + 1]
+			for k = 0, steps - 1 do
+				tris[#tris + 1] = { P(a, k), P(b, k), P(b, k + 1), g = g[i] }
+				tris[#tris + 1] = { P(a, k), P(b, k + 1), P(a, k + 1), g = g[i] }
+			end
+		end
+	end
+	if not full then
+		local holes = {}
+		for i = 2, #loops do holes[#holes + 1] = loops[i] end
+		local pts, ft = ENT.triHoles(loops[1], holes)
+		if not pts then return nil, "couldn't fill the end faces" end
+		for _, t in ipairs(ft) do
+			local a, b, c = pts[t[1]], pts[t[2]], pts[t[3]]
+			tris[#tris + 1] = { P(a, 0), P(c, 0), P(b, 0), g = "start" }
+			tris[#tris + 1] = { P(a, steps), P(b, steps), P(c, steps), g = "end" }
+		end
+	end
+	return ENT.orientTris(tris)
+end
+function ENT.meshLathe(loops, angle, steps, Aw, dw, e1, e2)
+	local tris, why = ENT.latheTris(loops, angle, steps, Aw, dw, e1, e2)
+	if not tris then return nil, why end
+	return ENT.meshFromTris(tris, CFrame.fromMatrix(Aw, e1, e2))
+end
+-- REVOLVE as one mesh: the picked area's outline (+ holes) in axis terms. nil = can't (use the normal way).
+function ENT.meshRevolve(regions, A, d, angle, side)
+	if not (ENT.SHOW_MESH and ENT.meshCut) then return nil end
+	-- v2.55: every picked area, and a shape crossing the centre line (each side spun round, solid in the middle) - all
+	-- in ONE mesh (each a closed shell), nothing joined
+	local nrm = V2(-d.Y, d.X)
+	local function TS(p) local w = p - A return V2(w:Dot(d), w:Dot(nrm)) end
+	-- keep the part of a polygon (axis terms) on one side of the centre line, turned to that side (distance >= 0)
+	local function half(q, sg)
+		local out = {}
+		local n = #q
+		for i = 1, n do
+			local a, b = q[i], q[i % n + 1]
+			local da, db = a.Y * sg, b.Y * sg
+			if da >= 0 then out[#out + 1] = V2(a.X, da) end
+			if (da > 0 and db < 0) or (da < 0 and db > 0) then
+				local t = da / (da - db)
+				out[#out + 1] = V2(a.X + (b.X - a.X) * t, 0)
+			end
+		end
+		return out
+	end
+	local function area(q) local A2 = 0 for i = 1, #q do local a, b = q[i], q[i % #q + 1] A2 += a.X * b.Y - b.X * a.Y end return A2 / 2 end
+	local pl = sk.pl
+	local dw = (pl.u * d.X + pl.v * d.Y).Unit
+	local sidesFull = math.clamp(math.floor(tonumber(U.revSides and U.revSides.Text) or 24), 8, 128)
+	-- v2.65: the Sides box as it is (it used to be forced up to 32+) - default 24, Detail LOW 12 / HIGH 48
+	local steps = math.max(math.ceil(sidesFull * math.min(angle, 360) / 360), 2)
+	local shells = {}   -- { loops, sign }
+	local list = {}
+	for _, r in ipairs(regions) do
+		if r.all then
+			-- the whole drawing: a shape inside an odd number of others is a hole, not a solid
+			local cs = closedShapes()
+			for _, f in ipairs(cs) do
+				local q = outline(f)
+				local depth = 0
+				for _, g in ipairs(cs) do if g ~= f and q[1] and pointInPoly(q[1], outline(g)) then depth += 1 end end
+				if depth % 2 == 0 then list[#list + 1] = { inside = { f } } end
+			end
+		else
+			list[#list + 1] = r
+		end
+	end
+	for _, r in ipairs(list) do
+		if r.inside and #r.inside > 1 then r.inside = ENT.innermost(r.inside) end   -- v2.90: nested drawings
+		if not (r.whole or (r.inside and #r.inside == 1)) then return nil, "an area made of several overlapping shapes" end
+		local sh = r.whole or r.inside[1]
+		local outer = outline(sh)
+		local holes = r.mergedHoles or ENT.meshHoles(r, outer) or {}   -- (v2.66: full detail here - revTris makes the light copy; v3.46: joined areas bring their own holes)
+		local o = {}
+		local pos, neg = false, false
+		for _, p in ipairs(outer) do
+			local t = TS(p)
+			o[#o + 1] = t
+			if t.Y > 1e-4 then pos = true elseif t.Y < -1e-4 then neg = true end
+		end
+		if pos and neg then
+			if angle < 359.999 then return nil, "the shape crosses the centre line - that only works for a full 360" end
+			for _, sg in ipairs({ 1, -1 }) do
+				local hq = half(o, sg)
+				if #hq >= 3 and math.abs(area(hq)) > 1e-6 then shells[#shells + 1] = { loops = { hq }, sign = 1 } end
+			end
+		else
+			local sg = neg and -1 or 1
+			local loops = { half(o, sg) }
+			for _, h in ipairs(holes) do
+				local hq = {}
+				for _, p in ipairs(h) do local t = TS(p) hq[#hq + 1] = V2(t.X, math.abs(t.Y)) end
+				loops[#loops + 1] = hq
+			end
+			shells[#shells + 1] = { loops = loops, sign = sg }
+		end
+	end
+	if #shells == 0 then return nil, "nothing to spin" end
+	-- v2.66: the revolve's recipe (axis frame + the profile at full detail) is kept on the part
+	local Aw = W(A)
+	local e1base = (pl.u * nrm.X + pl.v * nrm.Y).Unit
+	local F = CFrame.fromMatrix(Aw, dw, e1base)   -- X = the axis, Y = the profile's "out" direction
+	local data = { angle = angle, side = side, shells = {}, cap = sidesFull }   -- (cap = the Sides box: most steps round)
+	for _, S in ipairs(shells) do
+		local L = {}
+		for i, l in ipairs(S.loops) do L[i] = ENT.enc2(l) end
+		data.shells[#data.shells + 1] = { loops = L, sign = S.sign }
+	end
+	local level = ENT.curveLevel()
+	local tris, why = ENT.revTris(data, F, level)
+	if not tris then return nil, why end
+	local e1 = e1base * (side or 1)
+	local mp, em = ENT.meshFromTris(tris, CFrame.fromMatrix(Aw, e1, dw:Cross(e1)))
+	if mp then
+		mp:SetAttribute("PROTO_Kind", "rev")
+		mp:SetAttribute("PROTO_Data", HttpService:JSONEncode(data))
+		mp:SetAttribute("PROTO_BaseRel", mp.CFrame:ToObjectSpace(F))
+		mp:SetAttribute("PROTO_Level", level)
+	end
+	return mp, em
+end
+-- VIEWS net as one mesh: the rings of points along the length, the body between them, a lid on each end
+function ENT.meshViews(rows, K)
+	local tris = {}
+	local function cen(R) return R.c end
+	-- the body faces outwards if a face's normal points away from its ring's middle
+	local A, B = rows[1], rows[2]
+	local flipBody = false
+	for k = 1, K do
+		local n = (A[k % K + 1] - A[k]):Cross(B[k % K + 1] - A[k])
+		if n.Magnitude > 1e-9 then flipBody = n:Dot(A[k] - cen(A)) < 0 break end
+	end
+	local function add(a, b, c, g) if flipBody then b, c = c, b end tris[#tris + 1] = { a, b, c, g = g } end
+	for i = 1, #rows - 1 do
+		local R1, R2 = rows[i], rows[i + 1]
+		for k = 1, K do
+			local k2 = k % K + 1
+			add(R1[k], R1[k2], R2[k2], "body")
+			add(R1[k], R2[k2], R2[k], "body")
+		end
+	end
+	-- lids: always (a pointed end's tiny ring gets a tiny lid, so it's fully sealed), turned to face away from the shape
+	for e, R in ipairs({ rows[1], rows[#rows] }) do
+		local other = (e == 1) and rows[2] or rows[#rows - 1]
+		local away = R.c - other.c
+		local lid = {}
+		local flipLid = false
+		for k = 1, K do
+			local n = (R[k] - R.c):Cross(R[k % K + 1] - R.c)
+			if n.Magnitude > 1e-9 then flipLid = n:Dot(away) < 0 break end
+		end
+		for k = 1, K do
+			local a, b, c = R.c, R[k], R[k % K + 1]
+			if flipLid then b, c = c, b end
+			tris[#tris + 1] = { a, b, c, g = "lid" .. e }
+		end
+		local _ = lid
+	end
+	return ENT.meshFromTris(tris)
+end
+-- ===== v2.50 SKIRTING AS ONE PIECE (Mesh mode) =====
+-- Dylan (04:12, a chamfered corner with fills round its bottom: the pieces didn't line up): the fills round the
+-- bottom of a block (inside-corner chamfers / rounds against the floor) are rebuilt as ONE piece that follows the
+-- block's real outline - its chamfered / rounded upright corners and all - so every joint lines up by itself:
+--   1. one cutter (the ring of space round the block at that level, the block's outline as its hole) takes the old
+--      fill pieces away in one cut;
+--   2. one sweep of the fill's shape all the way round the outline (mitred at every corner, curved round a round
+--      corner) is joined back on.
+
+-- the block's outline at a level, going anticlockwise in (A1, A2): points + what each side is
+-- (side = "F:<axis>:<sign>" for a face, "C:<i>" for a corner's chamfer / round)
+function ENT.skirtOutline(h, V, corners)
+	local A1, A2 = (V % 3) + 1, ((V + 1) % 3) + 1
+	local cs = { { 1, -1 }, { 1, 1 }, { -1, 1 }, { -1, -1 } }   -- corner signs, anticlockwise
+	-- the face after corner i (from corner i to corner i+1)
+	local faceAfter = { "F:" .. A1 .. ":1", "F:" .. A2 .. ":1", "F:" .. A1 .. ":-1", "F:" .. A2 .. ":-1" }
+	local pts, sides = {}, {}
+	for i = 1, 4 do
+		local s1, s2 = cs[i][1], cs[i][2]
+		local C = V2(s1 * h[A1], s2 * h[A2])
+		local c = corners[s1 .. "," .. s2]
+		local inDir = (C - V2(cs[(i - 2) % 4 + 1][1] * h[A1], cs[(i - 2) % 4 + 1][2] * h[A2])).Unit
+		local outDir = (V2(cs[i % 4 + 1][1] * h[A1], cs[i % 4 + 1][2] * h[A2]) - C).Unit
+		if c and c.r > 1e-4 then
+			local p0, p1 = C - inDir * c.r, C + outDir * c.r
+			pts[#pts + 1] = p0
+			if c.f then
+				-- a round: a quarter circle about the point r in from both faces
+				local O = C - inDir * c.r + outDir * c.r
+				local a0 = math.atan2(p0.Y - O.Y, p0.X - O.X)
+				local a1 = math.atan2(p1.Y - O.Y, p1.X - O.X)
+				local da = a1 - a0
+				while da > math.pi do da -= 2 * math.pi end
+				while da < -math.pi do da += 2 * math.pi end
+				local n = 8
+				for j = 1, n - 1 do
+					sides[#sides + 1] = "C:" .. i
+					local a = a0 + da * j / n
+					pts[#pts + 1] = O + V2(math.cos(a), math.sin(a)) * c.r
+				end
+			end
+			sides[#sides + 1] = "C:" .. i
+			pts[#pts + 1] = p1
+		else
+			pts[#pts + 1] = C
+		end
+		sides[#sides + 1] = faceAfter[i]
+	end
+	-- sides[j] = the side from pts[j] to pts[j+1]
+	return pts, sides
+end
+-- the fill's cross-section: u = out from the wall, v = up from the floor (a hair into both, so it joins on solid)
+function ENT.skirtProfile(rf, isF)
+	local g = math.min(0.02, rf * 0.1)
+	local q = { V2(-g, -g), V2(rf, -g), V2(rf, 0) }
+	if isF then
+		for j = 1, 7 do
+			local a = math.rad(270 - 90 * j / 8)
+			q[#q + 1] = V2(rf + rf * math.cos(a), rf + rf * math.sin(a))
+		end
+	end
+	q[#q + 1] = V2(0, rf)
+	q[#q + 1] = V2(-g, rf)
+	return q
+end
+-- sweep the profile along a run of the outline (2D points, anticlockwise; closed = all the way round)
+-- place(x, y, up) -> world point. Returns triangles for ENT.meshFromTris.
+function ENT.skirtSweep(path, closed, prof, place)
+	local n = #path
+	local segs = closed and n or n - 1
+	local function seg(i) local a, b = path[i], path[i % n + 1] local d = (b - a).Unit return d, V2(d.Y, -d.X) end
+	-- each point's mitre: the outward direction there, and how far to push so the sides stay parallel
+	local mit = {}
+	for j = 1, n do
+		local nin, nout
+		if closed or j > 1 then local _, nn = seg((j - 2) % n + 1) nin = nn end
+		if closed or j < n then local _, nn = seg(j) nout = nn end
+		local m = ((nin or nout) + (nout or nin)).Unit
+		mit[j] = m / m:Dot(nout or nin)
+	end
+	-- sharp bends start a new smooth group (a mitred corner = a crisp edge; round the curve = smooth)
+	local SHARP = math.cos(math.rad(35))
+	local grp, gid = {}, 0
+	for i = 1, segs do
+		if i == 1 then gid = 1 else
+			local d0 = seg(i - 1)
+			local d1 = seg(i)
+			if d0:Dot(d1) <= SHARP then gid += 1 end
+		end
+		grp[i] = gid
+	end
+	if closed and segs > 1 and seg(segs):Dot(seg(1)) > SHARP then
+		local g1 = grp[1]
+		for i = segs, 1, -1 do if grp[i] == gid and gid ~= g1 then grp[i] = g1 else break end end
+	end
+	local pg = ENT.meshGroups(prof, 1000)
+	local np = #prof
+	local ring = {}
+	for j = 1, n do
+		ring[j] = {}
+		for e = 1, np do
+			local P = path[j] + mit[j] * prof[e].X
+			ring[j][e] = place(P.X, P.Y, prof[e].Y)
+		end
+	end
+	local tris = {}
+	for i = 1, segs do
+		local j, j2 = i, i % n + 1
+		for e = 1, np do
+			local e2 = e % np + 1
+			local g = grp[i] .. ":" .. pg[e]
+			tris[#tris + 1] = { ring[j][e], ring[j2][e], ring[j2][e2], g = g }
+			tris[#tris + 1] = { ring[j][e], ring[j2][e2], ring[j][e2], g = g }
+		end
+	end
+	if not closed then
+		local pts, ft = ENT.triHoles(prof, {})
+		if not pts then return nil end
+		-- (triHoles turned the profile anticlockwise - its points line up with prof only if prof already was)
+		for _, t in ipairs(ft) do
+			local a, b, c = pts[t[1]], pts[t[2]], pts[t[3]]
+			local function at(j, p)
+				local P = path[j] + mit[j] * p.X
+				return place(P.X, P.Y, p.Y)
+			end
+			tris[#tris + 1] = { at(1, a), at(1, b), at(1, c), g = "cap1" }
+			tris[#tris + 1] = { at(n, a), at(n, c), at(n, b), g = "cap2" }
+		end
+	end
+	return tris
+end
+-- ===== v2.52 EDGE ENGINE (Mesh mode): chamfers and rounds WITHOUT joining pieces =====
+-- Dylan (12 Oct 04:27): "redo how you do chamfers and fillets - they still use unions - unions and this small part
+-- thinking is banned". So in Mesh mode:
+--   * A block and ALL its chamfers / rounds are ONE solid, worked out straight from its size: the block's 6 faces plus
+--     one flat face per chamfer, flat strips round each round, and a ball where three rounds meet - cut down from a
+--     big cube face by face (no pieces, nothing glued). Fills against the floor ride along in the SAME mesh.
+--   * A plain block (or one PROTO already made this way) is simply replaced by that one mesh: no cutting at all.
+--   * A block with cuts / pockets in it: ONE cut with ONE cutter (a big box with the new solid's shape hollowed out of
+--     it), so everything outside the new shape goes in a single go.
+--   * The edge of a pocket's opening: ONE cut with ONE cutter that follows the whole opening (every corner mitred).
+
+-- keep the part of a flat polygon with n.p <= d (points on the plane count as kept)
+function ENT.clipPoly(poly, n, d)
+	local out, on = {}, {}
+	local E = 1e-7
+	local m = #poly
+	for i = 1, m do
+		local a, b = poly[i], poly[i % m + 1]
+		local da, db = n:Dot(a) - d, n:Dot(b) - d
+		if da <= E then
+			out[#out + 1] = a
+			if da >= -E then on[#on + 1] = a end
+		end
+		if (da < -E and db > E) or (da > E and db < -E) then
+			local p = a + (b - a) * (da / (da - db))
+			out[#out + 1] = p
+			on[#on + 1] = p
+		end
+	end
+	return out, on
+end
+-- a solid made only of flat sides: start with a big cube and cut it down by each plane { n, d, g } (keeps n.p <= d)
+-- -> faces { pts (anticlockwise seen from outside), g }
+function ENT.convexFaces(planes, H)
+	local function V(x, y, z) return V3(x, y, z) end
+	local c = {}
+	for i = 0, 7 do c[i] = V((i % 2 == 1) and H or -H, (math.floor(i / 2) % 2 == 1) and H or -H, (i >= 4) and H or -H) end
+	local faces = {
+		{ pts = { c[0], c[2], c[3], c[1] } }, { pts = { c[4], c[5], c[7], c[6] } },   -- -Z, +Z
+		{ pts = { c[0], c[1], c[5], c[4] } }, { pts = { c[2], c[6], c[7], c[3] } },   -- -Y, +Y
+		{ pts = { c[0], c[4], c[6], c[2] } }, { pts = { c[1], c[3], c[7], c[5] } },   -- -X, +X
+	}
+	for _, P in ipairs(planes) do
+		local nf, cap = {}, {}
+		for _, f in ipairs(faces) do
+			local kept, on = ENT.clipPoly(f.pts, P.n, P.d)
+			for _, q in ipairs(on) do cap[#cap + 1] = q end
+			-- drop repeated points
+			local cl = {}
+			for _, q in ipairs(kept) do if #cl == 0 or (q - cl[#cl]).Magnitude > 1e-6 then cl[#cl + 1] = q end end
+			if #cl > 1 and (cl[1] - cl[#cl]).Magnitude <= 1e-6 then table.remove(cl) end
+			if #cl >= 3 then nf[#nf + 1] = { pts = cl, g = f.g } end
+		end
+		-- the new face on this plane: the cut points, in order round their middle
+		local u = {}
+		for _, q in ipairs(cap) do
+			local dup = false
+			for _, w in ipairs(u) do if (w - q).Magnitude < 1e-6 then dup = true break end end
+			if not dup then u[#u + 1] = q end
+		end
+		if #u >= 3 then
+			local ctr = V3(0, 0, 0)
+			for _, q in ipairs(u) do ctr += q end
+			ctr /= #u
+			local e1 = (math.abs(P.n.X) < 0.9) and P.n:Cross(Vector3.xAxis).Unit or P.n:Cross(Vector3.yAxis).Unit
+			local e2 = P.n:Cross(e1)
+			table.sort(u, function(a, b)
+				local pa, pb = a - ctr, b - ctr
+				return math.atan2(pa:Dot(e2), pa:Dot(e1)) < math.atan2(pb:Dot(e2), pb:Dot(e1))
+			end)
+			-- (the faces' turn is put right afterwards for the whole solid at once - ENT.orientTris)
+			local r = {}
+			for i = #u, 1, -1 do r[#r + 1] = u[i] end
+			nf[#nf + 1] = { pts = r, g = P.g }
+		end
+		faces = nf
+	end
+	return faces
+end
+-- the block's planes: its 6 faces, plus every chamfer / round in the done list (block space)
+function ENT.edgePlanes(size, done)
+	local h = { size.X / 2, size.Y / 2, size.Z / 2 }
+	local planes = {}
+	for i = 1, 3 do
+		for _, s in ipairs({ -1, 1 }) do planes[#planes + 1] = { n = AXV[i] * s, d = h[i], g = "box" .. i .. s } end
+	end
+	local N = 10
+	local rounds = {}
+	for _, d in ipairs(done) do
+		if not d.i and d.k and d.r and d.r > 1e-4 and (d.t == "chamfer" or d.t == "fillet") then
+			local k = d.k
+			local a, b = (k % 3) + 1, ((k + 1) % 3) + 1
+			local sa, sb, r = d.a, d.b, d.r
+			if d.t == "chamfer" then
+				local n = (AXV[a] * sa + AXV[b] * sb).Unit
+				local q = AXV[a] * (sa * (h[a] - r)) + AXV[b] * (sb * h[b])
+				planes[#planes + 1] = { n = n, d = n:Dot(q), g = "ch" .. k .. sa .. sb }
+			else
+				local c = AXV[a] * (sa * (h[a] - r)) + AXV[b] * (sb * (h[b] - r))
+				for j = 1, N do
+					local t = (j - 0.5) / N * math.pi / 2
+					local n = AXV[a] * (sa * math.cos(t)) + AXV[b] * (sb * math.sin(t))
+					planes[#planes + 1] = { n = n, d = n:Dot(c) + r, g = "fi" .. k .. sa .. sb }
+				end
+				local sg = { 0, 0, 0 }
+				sg[a], sg[b] = sa, sb
+				rounds[k .. ":" .. sa .. ":" .. sb] = r
+			end
+		end
+	end
+	-- a corner where all three edges are rounded the same size gets a ball (SolidWorks-style vertex blend)
+	for _, s1 in ipairs({ -1, 1 }) do for _, s2 in ipairs({ -1, 1 }) do for _, s3 in ipairs({ -1, 1 }) do
+		local sg = { s1, s2, s3 }
+		local rr = nil
+		local ok = true
+		for k = 1, 3 do
+			local a, b = (k % 3) + 1, ((k + 1) % 3) + 1
+			local r = rounds[k .. ":" .. sg[a] .. ":" .. sg[b]]
+			if not r or (rr and math.abs(r - rr) > 1e-4) then ok = false break end
+			rr = r
+		end
+		if ok and rr then
+			local c = V3(s1 * (h[1] - rr), s2 * (h[2] - rr), s3 * (h[3] - rr))
+			local M = 6
+			for i = 1, M do for j = 1, M do
+				local ph, th = (i - 0.5) / M * math.pi / 2, (j - 0.5) / M * math.pi / 2
+				local n = V3(s1 * math.cos(ph) * math.cos(th), s2 * math.sin(ph) * math.cos(th), s3 * math.sin(th))
+				planes[#planes + 1] = { n = n, d = n:Dot(c) + rr, g = "ball" .. s1 .. s2 .. s3 }
+			end end
+		end
+	end end end
+	return planes
+end
+-- faces -> triangles (world space via cf), turned to face outwards; flip = turn the whole lot inside out
+function ENT.facesToTris(faces, cf, flip)
+	local tris = {}
+	for _, f in ipairs(faces) do
+		local p = f.pts
+		for i = 2, #p - 1 do
+			local a, b, c = cf:PointToWorldSpace(p[1]), cf:PointToWorldSpace(p[i]), cf:PointToWorldSpace(p[i + 1])
+			if flip then b, c = c, b end
+			tris[#tris + 1] = { a, b, c, g = f.g }
+		end
+	end
+	return tris
+end
+-- one closed shell -> turned so it faces out (positive volume); inside = turned to face in (a hollow)
+function ENT.orientTris(tris, inside)
+	local vol = 0
+	for _, t in ipairs(tris) do vol += t[1]:Dot(t[2]:Cross(t[3])) end
+	if (vol < 0) ~= (inside == true) then
+		for _, t in ipairs(tris) do t[2], t[3] = t[3], t[2] end
+	end
+	return tris
+end
+-- the fills against the floor round this block as triangles (one sweep per level), or {} / nil (= can't)
+function ENT.skirtTris(cf, size, done, cuts)
+	local h = { size.X / 2, size.Y / 2, size.Z / 2 }
+	local levels = {}
+	local any = false
+	for _, d in ipairs(done) do
+		if d.i and d.ux and d.r then
+			any = true
+			local Uc, Vc = { d.ux, d.uy, d.uz }, { d.vx, d.vy, d.vz }
+			local F, V
+			for ax = 1, 3 do if math.abs(Uc[ax]) > 0.5 then F = ax end if math.abs(Vc[ax]) > 0.5 then V = ax end end
+			if not (F and V) or F == V or d.k == F or d.k == V then return nil end
+			local sv = -(Vc[V] > 0 and 1 or -1)
+			local key = V .. ":" .. sv
+			local L = levels[key] or { V = V, sv = sv, faces = {}, part = {}, rf = d.r, f = d.t == "fillet" }
+			levels[key] = L
+			if math.abs(L.rf - d.r) > 1e-3 or L.f ~= (d.t == "fillet") then return nil end
+			local fk = "F:" .. F .. ":" .. (Uc[F] > 0 and 1 or -1)
+			local hk = h[d.k]
+			if (d.s0 and d.s0 > -hk + 1e-3) or (d.s1 and d.s1 < hk - 1e-3) then
+				-- a fill only part of the way along its side: its own straight run
+				table.insert(L.part, { F = F, sf = (Uc[F] > 0 and 1 or -1), k = d.k, s0 = d.s0 or -hk, s1 = d.s1 or hk })
+			else
+				L.faces[fk] = true
+			end
+		end
+	end
+	if not any then return {} end
+	local all = {}
+	for _, L in pairs(levels) do
+		local V, sv, rf = L.V, L.sv, L.rf
+		local A1, A2 = (V % 3) + 1, ((V + 1) % 3) + 1
+		local corners = {}
+		for _, d in ipairs(done) do
+			if d.k == V and not d.i and d.r and d.t then corners[d.a .. "," .. d.b] = { r = d.r, f = d.t == "fillet" } end
+		end
+		-- v3.37 (Dylan's corner hole: "make sure it sequences right so the final cut is the right one"): a round /
+		-- chamfer STEP down one of the block's upright corners is done before the fill is laid, so the fill follows it
+		-- round the corner like a block one - it used to go round the square corner, and the corner showed through it.
+		for _, c in ipairs(cuts or {}) do
+			if c.kind == "edge" and c.pts and #c.pts >= 2 and c.r and c.r > 1e-4 and (c.t == "chamfer" or c.t == "fillet") then
+				local sa = c.pts[1][A1] > 0 and 1 or -1
+				local sb = c.pts[1][A2] > 0 and 1 or -1
+				local on, low = true, math.huge
+				for _, q in ipairs(c.pts) do
+					if math.abs(q[A1] - sa * h[A1]) > 1e-3 or math.abs(q[A2] - sb * h[A2]) > 1e-3 then on = false break end
+					low = math.min(low, math.abs(q[V] - sv * h[V]))
+				end
+				local key = sa .. "," .. sb
+				if on and low <= 2 * c.r + 0.1 and not corners[key] then corners[key] = { r = c.r, f = c.t == "fillet" } end
+			end
+		end
+		local pts, sides = ENT.skirtOutline(h, V, corners)
+		local nP = #pts
+		local faceOf = {}
+		for j = 1, nP do faceOf[j] = sides[j]:sub(1, 1) == "F" and sides[j] or nil end
+		local function filled(j)
+			if faceOf[j] then return L.faces[faceOf[j]] == true end
+			local a, b = j, j
+			repeat a = (a - 2) % nP + 1 until faceOf[a]
+			repeat b = b % nP + 1 until faceOf[b]
+			return L.faces[faceOf[a]] == true and L.faces[faceOf[b]] == true
+		end
+		local on, every, some = {}, true, false
+		for j = 1, nP do on[j] = filled(j) every = every and on[j] some = some or on[j] end
+		local runs = {}
+		if every then
+			runs[1] = { pts = pts, closed = true }
+		elseif some then
+			local start = 1
+			while on[start] do start += 1 end
+			local cur
+			for k2 = 1, nP do
+				local j = (start - 1 + k2) % nP + 1
+				if on[j] then
+					if not cur then cur = { pts[j] } runs[#runs + 1] = { pts = cur, closed = false } end
+					cur[#cur + 1] = pts[j % nP + 1]
+				else cur = nil end
+			end
+		end
+		-- part-way fills: a straight run along their side, from s0 to s1 (in the outline's direction)
+		for _, P in ipairs(L.part) do
+			local function at(s)
+				local t = { 0, 0, 0 }
+				t[P.F], t[P.k] = P.sf * h[P.F], s
+				return V2(t[A1], t[A2])
+			end
+			local a, b = at(P.s0), at(P.s1)
+			-- (the outline goes anticlockwise: outward normal = right of the direction)
+			local d = b - a
+			local nrm = V2(d.Y, -d.X)
+			local want = V2(0, 0)
+			local tw = { 0, 0, 0 }
+			tw[P.F] = P.sf
+			want = V2(tw[A1], tw[A2])
+			if nrm:Dot(want) < 0 then a, b = b, a end
+			runs[#runs + 1] = { pts = { a, b }, closed = false }
+		end
+		local up = -sv
+		local lvl = sv * h[V]
+		local function place(x, y, v)
+			local t = { 0, 0, 0 }
+			t[A1], t[A2], t[V] = x, y, lvl + up * v
+			return cf:PointToWorldSpace(V3(t[1], t[2], t[3]))
+		end
+		local prof = ENT.skirtProfile(rf, L.f)
+		for _, R in ipairs(runs) do
+			local tt = ENT.skirtSweep(R.pts, R.closed, prof, place)
+			if not tt then return nil end
+			ENT.orientTris(tt)
+			for _, t in ipairs(tt) do all[#all + 1] = t end
+		end
+	end
+	return all
+end
+-- swap a part for a new one in the same place (look, name, attributes, tags, children); the old one is taken out
+-- (Parent = nil, never destroyed) so Ctrl+Z brings it back
+function ENT.swapIn(p, np)
+	for _, k in ipairs({ "Anchored", "CanCollide", "CanQuery", "CanTouch", "CastShadow", "Color", "Material", "MaterialVariant",
+		"Reflectance", "Transparency", "Massless", "CollisionGroup", "Locked" }) do
+		pcall(function() np[k] = p[k] end)
+	end
+	-- v3.41 (glitch sweep): keep the part's pivot where it was (it was dropped; a moved pivot stays in the same spot)
+	pcall(function()
+		if p.PivotOffset ~= CFrame.new() then np.PivotOffset = np.CFrame:ToObjectSpace(p:GetPivot()) end
+	end)
+	np.Name = p.Name
+	-- (v2.84, Dylan: "I feel like he is lying" - the panel said 32 triangles on a 700-triangle part: the OLD part's
+	-- count was copied over the new mesh's real one. The new mesh's own count is kept now.)
+	local realTris = np:GetAttribute("PROTO_Tris")
+	for k, v in pairs(p:GetAttributes()) do pcall(function() np:SetAttribute(k, v) end) end
+	if realTris then np:SetAttribute("PROTO_Tris", realTris) end
+	for _, tg in ipairs(p:GetTags()) do pcall(function() np:AddTag(tg) end) end
+	for _, ch in ipairs(p:GetChildren()) do
+		if ch:IsA("StringValue") and (ENT.isOutline(ch.Name) or ENT.isBounds(ch.Name)) then ENT.moveDimValue(ch, p.CFrame, np.CFrame, np)
+		else ch.Parent = np end
+	end
+	np.Parent = p.Parent
+	pcall(ENT.reweld, p, np, np)   -- v3.65: a face skin's weld holds the new part
+	-- v3.66: material-on-face rules are drawn again on the NEW shape (a cut goes through them)
+	if np:GetAttribute("PROTO_Skins") then
+		local okS, eS = pcall(ENT.skinsRedraw, np)
+		if not okS then warn("PROTO material on face: " .. tostring(eS)) end
+	end
+	-- v3.41 (glitch sweep): point at the new part BEFORE the old one goes (the old one leaving cleared the target).
+	-- (target is switched first, the full setTarget runs after - so it never sees old + new side by side in one group)
+	local wasTarget = (target == p)
+	if wasTarget then target = np end
+	local wasHost = (sk and sk.host == p)
+	if wasHost then sk.host = np end   -- v3.41 (glitch sweep): the open sketch follows the new part too
+	-- v3.44 (paint check): remember old -> new, so a brush stroke that started on the old part lands on the new one
+	ENT.swappedTo = ENT.swappedTo or setmetatable({}, { __mode = "k" })
+	ENT.swappedTo[p] = np
+	p.Parent = nil
+	if wasTarget then pcall(setTarget, np) end
+	if wasHost then pcall(ENT.computeRefLines) end
+	return np
+end
+-- is this a plain block (nothing cut out of it) - so it can simply be rebuilt as one mesh?
+function ENT.plainBlock(p)
+	if p:GetAttribute("PROTO_Core") then return true end
+	return p:IsA("Part") and p.Shape == Enum.PartType.Block
+end
+-- the whole job for a block: its shape from its size + done list, as ONE piece. Returns the new part, or nil + why.
+function ENT.edgeRebuild(p, cf, size, done)
+	-- v2.53: a plain block / a PROTO-rebuilt one = rebuilt from its recipe (its cuts come along, one cut)
+	if ENT.rebuildable(p) then return ENT.solidRebuild(p, cf, size, done, ENT.cutsOf(p)) end
+	local core = ENT.convexFaces(ENT.edgePlanes(size, done), math.max(size.X, size.Y, size.Z) + 10)
+	if #core < 4 then return nil, "the shape came out empty" end
+	local tris = ENT.orientTris(ENT.facesToTris(core, cf))
+	local sk = ENT.skirtTris(cf, size, done)
+	if ENT.plainBlock(p) then
+		-- PLAIN BLOCK: the block, its chamfers / rounds and its fills = one mesh. No cutting, no joining.
+		if not sk then return nil, "fills of different sizes on one level - not in Mesh mode yet" end
+		for _, t in ipairs(sk) do tris[#tris + 1] = t end
+		local np = ENT.meshFromTris(tris, cf)
+		if not np then return nil, "couldn't make the mesh" end
+		pcall(function() np.CollisionFidelity = ENT.collEnum() end)
+		ENT.swapIn(p, np)
+		np:SetAttribute("PROTO_Core", true)
+		np:SetAttribute("PROTO_BlockRel", np.CFrame:ToObjectSpace(cf))
+		np:SetAttribute("PROTO_BlockSize", size)
+		return np
+	end
+	-- A BLOCK WITH CUTS IN IT: one cutter = a box a little bigger than the block, with the new shape hollowed out of it
+	-- (everything outside the new shape goes, in one cut; the pockets stay as they are)
+	if #(sk or {}) > 0 then
+		-- (fills already joined on: they sit outside the block, so the cutter would take them - not in Mesh mode yet)
+		return nil, "this block has cuts AND fills - do the fills before cutting"
+	end
+	local eps = 0.05
+	local big = ENT.convexFaces({
+		{ n = Vector3.xAxis, d = size.X / 2 + eps }, { n = -Vector3.xAxis, d = size.X / 2 + eps },
+		{ n = Vector3.yAxis, d = size.Y / 2 + eps }, { n = -Vector3.yAxis, d = size.Y / 2 + eps },
+		{ n = Vector3.zAxis, d = size.Z / 2 + eps }, { n = -Vector3.zAxis, d = size.Z / 2 + eps },
+	}, math.max(size.X, size.Y, size.Z) + 10)
+	local shell = ENT.orientTris(ENT.facesToTris(big, cf))
+	local hollow = ENT.orientTris(ENT.facesToTris(core, cf), true)
+	for _, t in ipairs(hollow) do t.g = "in" .. tostring(t.g) shell[#shell + 1] = t end
+	local cutter, cem = ENT.meshFromTris(shell, cf)
+	if not cutter then return nil, "couldn't make the cutter" end
+	cutter.Parent = workspace
+	local opts = { CollisionFidelity = ENT.collEnum(), RenderFidelity = Enum.RenderFidelity.Precise, SplitApart = false }
+	local ok, res = pcall(function() return GeometryService:SubtractAsync(p, { cutter }, opts) end)
+	cutter.Parent = nil
+	pcall(function() cem:Destroy() end)
+	if not (ok and type(res) == "table" and res[1]) then return nil, "the cut failed - " .. tostring(res) end
+	local np = res[1]
+	ENT.keepLook(np, p)
+	ENT.swapIn(p, np)
+	np:SetAttribute("PROTO_BlockRel", np.CFrame:ToObjectSpace(cf))
+	np:SetAttribute("PROTO_BlockSize", size)
+	return np
+end
+-- Mesh mode's edge click: record the edge, rebuild the block in one go
+function ENT.edgeMesh(p, E, r, isF, hitPos)
+	local nm = isF and "FILLET" or "CHAMFER"
+	local done = {}
+	pcall(function() done = HttpService:JSONDecode(p:GetAttribute("PROTO_EdgesDone") or "[]") end)
+	local u, v = ENT.edgeInside(E, p)
+	-- v3.37: this box edge already has a round / chamfer STEP on it (made the other way) - not twice
+	if not u and E.k and E.size then
+		local h = { E.size.X / 2, E.size.Y / 2, E.size.Z / 2 }
+		local A, B = (E.k % 3) + 1, ((E.k + 1) % 3) + 1
+		for j, c in ipairs(ENT.cutsOf(p)) do
+			if c.kind == "edge" and c.pts and #c.pts >= 2 then
+				local on = true
+				for _, q in ipairs(c.pts) do
+					if math.abs(q[A] - E.sa * h[A]) > 1e-3 or math.abs(q[B] - E.sb * h[B]) > 1e-3 then on = false break end
+				end
+				if on then
+					setStatus(nm .. ": that edge already has a " .. (c.t == "fillet" and "round" or "chamfer") .. " (step " .. j .. "). Change it in STEPS on the right.")
+					return
+				end
+			end
+		end
+	end
+	local rec = { k = E.k, a = E.sa, b = E.sb, t = isF and "fillet" or "chamfer", r = r }
+	if u then
+		local s0, s1 = ENT.insideSpan(E, p, hitPos, u, v, r)
+		local ul, vl = E.cf:VectorToObjectSpace(u), E.cf:VectorToObjectSpace(v)
+		rec.i = true
+		rec.s0, rec.s1 = s0, s1
+		rec.ux, rec.uy, rec.uz = math.round(ul.X), math.round(ul.Y), math.round(ul.Z)
+		rec.vx, rec.vy, rec.vz = math.round(vl.X), math.round(vl.Y), math.round(vl.Z)
+	end
+	table.insert(done, rec)
+	local out, why
+	local ok = record("PROTO " .. (isF and "Fillet" or "Chamfer") .. " edge (one piece)", function()
+		out, why = ENT.edgeRebuild(p, E.cf, E.size, done)
+		if not out then error(why or "couldn't do it", 0) end
+		out:SetAttribute("PROTO_EdgesDone", HttpService:JSONEncode(done))
+	end)
+	if ok and out then
+		ENT.spanCache = nil
+		ENT.edgeHover()
+		print(("PROTO %s: rebuilt the block as ONE piece (%s)"):format(nm:lower(), out.ClassName))
+		if ENT.msUnsaved(out) then task.defer(function() ENT.msAfterCut({ out }) end) end
+		setStatus(nm .. " done (" .. fmt(r) .. ") - the block and all its edges are ONE piece" .. (ENT.msUnsaved(out) and ", saving to Roblox" or "") .. ". Click another edge, or Esc. Ctrl+Z undoes it.")
+	elseif why then
+		setStatus(nm .. ": " .. tostring(why))
 	end
 	return true
+end
+-- Mesh mode's pocket-opening edge: ONE cutter round the whole opening (every done edge of it, mitred at the corners)
+function ENT.pocketRimMesh(E, p, r, isF)
+	local nm = isF and "FILLET" or "CHAMFER"
+	local doneList = {}
+	pcall(function() doneList = HttpService:JSONDecode(p:GetAttribute("PROTO_PocketEdges") or "[]") end)
+	local B = E.box
+	local open = E.depth   -- (points down into the pocket from its open face)
+	-- the opening's two in-plane axes
+	local oi
+	for i = 1, 3 do if math.abs(B.ax[i]:Dot(open)) > 0.9 then oi = i end end
+	if not oi then return false end
+	local i1, i2 = (oi % 3) + 1, ((oi + 1) % 3) + 1
+	-- every done opening edge of THIS pocket (plus this one): which side, how big, round or flat
+	local sides = {}
+	local function sideOf(N) -- "<axis>:<sign>" of the opening side the edge is on (its wall's way out of the pocket)
+		for _, ii in ipairs({ i1, i2 }) do
+			local dd = N.wall:Dot(B.ax[ii])
+			if math.abs(dd) > 0.9 then return ii, (dd > 0 and 1 or -1) end
+		end
+	end
+	local function keyOf(N) return ENT.pocketEdgeKey(p, N) end
+	for _, N in ipairs(ENT.pocketEdges(p)) do
+		if N.kind == "rim" and (N.box.ctr - B.ctr).Magnitude < 1e-3 and N.depth:Dot(open) > 0.9 then
+			local k0 = keyOf(N)
+			local ax, sg = sideOf(N)
+			if ax then
+				if k0 == keyOf(E) then sides[ax .. ":" .. sg] = { r = r, f = isF }
+				else
+					for _, k in ipairs(doneList) do
+						local kk, rr, tt = string.match(k, "^([^|]+)|?([^|]*)|?([^|]*)$")
+						if kk == k0 and tonumber(rr) then sides[ax .. ":" .. sg] = { r = tonumber(rr), f = tt == "f" } end
+					end
+				end
+			end
+		end
+	end
+	if not next(sides) then return false end
+	-- how far the opening's side has moved out into the wall at depth z (0 = the top face)
+	local function off(s, z)
+		local S = sides[s]
+		if not S then return -0.01 end
+		if z <= 0 then return S.r - z end
+		if z >= S.r then return -0.01 end
+		if S.f then return S.r - math.sqrt(math.max(0, S.r * S.r - (S.r - z) ^ 2)) end
+		return S.r - z
+	end
+	local rmax = 0
+	for _, S in pairs(sides) do rmax = math.max(rmax, S.r) end
+	local depths = { -0.3 }
+	local n = 12
+	for j = 0, n do depths[#depths + 1] = rmax * j / n end
+	depths[#depths + 1] = rmax + 0.05
+	local top = B.ctr - open * B.half[oi]   -- the middle of the opening (open face)
+	local rows = {}
+	for _, z in ipairs(depths) do
+		local xm, xp = B.half[i1] + off(i1 .. ":-1", z), B.half[i1] + off(i1 .. ":1", z)
+		local ym, yp = B.half[i2] + off(i2 .. ":-1", z), B.half[i2] + off(i2 .. ":1", z)
+		local c = top + open * z
+		local row = {
+			c + B.ax[i1] * xp + B.ax[i2] * -ym, c + B.ax[i1] * xp + B.ax[i2] * yp,
+			c + B.ax[i1] * -xm + B.ax[i2] * yp, c + B.ax[i1] * -xm + B.ax[i2] * -ym,
+		}
+		row.c = c + B.ax[i1] * ((xp - xm) / 2) + B.ax[i2] * ((yp - ym) / 2)
+		row.size = math.min(xm + xp, ym + yp) / 2
+		rows[#rows + 1] = row
+	end
+	local out
+	local ok = record("PROTO " .. (isF and "Fillet" or "Chamfer") .. " pocket edge (one cut)", function()
+		local cutter, cem = ENT.meshViews(rows, 4)
+		if not cutter then error("couldn't make the cutter", 0) end
+		cutter.Parent = workspace
+		local opts = { CollisionFidelity = ENT.collEnum(), RenderFidelity = Enum.RenderFidelity.Precise, SplitApart = false }
+		local okC, res = pcall(function() return GeometryService:SubtractAsync(p, { cutter }, opts) end)
+		cutter.Parent = nil
+		pcall(function() cem:Destroy() end)
+		if not (okC and type(res) == "table" and res[1]) then error("the cut failed - " .. tostring(res), 0) end
+		out = res[1]
+		ENT.keepLook(out, p)
+		local rel = p:GetAttribute("PROTO_BlockRel")
+		local pcf = p.CFrame
+		ENT.swapIn(p, out)
+		if typeof(rel) == "CFrame" then out:SetAttribute("PROTO_BlockRel", out.CFrame:ToObjectSpace(pcf * rel)) end
+		table.insert(doneList, ENT.pocketEdgeKey(out, E) .. "|" .. tostring(r) .. "|" .. (isF and "f" or "c"))
+		pcall(function() out:SetAttribute("PROTO_PocketEdges", HttpService:JSONEncode(doneList)) end)
+	end)
+	if ok and out then
+		ENT.lastPocketPart = out
+		ENT.pocketPanelCache = nil
+		if ENT.msUnsaved(out) then task.defer(function() ENT.msAfterCut({ out }) end) end
+		print("PROTO pocket: the opening's edges done in ONE cut (" .. out.ClassName .. ")")
+		setStatus(nm .. " done (" .. fmt(r) .. ") on the edge of the opening - one cut, corners mitred. Click another edge, or Esc. Ctrl+Z undoes it.")
+	end
+	return true
+end
+-- ===== v2.53 RECIPES (Mesh mode): a block remembers how it was made, and is rebuilt from that in ONE go =====
+-- Dylan (04:37): "inside cuts still use the unions". Adding a round INSIDE a pocket can't be done by cutting the part
+-- that's there - so in Mesh mode a block keeps its recipe: its size, its edges (PROTO_EdgesDone) and every cut
+-- (PROTO_Cuts: the cut's outline, holes, depth, and any rounds / chamfers on the cut's own edges). Any change =
+--   the block + its edges + its fills as ONE mesh, then ALL its cuts as ONE cutter, ONE cut. Nothing is ever joined.
+-- A pocket's rounded / chamfered floor edges and opening edges are part of its cutter's shape.
+
+-- push each side of a polygon (anticlockwise) out by its own amount (in = negative); corners = where the moved sides meet
+function ENT.offsetPoly(pts, offs)
+	local n = #pts
+	local out = {}
+	for j = 1, n do
+		local ip, inx = (j - 2) % n + 1, j
+		local a0, a1 = pts[ip], pts[j]
+		local b0, b1 = pts[j], pts[j % n + 1]
+		local da, db = (a1 - a0).Unit, (b1 - b0).Unit
+		local na, nb = V2(da.Y, -da.X), V2(db.Y, -db.X)
+		local pa, pb = a0 + na * offs[ip], b0 + nb * offs[inx]
+		local den = da.X * db.Y - da.Y * db.X
+		if math.abs(den) < 1e-6 then
+			out[j] = pts[j] + nb * offs[inx]
+		else
+			local w = pb - pa
+			local t = (w.X * db.Y - w.Y * db.X) / den
+			out[j] = pa + da * t
+		end
+	end
+	return out
+end
+-- the outline with its rounded / chamfered upright corners put in (vc[i] = { r, f } at point i)
+-- returns pts + which original side each new side came from (0 = a corner's own little side)
+function ENT.cornerPoly(pts, vc)
+	local n = #pts
+	local out, from = {}, {}
+	for i = 1, n do
+		local c = vc and vc[tostring(i)]
+		local P = pts[i]
+		if c and c.r > 1e-4 then
+			local a, b = pts[(i - 2) % n + 1], pts[i % n + 1]
+			local din, dout = (P - a).Unit, (b - P).Unit
+			local r = math.min(c.r, (P - a).Magnitude * 0.49, (b - P).Magnitude * 0.49)
+			local p0, p1 = P - din * r, P + dout * r
+			out[#out + 1] = p0
+			from[#from + 1] = 0
+			if c.f then
+				-- (a round: the arc touches both sides; its centre sits on the inside of the corner)
+				local crs = din.X * dout.Y - din.Y * dout.X
+				local half = math.acos(math.clamp(-din:Dot(dout), -1, 1)) / 2
+				local dist = r * math.tan(half)
+				local nrm = (crs > 0) and V2(-din.Y, din.X) or V2(din.Y, -din.X)
+				local O = p0 + nrm * dist
+				local a0 = math.atan2(p0.Y - O.Y, p0.X - O.X)
+				local a1 = math.atan2(p1.Y - O.Y, p1.X - O.X)
+				local da = a1 - a0
+				while da > math.pi do da -= 2 * math.pi end
+				while da < -math.pi do da += 2 * math.pi end
+				for j = 1, 7 do
+					local t = a0 + da * j / 8
+					out[#out + 1] = O + V2(math.cos(t), math.sin(t)) * dist
+					from[#from + 1] = 0
+				end
+			end
+			out[#out + 1] = p1
+			from[#from + 1] = i
+		else
+			out[#out + 1] = P
+			from[#from + 1] = i
+		end
+	end
+	-- (from[j] = the original side j..j+1 belongs to; corner bits = 0)
+	return out, from
+end
+-- one cut's cutter as triangles (world): the outline (corners put in) lofted from just past its opening down to its
+-- floor, each side moved out at the top (opening edge done) and in at the bottom (floor edge done), holes straight
+-- rc = { outer, holes, z0, z1, open = 0 / 1 (which end opens) or nil (through), rim = {}, bot = {}, vc = {} }
+function ENT.recipeTris(rc, frame)
+	local function area(q) local A = 0 for i = 1, #q do local a, b = q[i], q[i % #q + 1] A += a.X * b.Y - b.X * a.Y end return A / 2 end
+	local outer = rc.outer
+	local flipped = area(outer) < 0
+	if flipped then local r = {} for i = #outer, 1, -1 do r[#r + 1] = outer[i] end outer = r end
+	local function edgeT(t, i)
+		-- (edge numbers were saved on the outline as drawn; turned round = side i is now side n - i)
+		if not t then return nil end
+		if flipped then i = #rc.outer - i end
+		if i < 1 then i += #rc.outer end
+		return t[tostring(i)]
+	end
+	local vcf = {}
+	if rc.vc then
+		for k, v in pairs(rc.vc) do
+			local i = tonumber(k)
+			if flipped then i = #rc.outer - i + 1 end
+			vcf[tostring(i)] = v
+		end
+	end
+	local base, from = ENT.cornerPoly(outer, vcf)
+	local nB = #base
+	local zo, zf
+	if rc.open == 1 then zo, zf = rc.z1, rc.z0 else zo, zf = rc.z0, rc.z1 end
+	local dirIn = (zf > zo) and 1 or -1
+	local depth = math.abs(zf - zo)
+	local rimMax, botMax = 0, 0
+	local rim, bot = {}, {}
+	for j = 1, nB do
+		local i = from[j]
+		rim[j] = (i > 0) and edgeT(rc.rim, i) or nil
+		bot[j] = (i > 0 and rc.open ~= nil) and edgeT(rc.bot, i) or nil
+		if rim[j] then rimMax = math.max(rimMax, rim[j].r) end
+		if bot[j] then botMax = math.max(botMax, bot[j].r) end
+	end
+	-- a rounded / chamfered upright corner's own little sides carry on whatever the sides either side of it have
+	-- (so a rounded floor goes round the rounded corner too)
+	for j = 1, nB do
+		if from[j] == 0 then
+			local a, b = j, j
+			repeat a = (a - 2) % nB + 1 until from[a] > 0 or a == j
+			repeat b = b % nB + 1 until from[b] > 0 or b == j
+			local function pick(A, B) if A and B then return (A.r >= B.r) and A or B end return A or B end
+			rim[j] = pick(rim[a], rim[b])
+			bot[j] = pick(bot[a], bot[b])
+		end
+		if rim[j] then rimMax = math.max(rimMax, rim[j].r) end
+		if bot[j] then botMax = math.max(botMax, bot[j].r) end
+	end
+	-- (how far a side is moved at distance d down from the opening)
+	local function prof(S, d)
+		if not S then return 0 end
+		if d <= 0 then return S.r - d end
+		if d >= S.r then return 0 end
+		if S.f then return S.r - math.sqrt(math.max(0, S.r * S.r - (S.r - d) ^ 2)) end
+		return S.r - d
+	end
+	local ds = { -0.3 }
+	if rimMax > 0 then for j = 0, 10 do ds[#ds + 1] = rimMax * j / 10 end end
+	if botMax > 0 then for j = 0, 10 do ds[#ds + 1] = depth - botMax + botMax * j / 10 end end
+	ds[#ds + 1] = depth
+	table.sort(ds)
+	local uds = {}
+	for _, d in ipairs(ds) do if #uds == 0 or d - uds[#uds] > 1e-4 then uds[#uds + 1] = math.min(d, depth) end end
+	local rings = {}
+	for _, d in ipairs(uds) do
+		local offs = {}
+		for j = 1, nB do offs[j] = prof(rim[j], d) - prof(bot[j], depth - d) end
+		rings[#rings + 1] = { pts = ENT.offsetPoly(base, offs), z = zo + dirIn * d }
+	end
+	local function W3(p, z) return frame:PointToWorldSpace(V3(p.X, p.Y, z)) end
+	local tris = {}
+	-- the sides, ring to ring
+	local pg = {}
+	do
+		local SHARP = math.cos(math.rad(35))
+		local g = 0
+		for j = 1, nB do
+			local a, b, c = base[(j - 2) % nB + 1], base[j], base[j % nB + 1]
+			if (b - a).Unit:Dot((c - b).Unit) <= SHARP then g += 1 end
+			pg[j] = g
+		end
+	end
+	for k = 1, #rings - 1 do
+		local A, B = rings[k], rings[k + 1]
+		for j = 1, nB do
+			local j2 = j % nB + 1
+			local g = "s" .. pg[j] .. ":" .. ((rim[j] or bot[j]) and math.floor(k / 1) or 0)
+			if not (rim[j] or bot[j]) then g = "s" .. pg[j] end
+			tris[#tris + 1] = { W3(A.pts[j], A.z), W3(A.pts[j2], A.z), W3(B.pts[j2], B.z), g = g }
+			tris[#tris + 1] = { W3(A.pts[j], A.z), W3(B.pts[j2], B.z), W3(B.pts[j], B.z), g = g }
+		end
+	end
+	-- the ends (with the holes in), and the holes' own walls
+	local holes = rc.holes or {}
+	for e, R in ipairs({ rings[1], rings[#rings] }) do
+		local pts, ft = ENT.triHoles(R.pts, holes)
+		if not pts then return nil end
+		for _, t in ipairs(ft) do
+			local a, b, c = W3(pts[t[1]], R.z), W3(pts[t[2]], R.z), W3(pts[t[3]], R.z)
+			if e == 1 then b, c = c, b end
+			tris[#tris + 1] = { a, b, c, g = "end" .. e }
+		end
+	end
+	local z0, z1 = rings[1].z, rings[#rings].z
+	for hi, h in ipairs(holes) do
+		local q = h
+		if area(q) > 0 then local r = {} for i = #q, 1, -1 do r[#r + 1] = q[i] end q = r end
+		for i = 1, #q do
+			local a, b = q[i], q[i % #q + 1]
+			tris[#tris + 1] = { W3(a, z0), W3(b, z0), W3(b, z1), g = "h" .. hi }
+			tris[#tris + 1] = { W3(a, z0), W3(b, z1), W3(a, z1), g = "h" .. hi }
+		end
+	end
+	return ENT.orientTris(tris)
+end
+-- saved form <-> working form
+function ENT.cutsOf(p)
+	local cuts = {}
+	pcall(function() cuts = HttpService:JSONDecode(p:GetAttribute("PROTO_Cuts") or "[]") end)
+	return cuts
+end
+local function v2list(t) local o = {} for _, q in ipairs(t) do o[#o + 1] = V2(q[1], q[2]) end return o end
+function ENT.recipeWork(c)
+	local holes = {}
+	for _, h in ipairs(c.holes or {}) do holes[#holes + 1] = v2list(h) end
+	return { outer = v2list(c.outer), holes = holes, z0 = c.z0, z1 = c.z1, open = c.open, rim = c.rim, bot = c.bot, vc = c.vc }
+end
+-- ===== v2.62 PROTO'S OWN CUT (mesh boolean, PROTO's own code) =====
+-- Dylan: "can you fix it". Roblox's own cut (GeometryService on meshes) gives a part with NO mesh source - PROTO
+-- can't read it or save it to Roblox. So PROTO now does the cut itself: both solids as triangles, sorted into a
+-- space-splitting tree (each face's plane splits the space into in front / behind), then:
+--   keep the part's faces that are outside the cutter + the cutter's faces that are inside the part (turned round).
+-- The result is plain triangles -> ONE EditableMesh, saved to Roblox like every other PROTO mesh.
+-- Works in the part's own space (small numbers = exact). Faces keep their smooth group, so shading stays right.
+local CSG = {}
+ENT.CSG = CSG
+do   -- (v2.85: the cut's own helpers stay inside here - Roblox allows only 200 names at the top of a script, and
+-- a helper named like one outside (toWorld) must not hide it)
+-- v2.82b DOUBLE PRECISION (Dylan's 20:45 log: chamfers "came out broken"). Roblox's Vector3 keeps only ~7 digits
+-- (32-bit). The cut's tree takes each face's plane from its points - on a small sliver face those few digits give a
+-- plane that's tilted a hair, and far across the part that hair is more than the cut's tolerance: faces got sorted
+-- to the wrong side and the result had holes. So inside the cut every point is PROTO's own 3-number value with full
+-- (64-bit) precision; Roblox's Vector3 is only used going in and coming out.
+local D3m = {}
+D3m.__index = D3m
+local function D3(x, y, z) return setmetatable({ X = x, Y = y, Z = z }, D3m) end
+D3m.__add = function(a, b) return D3(a.X + b.X, a.Y + b.Y, a.Z + b.Z) end
+D3m.__sub = function(a, b) return D3(a.X - b.X, a.Y - b.Y, a.Z - b.Z) end
+D3m.__mul = function(a, b)
+	if type(a) == "number" then return D3(b.X * a, b.Y * a, b.Z * a) end
+	return D3(a.X * b, a.Y * b, a.Z * b)
+end
+D3m.__div = function(a, k) return D3(a.X / k, a.Y / k, a.Z / k) end
+D3m.__unm = function(a) return D3(-a.X, -a.Y, -a.Z) end
+function D3m.Dot(a, b) return a.X * b.X + a.Y * b.Y + a.Z * b.Z end
+function D3m.Cross(a, b) return D3(a.Y * b.Z - a.Z * b.Y, a.Z * b.X - a.X * b.Z, a.X * b.Y - a.Y * b.X) end
+function D3m.Min(a, b) return D3(math.min(a.X, b.X), math.min(a.Y, b.Y), math.min(a.Z, b.Z)) end
+function D3m.Max(a, b) return D3(math.max(a.X, b.X), math.max(a.Y, b.Y), math.max(a.Z, b.Z)) end
+local function mag(v) return math.sqrt(v.X * v.X + v.Y * v.Y + v.Z * v.Z) end
+local function unit(v) local m = mag(v) return D3(v.X / m, v.Y / m, v.Z / m) end
+-- 2D points for a face's outline (triHoles reads .X .Y, takes them apart and asks .Magnitude)
+local D2m = {}
+local function D2(x, y) return setmetatable({ X = x, Y = y }, D2m) end
+D2m.__sub = function(a, b) return D2(a.X - b.X, a.Y - b.Y) end
+D2m.__add = function(a, b) return D2(a.X + b.X, a.Y + b.Y) end
+D2m.__mul = function(a, b) if type(a) == "number" then return D2(b.X * a, b.Y * a) end return D2(a.X * b, a.Y * b) end
+D2m.__div = function(a, k) return D2(a.X / k, a.Y / k) end
+D2m.__index = function(v, k)
+	if k == "Magnitude" then return math.sqrt(v.X * v.X + v.Y * v.Y) end
+	if k == "Unit" then local m = math.sqrt(v.X * v.X + v.Y * v.Y) return D2(v.X / m, v.Y / m) end
+	if k == "Dot" then return function(a, b) return a.X * b.X + a.Y * b.Y end end
+	return nil
+end
+-- frame <-> local, worked out in full precision (the frame's numbers read once)
+local function frameOf(frame)
+	local px, py, pz, r00, r01, r02, r10, r11, r12, r20, r21, r22 = frame:GetComponents()
+	return { px, py, pz, r00, r01, r02, r10, r11, r12, r20, r21, r22 }
+end
+local function toLocal(F, p)
+	local x, y, z = p.X - F[1], p.Y - F[2], p.Z - F[3]
+	-- (rotation's columns are the frame's right / up / back: local = rotation transposed x offset)
+	return D3(F[4] * x + F[7] * y + F[10] * z, F[5] * x + F[8] * y + F[11] * z, F[6] * x + F[9] * y + F[12] * z)
+end
+local function toWorld(F, q)
+	return Vector3.new(F[1] + F[4] * q.X + F[5] * q.Y + F[6] * q.Z, F[2] + F[7] * q.X + F[8] * q.Y + F[9] * q.Z, F[3] + F[10] * q.X + F[11] * q.Y + F[12] * q.Z)
+end
+local CEPS = 1e-4   -- studs: closer than this to a plane = on it
+-- a face: points (in order), its plane (unit normal n, distance w) and its smooth group g
+local function cPoly(vs, g)
+	local nx, ny, nz = 0, 0, 0
+	local m = #vs
+	for i = 1, m do
+		local a, b = vs[i], vs[i % m + 1]
+		nx += (a.Y - b.Y) * (a.Z + b.Z)
+		ny += (a.Z - b.Z) * (a.X + b.X)
+		nz += (a.X - b.X) * (a.Y + b.Y)
+	end
+	local L = math.sqrt(nx * nx + ny * ny + nz * nz)
+	if L < 1e-9 then return nil end
+	local n = D3(nx / L, ny / L, nz / L)
+	return { v = vs, n = n, w = n:Dot(vs[1]), g = g }
+end
+-- sort one face against a plane: on it (same / other way), in front, behind, or cut in two
+local FRONT, BACK = 1, 2
+local function split(pn, pw, P, onF, onB, f, b)
+	local types, any = {}, 0
+	local vs = P.v
+	for i = 1, #vs do
+		local t = pn:Dot(vs[i]) - pw
+		local ty = (t < -CEPS) and BACK or ((t > CEPS) and FRONT or 0)
+		types[i] = ty
+		if ty ~= 0 and any ~= ty then any = (any == 0) and ty or 3 end
+	end
+	if any == 0 then
+		if pn:Dot(P.n) > 0 then onF[#onF + 1] = P else onB[#onB + 1] = P end
+	elseif any == FRONT then f[#f + 1] = P
+	elseif any == BACK then b[#b + 1] = P
+	else
+		local fv, bv = {}, {}
+		local m = #vs
+		for i = 1, m do
+			local j = i % m + 1
+			local ti, tj, vi, vj = types[i], types[j], vs[i], vs[j]
+			if ti ~= BACK then fv[#fv + 1] = vi end
+			if ti ~= FRONT then bv[#bv + 1] = vi end
+			if (ti == FRONT and tj == BACK) or (ti == BACK and tj == FRONT) then
+				local d = vj - vi
+				local x = vi + d * ((pw - pn:Dot(vi)) / pn:Dot(d))
+				fv[#fv + 1] = x
+				bv[#bv + 1] = x
+			end
+		end
+		-- (each piece remembers the face it came from, so whole faces can be put back together after - CSG.merge)
+		local nk = 0
+		if #fv >= 3 then f[#f + 1] = { v = fv, n = P.n, w = P.w, g = P.g, par = P } nk += 1 end
+		if #bv >= 3 then b[#b + 1] = { v = bv, n = P.n, w = P.w, g = P.g, par = P } nk += 1 end
+		P.nk = nk
+	end
+end
+local function newNode() return { polys = {} } end
+local function build(node, polys)
+	if #polys == 0 then return end
+	if not node.pn then node.pn, node.pw = polys[1].n, polys[1].w end
+	local f, b = {}, {}
+	for _, P in ipairs(polys) do split(node.pn, node.pw, P, node.polys, node.polys, f, b) end
+	if #f > 0 then node.front = node.front or newNode() build(node.front, f) end
+	if #b > 0 then node.back = node.back or newNode() build(node.back, b) end
+end
+local function flipPoly(P)
+	local r = {}
+	for i = #P.v, 1, -1 do r[#r + 1] = P.v[i] end
+	P.v, P.n, P.w = r, P.n * -1, -P.w
+end
+-- inside <-> outside
+local function invert(node)
+	for _, P in ipairs(node.polys) do flipPoly(P) end
+	if node.pn then node.pn, node.pw = node.pn * -1, -node.pw end
+	node.front, node.back = node.back, node.front
+	if node.front then invert(node.front) end
+	if node.back then invert(node.back) end
+end
+-- the faces (or bits of them) that are outside this solid
+local function clipPolys(node, polys)
+	if not node.pn then return table.clone(polys) end
+	local f, b = {}, {}
+	for _, P in ipairs(polys) do split(node.pn, node.pw, P, f, b, f, b) end
+	if node.front then f = clipPolys(node.front, f) end
+	if node.back then b = clipPolys(node.back, b) else b = {} end
+	for _, P in ipairs(b) do f[#f + 1] = P end
+	return f
+end
+local function clipTo(node, other)
+	node.polys = clipPolys(other, node.polys)
+	if node.front then clipTo(node.front, other) end
+	if node.back then clipTo(node.back, other) end
+end
+local function allPolys(node, out)
+	out = out or {}
+	for _, P in ipairs(node.polys) do out[#out + 1] = P end
+	if node.front then allPolys(node.front, out) end
+	if node.back then allPolys(node.back, out) end
+	return out
+end
+-- v2.63: put faces back together. The tree cuts faces along every plane of the other solid, even far from the cut
+-- (a 2nd cut on Dylan's block went over Roblox's triangle limit). When ALL the pieces of a face are still there,
+-- the face goes back as the one face it was. Only faces really cut by the cutter stay in pieces.
+function CSG.merge(polys)
+	local cnt, done = {}, {}
+	for _, L in ipairs(polys) do
+		local P = L
+		while P.par do
+			local par = P.par
+			cnt[par] = (cnt[par] or 0) + 1
+			if cnt[par] < par.nk then break end
+			done[par] = true
+			P = par
+		end
+	end
+	local out, seen = {}, {}
+	for _, L in ipairs(polys) do
+		local top = L
+		while top.par and done[top.par] do top = top.par end
+		if not seen[top] then
+			seen[top] = true
+			local vs = top.v
+			local n, w = top.n, top.w
+			if top ~= L and L.n:Dot(top.n) < 0 then
+				-- (the pieces were turned round since: turn the whole face the same way)
+				local r = {}
+				for i = #vs, 1, -1 do r[#r + 1] = vs[i] end
+				vs, n, w = r, top.n * -1, -top.w
+			end
+			out[#out + 1] = { v = vs, n = n, w = w, g = top.g }   -- fresh face, no history
+		end
+	end
+	return out
+end
+-- v2.64 (Dylan: "really low count ... lag will drive people mad, not graphics"): every flat face is drawn again from
+-- its OUTLINE ONLY - the fewest triangles it can be. All the pieces of one face (same plane, same smooth group) are
+-- put together: their shared inside edges cancel out, what's left is the face's outline (+ holes), straight-line
+-- points are dropped, and the outline is filled with triangles (triHoles). If a face can't be done, its pieces stay.
+local function simplifyGroup(G)
+	local n = G.n
+	local u = (math.abs(n.X) < 0.9) and D3(1, 0, 0) or D3(0, 1, 0)
+	u = unit(u - n * n:Dot(u))
+	local v = n:Cross(u)
+	local TOL = 1e-5
+	local pts, cell = {}, {}
+	local function vid(p3)
+		local x, y = p3:Dot(u), p3:Dot(v)
+		local gx, gy = math.floor(x / TOL), math.floor(y / TOL)
+		for dx = -1, 1 do
+			for dy = -1, 1 do
+				local id = cell[(gx + dx) .. "," .. (gy + dy)]
+				if id and math.abs(pts[id].X - x) <= TOL and math.abs(pts[id].Y - y) <= TOL then return id end
+			end
+		end
+		pts[#pts + 1] = D2(x, y)
+		cell[gx .. "," .. gy] = #pts
+		return #pts
+	end
+	local loops = {}
+	for _, P in ipairs(G.list) do
+		local L = {}
+		for _, p3 in ipairs(P.v) do
+			local id = vid(p3)
+			if #L == 0 or L[#L] ~= id then L[#L + 1] = id end
+		end
+		if #L > 1 and L[1] == L[#L] then table.remove(L) end
+		if #L >= 3 then loops[#loops + 1] = L end
+	end
+	-- points sitting on another piece's edge split that edge (so shared edges match up exactly)
+	local lo, hi = D2(math.huge, math.huge), D2(-math.huge, -math.huge)
+	for _, q in ipairs(pts) do lo = D2(math.min(lo.X, q.X), math.min(lo.Y, q.Y)) hi = D2(math.max(hi.X, q.X), math.max(hi.Y, q.Y)) end
+	local C = math.max(hi.X - lo.X, hi.Y - lo.Y, 1e-6) / math.max(1, math.floor(math.sqrt(#pts)))
+	local bucket = {}
+	for id, q in ipairs(pts) do
+		local k = math.floor((q.X - lo.X) / C) .. "," .. math.floor((q.Y - lo.Y) / C)
+		bucket[k] = bucket[k] or {}
+		table.insert(bucket[k], id)
+	end
+	local count = {}
+	local function addSeg(a, b)
+		local k = a .. ">" .. b
+		count[k] = (count[k] or 0) + 1
+	end
+	for _, L in ipairs(loops) do
+		local m = #L
+		for i = 1, m do
+			local ia, ib = L[i], L[i % m + 1]
+			local A, B = pts[ia], pts[ib]
+			local d = B - A
+			local l2 = d.X * d.X + d.Y * d.Y
+			local on = {}
+			if l2 > 0 then
+				local x0, x1 = math.floor((math.min(A.X, B.X) - lo.X) / C), math.floor((math.max(A.X, B.X) - lo.X) / C)
+				local y0, y1 = math.floor((math.min(A.Y, B.Y) - lo.Y) / C), math.floor((math.max(A.Y, B.Y) - lo.Y) / C)
+				for cx = x0, x1 do
+					for cy = y0, y1 do
+						for _, id in ipairs(bucket[cx .. "," .. cy] or {}) do
+							if id ~= ia and id ~= ib then
+								local q = pts[id]
+								local t = ((q.X - A.X) * d.X + (q.Y - A.Y) * d.Y) / l2
+								if t > 1e-9 and t < 1 - 1e-9 then
+									local ex, ey = A.X + d.X * t - q.X, A.Y + d.Y * t - q.Y
+									if ex * ex + ey * ey <= (TOL * 4) ^ 2 then on[#on + 1] = { t, id } end
+								end
+							end
+						end
+					end
+				end
+			end
+			table.sort(on, function(x, y) return x[1] < y[1] end)
+			local prev = ia
+			for _, o in ipairs(on) do if o[2] ~= prev then addSeg(prev, o[2]) prev = o[2] end end
+			if prev ~= ib then addSeg(prev, ib) end
+		end
+	end
+	-- inside edges are walked both ways and cancel; the rest is the outline
+	local nexts, left = {}, 0
+	for k, c in pairs(count) do
+		local a, b = k:match("^(%d+)>(%d+)$")
+		local back = count[b .. ">" .. a] or 0
+		for _ = 1, c - back do
+			a, b = tonumber(a), tonumber(b)
+			nexts[a] = nexts[a] or {}
+			table.insert(nexts[a], b)
+			left += 1
+		end
+	end
+	if left == 0 then return {} end
+	local rings = {}
+	for start, _ in pairs(nexts) do
+		while nexts[start] and #nexts[start] > 0 do
+			local ring, cur, guard = { start }, table.remove(nexts[start]), 0
+			while cur ~= start do
+				ring[#ring + 1] = cur
+				local nx = nexts[cur]
+				if not nx or #nx == 0 then return nil end   -- outline doesn't close: leave this face as it was
+				cur = table.remove(nx)
+				guard += 1
+				if guard > 100000 then return nil end
+			end
+			rings[#rings + 1] = ring
+		end
+	end
+	-- points in a straight line add nothing: drop them
+	local outers, holes = {}, {}
+	for _, ring in ipairs(rings) do
+		local q = {}
+		for _, id in ipairs(ring) do q[#q + 1] = pts[id] end
+		local changed = true
+		while changed and #q > 3 do
+			changed = false
+			for i = #q, 1, -1 do
+				local a, b, c = q[(i - 2) % #q + 1], q[i], q[i % #q + 1]
+				local d1, d2 = b - a, c - b
+				local cr = d1.X * d2.Y - d1.Y * d2.X
+				local l1, l2 = math.sqrt(d1.X * d1.X + d1.Y * d1.Y), math.sqrt(d2.X * d2.X + d2.Y * d2.Y)
+				if l1 < 1e-9 or l2 < 1e-9 or (math.abs(cr) <= 2e-5 * (l1 + l2) and d1.X * d2.X + d1.Y * d2.Y > 0) then   -- (v2.84: straight to a hair, like the rest of the cut)
+					table.remove(q, i)
+					changed = true
+					if #q <= 3 then break end
+				end
+			end
+		end
+		local A = 0
+		for i = 1, #q do local a, b = q[i], q[i % #q + 1] A += a.X * b.Y - b.X * a.Y end
+		if math.abs(A) > 1e-10 then
+			if A > 0 then outers[#outers + 1] = { q = q, A = A, holes = {} } else holes[#holes + 1] = q end
+		end
+	end
+	for _, h in ipairs(holes) do
+		local best
+		for _, o in ipairs(outers) do
+			if (not best or o.A < best.A) and pointInPoly(h[1], o.q) then best = o end
+		end
+		if not best then return nil end
+		table.insert(best.holes, h)
+	end
+	local out = {}
+	local base = n * G.w
+	for _, o in ipairs(outers) do
+		local tp, tt = ENT.triHoles(o.q, o.holes)
+		if not tp then return nil end
+		for _, t in ipairs(tt) do
+			local function P3(i) local q = tp[i] return base + u * q.X + v * q.Y end
+			out[#out + 1] = { v = { P3(t[1]), P3(t[2]), P3(t[3]) }, n = n, w = G.w, g = G.g }
+		end
+	end
+	return out
+end
+function CSG.simplify(polys)
+	local groups, order = {}, {}
+	for _, P in ipairs(polys) do
+		local n = P.n
+		local k = math.floor(n.X * 1e4 + 0.5) .. "," .. math.floor(n.Y * 1e4 + 0.5) .. "," .. math.floor(n.Z * 1e4 + 0.5) .. "," .. math.floor(P.w * 1e3 + 0.5) .. "|" .. tostring(P.g)
+		local G = groups[k]
+		if not G then G = { n = n, w = P.w, g = P.g, list = {} } groups[k] = G order[#order + 1] = G end
+		G.list[#G.list + 1] = P
+	end
+	local out = {}
+	for _, G in ipairs(order) do
+		local res
+		if #G.list > 1 then
+			local ok, r = pcall(simplifyGroup, G)
+			if ok then res = r end
+		end
+		for _, P in ipairs(res or G.list) do out[#out + 1] = P end
+	end
+	return out
+end
+-- A minus B / A and B overlap only (lists of faces; both are used up)
+function CSG.subtract(A, B)
+	local a, b = newNode(), newNode()
+	build(a, A) build(b, B)
+	invert(a) clipTo(a, b) clipTo(b, a) invert(b) clipTo(b, a) invert(b)
+	build(a, allPolys(b))
+	invert(a)
+	return CSG.simplify(CSG.merge(allPolys(a)))
+end
+-- v2.75: A joined with B (for an inside edge's round / chamfer, which ADDS material)
+function CSG.unionRaw(A, B)
+	local a, b = newNode(), newNode()
+	build(a, A) build(b, B)
+	clipTo(a, b) clipTo(b, a) invert(b) clipTo(b, a) invert(b)
+	build(a, allPolys(b))
+	return CSG.simplify(CSG.merge(allPolys(a)))
+end
+function CSG.intersect(A, B)
+	local a, b = newNode(), newNode()
+	build(a, A) build(b, B)
+	invert(a) clipTo(b, a) invert(b) clipTo(a, b) clipTo(b, a)
+	build(a, allPolys(b))
+	invert(a)
+	return CSG.simplify(CSG.merge(allPolys(a)))
+end
+-- world triangles <-> faces in the frame's own space. tag keeps the two solids' smooth groups apart.
+function CSG.fromTris(tris, frame, tag)
+	local FR = frameOf(frame)
+	local out = {}
+	for _, t in ipairs(tris) do
+		local P = cPoly({ toLocal(FR, t[1]), toLocal(FR, t[2]), toLocal(FR, t[3]) }, t.rawG or (tag .. tostring(t.g)))
+		if P then out[#out + 1] = P end
+	end
+	return out
+end
+-- v2.80: NO T-JOINS. The tree cuts faces along planes, so a face's side can end up with a point in the middle of it
+-- that its neighbour doesn't have (a "T"). That shows as hairline cracks / sparkles, and it breaks edges into bits.
+-- Before the faces become triangles: points closer than a hair are made the same point, and any point sitting on
+-- another face's side is put into that side too - then every side is shared exactly by two triangles.
+local function tFix(polys)
+	-- (v2.84: points closer than half the cut's own tolerance are one point; each grid cell keeps all its points)
+	local Q = 5e-5
+	local key = {}
+	local pos = {}
+	local function vid(p)
+		-- (v3.24: "+ 0" turns -0 into 0 - a point at -0 got its own grid cell, apart from the same point at 0, so the
+		-- faces either side of it didn't join up: a perfect cut was refused as "14 open sides")
+		local x, y, z = math.floor(p.X / Q) + 0, math.floor(p.Y / Q) + 0, math.floor(p.Z / Q) + 0
+		local best, bd
+		for dx = -1, 1 do for dy = -1, 1 do for dz = -1, 1 do
+			local list = key[(x + dx) .. "," .. (y + dy) .. "," .. (z + dz)]
+			if list then
+				for _, id in ipairs(list) do
+					local d = mag(pos[id] - p)
+					if d <= Q and (not bd or d < bd) then best, bd = id, d end
+				end
+			end
+		end end end
+		if best then return best end
+		pos[#pos + 1] = p
+		local k = x .. "," .. y .. "," .. z
+		key[k] = key[k] or {}
+		table.insert(key[k], #pos)
+		return #pos
+	end
+	local faces = {}
+	for _, P in ipairs(polys) do
+		local ids = {}
+		for _, p in ipairs(P.v) do
+			local id = vid(p)
+			if #ids == 0 or ids[#ids] ~= id then ids[#ids + 1] = id end
+		end
+		if #ids > 1 and ids[1] == ids[#ids] then table.remove(ids) end
+		-- (v2.84: a sliver flat as a line - all its points in a row - is no face at all: dropped, its neighbours meet)
+		if #ids >= 3 then
+			local s, L = D3(0, 0, 0), 0
+			local p0 = pos[ids[1]]
+			for k = 2, #ids - 1 do s = s + (pos[ids[k]] - p0):Cross(pos[ids[k + 1]] - p0) end
+			for k = 1, #ids do L = math.max(L, mag(pos[ids[k % #ids + 1]] - pos[ids[k]])) end
+			if mag(s) > 4e-4 * L then faces[#faces + 1] = { ids = ids, P = P } end   -- (thinner than 2x the cut tolerance)
+		end
+	end
+	-- sides with no partner going the other way
+	local dir = {}
+	for _, F in ipairs(faces) do
+		local m = #F.ids
+		for i = 1, m do local a, b = F.ids[i], F.ids[i % m + 1] dir[a .. ">" .. b] = true end
+	end
+	local lone, cand, isCand = {}, {}, {}
+	for _, F in ipairs(faces) do
+		local m = #F.ids
+		for i = 1, m do
+			local a, b = F.ids[i], F.ids[i % m + 1]
+			if not dir[b .. ">" .. a] then
+				lone[#lone + 1] = { F, i }
+				for _, v in ipairs({ a, b }) do if not isCand[v] then isCand[v] = true cand[#cand + 1] = v end end
+			end
+		end
+	end
+	local out = {}
+	if #lone > 0 then
+		-- the loose points in a grid, so each lone side only checks the points near it
+		local lo, hi = D3(math.huge, math.huge, math.huge), D3(-math.huge, -math.huge, -math.huge)
+		for _, v in ipairs(cand) do lo, hi = lo:Min(pos[v]), hi:Max(pos[v]) end
+		local ext = hi - lo
+		local C = math.max(ext.X, ext.Y, ext.Z, 1e-6) / math.max(1, math.floor((#cand) ^ (1 / 3)))
+		local grid = {}
+		local function cell(p) return math.floor((p.X - lo.X) / C), math.floor((p.Y - lo.Y) / C), math.floor((p.Z - lo.Z) / C) end
+		for _, v in ipairs(cand) do
+			local x, y, z = cell(pos[v])
+			local k = x .. "," .. y .. "," .. z
+			grid[k] = grid[k] or {}
+			table.insert(grid[k], v)
+		end
+		local ins = {}   -- face -> side -> points to put in (sorted along it)
+		for _, L in ipairs(lone) do
+			local F, i = L[1], L[2]
+			local m = #F.ids
+			local a, b = F.ids[i], F.ids[i % m + 1]
+			local A, B = pos[a], pos[b]
+			local d = B - A
+			local l2 = d:Dot(d)
+			if l2 > 1e-14 then
+				local x0, y0, z0 = cell(A:Min(B))
+				local x1, y1, z1 = cell(A:Max(B))
+				local on = {}
+				for x = x0, x1 do for y = y0, y1 do for z = z0, z1 do
+					for _, v in ipairs(grid[x .. "," .. y .. "," .. z] or {}) do
+						if v ~= a and v ~= b then
+							local t = (pos[v] - A):Dot(d) / l2
+							if t > 1e-7 and t < 1 - 1e-7 and mag(A + d * t - pos[v]) <= 1e-4 then on[#on + 1] = { t, v } end
+						end
+					end
+				end end end
+				if #on > 0 then
+					table.sort(on, function(p, q) return p[1] < q[1] end)
+					ins[F] = ins[F] or {}
+					ins[F][i] = on
+				end
+			end
+		end
+		for _, F in ipairs(faces) do
+			if ins[F] then
+				local m = #F.ids
+				local ids = {}
+				for i = 1, m do
+					ids[#ids + 1] = F.ids[i]
+					for _, o in ipairs(ins[F][i] or {}) do if ids[#ids] ~= o[2] then ids[#ids + 1] = o[2] end end
+				end
+				F.ids, F.fixed = ids, true
+			end
+		end
+	end
+	return faces, pos
+end
+-- each face as triangles (point ids). A face that got points put into its sides is fanned from a corner that gives no
+-- flat triangles, or else from its middle.
+local function fanIds(ids, pos)
+	local n = #ids
+	local function area2(a, b, c) return mag((pos[b] - pos[a]):Cross(pos[c] - pos[a])) end
+	local L = 0
+	for i = 1, n do L = math.max(L, mag(pos[ids[i % n + 1]] - pos[ids[i]])) end
+	local tiny = 2e-5 * math.max(L, 1e-6)   -- (v2.84: a triangle thinner than a hair counts as flat)
+	for k = 1, n do
+		local good = true
+		for i = 1, n - 2 do
+			local b, c = ids[(k + i - 1) % n + 1], ids[(k + i) % n + 1]
+			if area2(ids[k], b, c) <= tiny then good = false break end
+		end
+		if good then
+			local t = {}
+			for i = 1, n - 2 do t[#t + 1] = { ids[k], ids[(k + i - 1) % n + 1], ids[(k + i) % n + 1] } end
+			return t
+		end
+	end
+	return nil   -- (fan from the middle)
+end
+function CSG.toTris(polys, frame, lenient)
+	local FR = frameOf(frame)
+	local faces, pos = tFix(polys)
+	-- v2.84 LIGHTER: a point that sits in the middle of a STRAIGHT side in every face that uses it does nothing - it's
+	-- left over from the cut's tree splitting faces. It comes out of all of them together (so nothing opens up), and
+	-- the faces need fewer triangles.
+	local usedBy = {}
+	for fi, F in ipairs(faces) do
+		for i, id in ipairs(F.ids) do
+			usedBy[id] = usedBy[id] or {}
+			table.insert(usedBy[id], fi)
+		end
+	end
+	local function straightIn(F, id)
+		local ids = F.ids
+		local m = #ids
+		if m <= 3 then return false end
+		for i = 1, m do
+			if ids[i] == id then
+				local A, V, B = pos[ids[(i - 2) % m + 1]], pos[id], pos[ids[i % m + 1]]
+				local d = B - A
+				local l2 = d:Dot(d)
+				if l2 < 1e-12 then return false end
+				local t = (V - A):Dot(d) / l2
+				if t <= 1e-6 or t >= 1 - 1e-6 then return false end
+				return mag(A + d * t - V) <= 1e-4
+			end
+		end
+		return false
+	end
+	local drop = {}
+	for id, list in pairs(usedBy) do
+		local ok = true
+		for _, fi in ipairs(list) do if not straightIn(faces[fi], id) then ok = false break end end
+		if ok then drop[id] = true end
+	end
+	if next(drop) then
+		for _, F in ipairs(faces) do
+			local keep = {}
+			for _, id in ipairs(F.ids) do if not drop[id] then keep[#keep + 1] = id end end
+			if #keep >= 3 then F.ids = keep end
+		end
+	end
+	local tl = {}   -- triangles as point ids
+	for _, F in ipairs(faces) do
+		local g = F.P.g
+		local ids = F.ids
+		local t = (#ids == 3) and { { ids[1], ids[2], ids[3] } } or fanIds(ids, pos)
+		if t then
+			for _, tr in ipairs(t) do tl[#tl + 1] = { tr[1], tr[2], tr[3], g = g } end
+		else
+			local c = D3(0, 0, 0)
+			for _, id in ipairs(ids) do c += pos[id] end
+			pos[#pos + 1] = c / #ids
+			local ci = #pos
+			for i = 1, #ids do tl[#tl + 1] = { ci, ids[i], ids[i % #ids + 1], g = g } end
+		end
+	end
+	-- v2.84 HAIRLINE GAPS: where the cut's 32-bit inputs leave a tiny gap between faces (a sliver hole a hundredth of a
+	-- stud across), it's closed with a triangle or two. Only tiny gaps - anything bigger is left for the check to see.
+	local function sideKey(a, b) return a * 1048576 + b end
+	local cnt = {}
+	for _, t in ipairs(tl) do
+		for k = 1, 3 do
+			local a, b = t[k], t[k % 3 + 1]
+			local key = sideKey(a, b)
+			cnt[key] = (cnt[key] or 0) + 1
+		end
+	end
+	local nxt = {}   -- a gap's own sides: for every side used once too often, the side the other way round is missing
+	local open = 0
+	for _, t in ipairs(tl) do
+		for k = 1, 3 do
+			local a, b = t[k], t[k % 3 + 1]
+			local need = (cnt[sideKey(a, b)] or 0) - (cnt[sideKey(b, a)] or 0)
+			if need > 0 then
+				nxt[b] = nxt[b] or {}
+				local already = 0
+				for _, x in ipairs(nxt[b]) do if x == a then already += 1 end end
+				if already < need then table.insert(nxt[b], a) open += 1 end
+			end
+		end
+	end
+	if open > 0 then
+		local function takeFrom(v) local l = nxt[v] if l and #l > 0 then return table.remove(l) end return nil end
+		for start, _ in pairs(nxt) do
+			while nxt[start] and #nxt[start] > 0 do
+				local loop, cur, guard = { start }, takeFrom(start), 0
+				while cur and cur ~= start and guard < 16 do
+					loop[#loop + 1] = cur
+					cur = takeFrom(cur)
+					guard += 1
+				end
+				if cur == start and #loop >= 3 then
+					-- (tiny all round, or a hair-thin slit of any length)
+					local big, per, s = 0, 0, D3(0, 0, 0)
+					local p0 = pos[loop[1]]
+					for i = 1, #loop do
+						local l = mag(pos[loop[i % #loop + 1]] - pos[loop[i]])
+						big = math.max(big, l)
+						per += l
+						if i >= 2 and i < #loop then s = s + (pos[loop[i]] - p0):Cross(pos[loop[i + 1]] - p0) end
+					end
+					local width = mag(s) / math.max(per, 1e-9)
+					-- (v3.30: how thin it is ACROSS its longest side - a sliver 0.015 studs across but 35 long, left where a
+					-- round's cut re-split the long thin faces of the block's own rounded edge, threw every round after it out)
+					local across = mag(s) / math.max(big, 1e-9)
+					-- (v3.30: or a FLAT hole - every corner of it on one plane - a face of the part that the cut's splitting
+					-- lost (a thin strip of a block's rounded edge): it's filled with its own face again)
+					local flatHole = false
+					if mag(s) > 1e-9 and mag(s) < 20 and #loop <= 8 then
+						local nn = s / mag(s)
+						local c = D3(0, 0, 0)
+						for _, id in ipairs(loop) do c = c + pos[id] end
+						c = c / #loop
+						local off = 0
+						for _, id in ipairs(loop) do off = math.max(off, math.abs((pos[id] - c):Dot(nn))) end
+						flatHole = off < 2e-3
+					end
+					-- (v3.33: the two extra kinds only on a SECOND try - a shape that's fine the strict way stays exactly as it
+					-- was; Dylan: "the chamfers were perfect" - closing gaps too keenly broke them)
+					if big < 0.05 or width < 1e-3 or (lenient and ((across < 0.025 and mag(s) < 2) or flatHole)) then
+						for i = 2, #loop - 1 do tl[#tl + 1] = { loop[1], loop[i], loop[i + 1], g = "gap" } end
+						open -= #loop
+					end
+				end
+			end
+		end
+	end
+	local W = {}
+	local function w(id)
+		local p = W[id]
+		if not p then p = toWorld(FR, pos[id]) W[id] = p end
+		return p
+	end
+	local out = {}
+	for _, t in ipairs(tl) do out[#out + 1] = { w(t[1]), w(t[2]), w(t[3]), g = t.g } end
+	return out, open
+end
+-- body minus every cutter (all world triangles), worked out in frame's space. Returns world triangles ({} = nothing left)
+function ENT.ownSubtract(bodyTris, cutterList, frame)
+	local A = CSG.fromTris(bodyTris, frame, "A")
+	for i, ct in ipairs(cutterList) do
+		if #A == 0 then break end
+		A = CSG.subtract(A, CSG.fromTris(ct, frame, "C" .. i))
+	end
+	return CSG.toTris(A, frame)
+end
+function ENT.ownIntersect(bodyTris, cutterTris, frame)
+	return CSG.toTris(CSG.intersect(CSG.fromTris(bodyTris, frame, "A"), CSG.fromTris(cutterTris, frame, "C")), frame)
+end
+-- v2.86 SHELL (Dylan: "shell is a good idea"): the inside shape to cut out so the solid becomes a wall t thick.
+-- Every face moves IN by t - the picked OPEN faces move OUT by t instead, so the hollow goes right through them - and
+-- each corner goes to where its faces' moved planes meet (worked out together, so any number of faces at a corner
+-- works: a box corner, a hole's rim, a curved wall). open = { { c = {x,y,z}, n = {x,y,z} } } in the solid's own space:
+-- a point ON the face + its outward direction. Returns the inside shape (faces to cut away), or nil, why.
+function CSG.shellCutter(A, t, open)
+	if not t or t ~= t or t <= 0 then return nil, "the wall needs a thickness above 0" end
+	local faces, pos = tFix(A)
+	if #faces < 4 then return nil, "there's nothing to hollow" end
+	-- each face's plane (Newell's way: right for any flat outline), pointing OUT of the solid
+	local function newell(ids, P)
+		local nx, ny, nz = 0, 0, 0
+		local m = #ids
+		for i = 1, m do
+			local a, b = P[ids[i]], P[ids[i % m + 1]]
+			nx += (a.Y - b.Y) * (a.Z + b.Z)
+			ny += (a.Z - b.Z) * (a.X + b.X)
+			nz += (a.X - b.X) * (a.Y + b.Y)
+		end
+		return D3(nx, ny, nz)
+	end
+	local vol = 0
+	for _, F in ipairs(faces) do
+		local ids = F.ids
+		for k = 2, #ids - 1 do vol += pos[ids[1]]:Dot(pos[ids[k]]:Cross(pos[ids[k + 1]])) end
+	end
+	local sg = vol >= 0 and 1 or -1
+	local fn, fw = {}, {}
+	for i, F in ipairs(faces) do
+		local nv = newell(F.ids, pos) * sg
+		local m = mag(nv)
+		if m > 1e-12 then fn[i] = nv / m fw[i] = fn[i]:Dot(pos[F.ids[1]]) end
+	end
+	-- the OPEN faces: every face flat on the picked face's plane that joins up with the picked point
+	local byEdge = {}
+	local function ek(a, b) return (a < b) and (a .. ":" .. b) or (b .. ":" .. a) end
+	for i, F in ipairs(faces) do
+		local ids = F.ids
+		for k = 1, #ids do
+			local key = ek(ids[k], ids[k % #ids + 1])
+			byEdge[key] = byEdge[key] or {}
+			table.insert(byEdge[key], i)
+		end
+	end
+	-- (is point q inside face i's outline? - flattened onto the face, ray crossing count)
+	local function inFace(i, q)
+		local n = fn[i]
+		local u = (math.abs(n.X) < 0.9) and D3(1, 0, 0):Cross(n) or D3(0, 1, 0):Cross(n)
+		u = unit(u)
+		local v = n:Cross(u)
+		local ids = faces[i].ids
+		local qx, qy = q:Dot(u), q:Dot(v)
+		local inside = false
+		local m = #ids
+		for k = 1, m do
+			local a, b = pos[ids[k]], pos[ids[k % m + 1]]
+			local ax, ay, bx, by = a:Dot(u), a:Dot(v), b:Dot(u), b:Dot(v)
+			if (ay > qy) ~= (by > qy) then
+				local x = ax + (qy - ay) * (bx - ax) / (by - ay)
+				if x > qx then inside = not inside end
+			end
+		end
+		return inside
+	end
+	local isOpen, nOpen = {}, 0
+	for _, o in ipairs(open or {}) do
+		local on = unit(D3(o.n[1], o.n[2], o.n[3]))
+		local oc = D3(o.c[1], o.c[2], o.c[3])
+		local ow = on:Dot(oc)
+		local function onPlane(i) return fn[i] ~= nil and fn[i]:Dot(on) > 0.9995 and math.abs(fw[i] - ow) < 2e-3 end
+		-- the seed: the face the picked point is in (else the nearest one on that plane)
+		local seed, bd
+		for i, F in ipairs(faces) do
+			if onPlane(i) then
+				local d
+				if inFace(i, oc) then d = -1 else
+					local c = D3(0, 0, 0)
+					for _, id in ipairs(F.ids) do c = c + pos[id] end
+					d = mag(c / #F.ids - oc)
+				end
+				if not bd or d < bd then seed, bd = i, d end
+			end
+		end
+		if not seed then return nil, "an open face isn't on the part any more - pick it again" end
+		local stack = { seed }
+		if not isOpen[seed] then isOpen[seed] = true nOpen += 1 end
+		while #stack > 0 do
+			local i = table.remove(stack)
+			local ids = faces[i].ids
+			for k = 1, #ids do
+				for _, j in ipairs(byEdge[ek(ids[k], ids[k % #ids + 1])]) do
+					if not isOpen[j] and onPlane(j) then isOpen[j] = true nOpen += 1 stack[#stack + 1] = j end
+				end
+			end
+		end
+	end
+	-- each corner's planes (each different plane once): in by t, or out by t on an open face
+	local planes = {}
+	for i, F in ipairs(faces) do
+		if fn[i] then
+			local s = isOpen[i] and 1 or -1
+			for _, v in ipairs(F.ids) do
+				local L = planes[v]
+				if not L then L = {} planes[v] = L end
+				local dup = false
+				for _, q in ipairs(L) do if q.s == s and q.n:Dot(fn[i]) > 1 - 1e-9 then dup = true break end end
+				if not dup then L[#L + 1] = { n = fn[i], s = s } end
+			end
+		end
+	end
+	-- each corner moves to where its moved planes meet (least squares, so 1, 2, 3 or more planes all work)
+	local np = {}
+	for v, L in pairs(planes) do
+		local m11, m12, m13, m22, m23, m33 = 1e-7, 0, 0, 1e-7, 0, 1e-7
+		local rx, ry, rz, ax, ay, az = 0, 0, 0, 0, 0, 0
+		for _, q in ipairs(L) do
+			local n, s = q.n, q.s
+			m11 += n.X * n.X m12 += n.X * n.Y m13 += n.X * n.Z
+			m22 += n.Y * n.Y m23 += n.Y * n.Z m33 += n.Z * n.Z
+			rx += n.X * s * t ry += n.Y * s * t rz += n.Z * s * t
+			ax += n.X * s ay += n.Y * s az += n.Z * s
+		end
+		local c11, c12, c13 = m22 * m33 - m23 * m23, m13 * m23 - m12 * m33, m12 * m23 - m13 * m22
+		local det = m11 * c11 + m12 * c12 + m13 * c13
+		local d
+		if math.abs(det) > 1e-18 then
+			local c22, c23, c33 = m11 * m33 - m13 * m13, m12 * m13 - m11 * m23, m11 * m22 - m12 * m12
+			d = D3((c11 * rx + c12 * ry + c13 * rz) / det, (c12 * rx + c22 * ry + c23 * rz) / det, (c13 * rx + c23 * ry + c33 * rz) / det)
+		end
+		if not d or mag(d) > 4 * t then
+			-- (planes that hardly meet: straight along their average direction)
+			local a = D3(ax, ay, az)
+			local am = mag(a)
+			d = am > 1e-9 and a * (t / am) or D3(0, 0, 0)
+		end
+		np[v] = pos[v] + d
+	end
+	-- the inside shape: each face again at the moved corners. Flat neighbours on one plane (a big face the cut left in
+	-- pieces) go in as ONE outline, filled again - their old thin triangles could fold over each other when the corners
+	-- moved (a face with a hole in it). A face on its own that turns OVER = the wall is thicker than that bit of the
+	-- part (a small round, a thin rib) - refused. A face whose moved corners aren't flat (4+ faces met) = triangles.
+	local gp = {}
+	for i in ipairs(faces) do gp[i] = i end
+	local function gr(x) while gp[x] ~= x do gp[x] = gp[gp[x]] x = gp[x] end return x end
+	for _, list in pairs(byEdge) do
+		for a = 1, #list - 1 do
+			for b = a + 1, #list do
+				local i, j = list[a], list[b]
+				if fn[i] and fn[j] and (isOpen[i] == true) == (isOpen[j] == true) and fn[i]:Dot(fn[j]) > 1 - 1e-9 and math.abs(fw[i] - fw[j]) < 1e-6 then
+					local ri, rj = gr(i), gr(j)
+					if ri ~= rj then gp[ri] = rj end
+				end
+			end
+		end
+	end
+	local groups, order = {}, {}
+	for i in ipairs(faces) do
+		if fn[i] then
+			local r = gr(i)
+			if not groups[r] then groups[r] = {} order[#order + 1] = r end
+			table.insert(groups[r], i)
+		end
+	end
+	local B, bigFlip = {}, 0
+	local function addFace(i)
+		local F = faces[i]
+		local ids = F.ids
+		local nv = newell(ids, np) * sg
+		local m = mag(nv)
+		if m > 1e-4 and nv:Dot(fn[i]) < 0 then bigFlip += 1 end
+		local g = "S" .. tostring(F.P.g)
+		local flat = true
+		if m > 1e-12 then
+			local n1 = nv / m
+			local w1 = n1:Dot(np[ids[1]])
+			for _, id in ipairs(ids) do if math.abs(n1:Dot(np[id]) - w1) > 2e-5 then flat = false break end end
+		end
+		if flat then
+			local vs = {}
+			for _, id in ipairs(ids) do vs[#vs + 1] = np[id] end
+			local P = cPoly(vs, g)
+			if P then B[#B + 1] = P end
+		else
+			local tt = (#ids == 3) and { { ids[1], ids[2], ids[3] } } or fanIds(ids, pos)
+			if tt then
+				for _, tr in ipairs(tt) do
+					local P = cPoly({ np[tr[1]], np[tr[2]], np[tr[3]] }, g)
+					if P then B[#B + 1] = P end
+				end
+			else
+				local c = D3(0, 0, 0)
+				for _, id in ipairs(ids) do c = c + np[id] end
+				c = c / #ids
+				for k = 1, #ids do
+					local P = cPoly({ c, np[ids[k]], np[ids[k % #ids + 1]] }, g)
+					if P then B[#B + 1] = P end
+				end
+			end
+		end
+	end
+	for _, r in ipairs(order) do
+		local mem = groups[r]
+		local done = false
+		if #mem > 1 then
+			-- (the pieces' own winding direction - simplifyGroup works with that)
+			local nW = fn[mem[1]] * sg
+			local w1 = nW:Dot(np[faces[mem[1]].ids[1]])
+			local flat, sA, list = true, 0, {}
+			for _, i in ipairs(mem) do
+				local ids = faces[i].ids
+				local vs = {}
+				for _, id in ipairs(ids) do
+					vs[#vs + 1] = np[id]
+					if math.abs(nW:Dot(np[id]) - w1) > 2e-5 then flat = false end
+				end
+				sA += newell(ids, np):Dot(nW)
+				list[#list + 1] = { v = vs }
+			end
+			if flat and sA > 1e-9 then
+				local okG, res = pcall(simplifyGroup, { n = nW, w = w1, g = "S" .. tostring(faces[mem[1]].P.g), list = list })
+				if okG and res and #res > 0 then
+					for _, P in ipairs(res) do B[#B + 1] = P end
+					done = true
+				end
+			end
+		end
+		if not done then for _, i in ipairs(mem) do addFace(i) end end
+	end
+	local vin = 0
+	for _, P in ipairs(B) do
+		local v = P.v
+		for k = 2, #v - 1 do vin += v[1]:Dot(v[k]:Cross(v[k + 1])) * sg end
+	end
+	if bigFlip > 0 then return nil, ("the wall (%.3g) is thicker than some of the part - a round, a rib or a gap is thinner than that. Try a thinner wall"):format(t) end
+	if vin <= 0 or #B < 4 then return nil, ("the wall (%.3g) is too thick - nothing would be left inside"):format(t) end
+	return B, nOpen
+end
+end   -- (end of the cut's own helpers)
+-- any part PROTO can cut itself, as world triangles (nil = can't read it - then Roblox's cut is used)
+-- block / cylinder Parts are made from their size; a mesh is read back (not a Roblox cut result - it has no mesh)
+function ENT.partTris(p)
+	if p:IsA("Part") then
+		local s, cf = p.Size, p.CFrame
+		if p.Shape == Enum.PartType.Block then
+			local faces = ENT.convexFaces({
+				{ n = Vector3.xAxis, d = s.X / 2 }, { n = -Vector3.xAxis, d = s.X / 2 },
+				{ n = Vector3.yAxis, d = s.Y / 2 }, { n = -Vector3.yAxis, d = s.Y / 2 },
+				{ n = Vector3.zAxis, d = s.Z / 2 }, { n = -Vector3.zAxis, d = s.Z / 2 },
+			}, math.max(s.X, s.Y, s.Z) + 10)
+			return ENT.orientTris(ENT.facesToTris(faces, cf))
+		elseif p.Shape == Enum.PartType.Cylinder then
+			-- along X; round = the smaller of Y / Z
+			local r, hx = math.min(s.Y, s.Z) / 2, s.X / 2
+			local N = ENT.sidesFor(r)   -- v2.68: by its size
+			local tris = {}
+			local function P(x, k) local a = k / N * 2 * math.pi return cf:PointToWorldSpace(Vector3.new(x, r * math.cos(a), r * math.sin(a))) end
+			local e0, e1 = cf:PointToWorldSpace(Vector3.new(-hx, 0, 0)), cf:PointToWorldSpace(Vector3.new(hx, 0, 0))
+			for k = 0, N - 1 do
+				local a0, a1, b0, b1 = P(-hx, k), P(-hx, k + 1), P(hx, k), P(hx, k + 1)
+				tris[#tris + 1] = { a0, b0, b1, g = "side" }
+				tris[#tris + 1] = { a0, b1, a1, g = "side" }
+				tris[#tris + 1] = { e0, a0, a1, g = "end0" }
+				tris[#tris + 1] = { e1, b1, b0, g = "end1" }
+			end
+			return ENT.orientTris(tris)
+		end
+		return nil
+	end
+	-- (v2.96: why it can't be read is kept, so a failed cut can say so)
+	if not p:IsA("MeshPart") then ENT.readWhy = "it's a " .. p.ClassName .. " (PROTO reads blocks, cylinders and meshes)" return nil end
+	if ENT.msIsCSG(p) then ENT.readWhy = "it's a Roblox cut / union result - there's no mesh in it PROTO can read" return nil end
+	-- (v2.98: a part that had 'Hide unseen faces' is read too - its open sides are filled back in below)
+	local em, owned, whyM = ENT.msMeshOf(p)
+	if not em then ENT.readWhy = whyM or "its mesh couldn't be opened" return nil end
+	local ok, tris = pcall(function()
+		local pos = {}
+		local lo, hi = Vector3.new(math.huge, math.huge, math.huge), Vector3.new(-math.huge, -math.huge, -math.huge)
+		for _, vid in ipairs(em:GetVertices()) do
+			local q = em:GetPosition(vid)
+			pos[vid] = q
+			lo, hi = lo:Min(q), hi:Max(q)
+		end
+		local c, sz = (lo + hi) / 2, hi - lo
+		local S = p.Size
+		local sc = Vector3.new(sz.X > 1e-6 and S.X / sz.X or 1, sz.Y > 1e-6 and S.Y / sz.Y or 1, sz.Z > 1e-6 and S.Z / sz.Z or 1)
+		-- smooth groups = faces joined by shared points in the mesh (a sharp edge has its own points), so the
+		-- shading after the cut matches before
+		local faces = em:GetFaces()
+		local parent = {}
+		local function root(x) while parent[x] ~= x do parent[x] = parent[parent[x]] x = parent[x] end return x end
+		local byVert = {}
+		for _, f in ipairs(faces) do
+			parent[f] = f
+			for _, v in ipairs(em:GetFaceVertices(f)) do
+				local o = byVert[v]
+				if o then local ra, rb = root(o), root(f) if ra ~= rb then parent[ra] = rb end else byVert[v] = f end
+			end
+		end
+		-- v2.78 (Dylan: "i should only see faces ... one continuous face"): a SAVED mesh has its points split per
+		-- triangle (Roblox does that on upload), so shared points alone can't tell what's one face. Triangles that meet
+		-- at a point (by position) are one face when they're shaded smooth together there (the same normal at that
+		-- corner) - or, if the mesh has no normals, when they lie flat together or bend gently (under 25 degrees).
+		do
+			local hasN = pcall(function() local ns = em:GetFaceNormals(faces[1]) local _ = em:GetNormal(ns[1]) end)
+			local Q = 1e3
+			local at = {}
+			local fnorm = {}
+			for _, f in ipairs(faces) do
+				local v = em:GetFaceVertices(f)
+				local a, b, c3 = pos[v[1]], pos[v[2]], pos[v[3]]
+				local cr = (b - a):Cross(c3 - a)
+				fnorm[f] = cr.Magnitude > 1e-12 and cr.Unit or Vector3.new(0, 0, 0)
+				local ns
+				if hasN then pcall(function() local ids = em:GetFaceNormals(f) ns = { em:GetNormal(ids[1]), em:GetNormal(ids[2]), em:GetNormal(ids[3]) } end) end
+				for k = 1, 3 do
+					local q = pos[v[k]]
+					local key = math.floor(q.X * Q + 0.5) .. "," .. math.floor(q.Y * Q + 0.5) .. "," .. math.floor(q.Z * Q + 0.5)
+					at[key] = at[key] or {}
+					table.insert(at[key], { f = f, n = ns and ns[k] })
+				end
+			end
+			local cosSoft = math.cos(math.rad(25))
+			for _, list in pairs(at) do
+				for x = 1, #list do
+					for y = x + 1, #list do
+						local A, B = list[x], list[y]
+						local same
+						if A.n and B.n then
+							same = A.n.Magnitude > 0 and B.n.Magnitude > 0 and A.n.Unit:Dot(B.n.Unit) > 0.999
+								and fnorm[A.f]:Dot(fnorm[B.f]) > 0.5
+						else
+							same = fnorm[A.f]:Dot(fnorm[B.f]) > cosSoft
+						end
+						if same then local ra, rb = root(A.f), root(B.f) if ra ~= rb then parent[ra] = rb end end
+					end
+				end
+			end
+		end
+		local out = {}
+		for _, f in ipairs(faces) do
+			local v = em:GetFaceVertices(f)
+			local function W(id) return p.CFrame:PointToWorldSpace((pos[id] - c) * sc) end
+			out[#out + 1] = { W(v[1]), W(v[2]), W(v[3]), g = "m" .. tostring(root(f)) }
+		end
+		return out
+	end)
+	if owned then pcall(function() em:Destroy() end) end
+	if ok and tris and p:GetAttribute("PROTO_Finished") then
+		-- v2.98 (Dylan: "bin the hide faces feature, it causes a massive array of glitches"): the feature is gone;
+		-- parts it already opened up get their missing sides filled back in, so they're solid and can be cut again
+		local okF, closed = pcall(ENT.closeHoles, tris)
+		if okF and closed then tris = closed else ENT.readWhy = "it had 'Hide unseen faces' and its open sides couldn't be filled back in" return nil end
+	end
+	return ok and tris or nil
+end
+-- v2.98: fill the open sides of a mesh (each hole's edge loop -> a flat face), so it's a closed solid again.
+-- World triangles in, world triangles out (nil = a hole couldn't be followed round).
+function ENT.closeHoles(tris)
+	local Q = 1e3
+	local function key(v) return math.floor(v.X * Q + 0.5) .. "," .. math.floor(v.Y * Q + 0.5) .. "," .. math.floor(v.Z * Q + 0.5) end
+	local pos, ids = {}, {}
+	local function id(v) local k = key(v) if not ids[k] then pos[#pos + 1] = v ids[k] = #pos end return ids[k] end
+	local used = {}
+	local T = {}
+	for _, t in ipairs(tris) do
+		local a, b, c = id(t[1]), id(t[2]), id(t[3])
+		T[#T + 1] = { a, b, c }
+		for _, e in ipairs({ { a, b }, { b, c }, { c, a } }) do used[e[1] .. ">" .. e[2]] = (used[e[1] .. ">" .. e[2]] or 0) + 1 end
+	end
+	-- sides with no partner going the other way = the edge of a hole; follow them round
+	local nextOf, n = {}, 0
+	for k, c in pairs(used) do
+		local a, b = k:match("^(%d+)>(%d+)$")
+		if not used[b .. ">" .. a] then
+			for _ = 1, c do nextOf[tonumber(a)] = nextOf[tonumber(a)] or {} table.insert(nextOf[tonumber(a)], tonumber(b)) n += 1 end
+		end
+	end
+	if n == 0 then return tris end
+	local out = table.clone(tris)
+	local function newell(rv)
+		local nx, ny, nz = 0, 0, 0
+		for i = 1, #rv do
+			local a, b = rv[i], rv[i % #rv + 1]
+			nx += (a.Y - b.Y) * (a.Z + b.Z) ny += (a.Z - b.Z) * (a.X + b.X) nz += (a.X - b.X) * (a.Y + b.Y)
+		end
+		return Vector3.new(nx, ny, nz)
+	end
+	local function planar(rv)
+		local nv = newell(rv)
+		if nv.Magnitude < 1e-9 then return false end
+		local nrm = nv.Unit
+		local d0 = nrm:Dot(rv[1])
+		for _, p3 in ipairs(rv) do if math.abs(nrm:Dot(p3) - d0) > 2e-3 then return false end end
+		return true
+	end
+	local function fillFlat(rv)
+		local nv = newell(rv)
+		if nv.Magnitude < 1e-9 then return end
+		local nrm = nv.Unit
+		local u = (math.abs(nrm.X) < 0.9 and Vector3.xAxis or Vector3.yAxis):Cross(nrm).Unit
+		local v = nrm:Cross(u)
+		local q2 = {}
+		for _, p3 in ipairs(rv) do q2[#q2 + 1] = V2(p3:Dot(u), p3:Dot(v)) end
+		local okT, tp, tt = pcall(ENT.triHoles, q2, {})
+		if okT and tp and tt then
+			-- (triHoles' points are the same 2D points, maybe reordered: match them back to 3D)
+			local back = {}
+			for i, p2 in ipairs(tp) do
+				local best, bd
+				for j, r2 in ipairs(q2) do local d = (r2 - p2).Magnitude if not bd or d < bd then best, bd = j, d end end
+				back[i] = rv[best]
+			end
+			for _, tr in ipairs(tt) do
+				local a, b, c = back[tr[1]], back[tr[2]], back[tr[3]]
+				if (b - a):Cross(c - a):Dot(nrm) < 0 then b, c = c, b end
+				out[#out + 1] = { a, b, c, g = "fill" }
+			end
+			return
+		end
+		local cen = Vector3.zero
+		for _, p3 in ipairs(rv) do cen += p3 end
+		cen /= #rv
+		for i = 1, #rv do out[#out + 1] = { cen, rv[i], rv[i % #rv + 1], g = "fill" } end
+	end
+	-- a hole left by SEVERAL missing faces (a corner) isn't flat: split it along a line between two of its points
+	-- so each piece is flat, then fill each piece
+	local function fillLoop(rv, depth)
+		if planar(rv) or depth > 6 or #rv < 4 then fillFlat(rv) return end
+		local m = #rv
+		for i = 1, m do
+			for j = i + 2, m do
+				if not (i == 1 and j == m) then
+					local A, B = {}, {}
+					for k = i, j do A[#A + 1] = rv[k] end
+					for k = j, m do B[#B + 1] = rv[k] end
+					for k = 1, i do B[#B + 1] = rv[k] end
+					if #A >= 4 and #B >= 3 and planar(A) then   -- (3 points are always flat - a real face has 4+)
+						fillFlat(A)
+						fillLoop(B, depth + 1)
+						return
+					end
+				end
+			end
+		end
+		fillFlat(rv)
+	end
+	for start in pairs(nextOf) do
+		while nextOf[start] and #nextOf[start] > 0 do
+			local loop, cur, guard = { start }, table.remove(nextOf[start]), 0
+			while cur ~= start do
+				loop[#loop + 1] = cur
+				local nx = nextOf[cur]
+				if not nx or #nx == 0 then return nil end
+				cur = table.remove(nx)
+				guard += 1
+				if guard > 100000 then return nil end
+			end
+			if #loop >= 3 then
+				-- the fill goes the other way round from the hole's edge (so it faces out like the rest)
+				local rv = {}
+				for i = #loop, 1, -1 do rv[#rv + 1] = pos[loop[i]] end
+				fillLoop(rv, 0)
+			end
+		end
+	end
+	return out
+end
+-- ===== end v2.62 OWN CUT =====
+-- ===== v2.66 PART RECIPES + DETAIL =====
+-- Dylan: "are we not building from the ground up" + "a triangle slider on the part so they can adjust accordingly".
+-- Revolves and mesh extrudes now remember how they were made (like blocks): the drawing at FULL detail, where it sits,
+-- and every cut. A cut, or a new Detail, rebuilds the whole part from that recipe in one go - nothing piles up.
+-- Detail = a level 1-10 (v2.68: by size - see ENT.sidesFor); each part keeps its own (PROTO_Level).
+function ENT.enc2(list) local o = {} for _, q in ipairs(list or {}) do o[#o + 1] = { q.X, q.Y } end return o end
+function ENT.dec2(list) local o = {} for _, q in ipairs(list or {}) do o[#o + 1] = V2(q[1], q[2]) end return o end
+ENT.DETAIL_MIN, ENT.DETAIL_MAX = 1, 10
+function ENT.partDetail(p)
+	local d = p and tonumber(p:GetAttribute("PROTO_Level"))
+	return d and math.clamp(math.floor(d + 0.5), ENT.DETAIL_MIN, ENT.DETAIL_MAX) or ENT.curveLevel()
+end
+-- a cut's recipe with the light outline for this detail; its edge rounds / chamfers follow the sides they were on
+function ENT.lowRecipe(rc, sides)
+	local treated = (rc.rim and next(rc.rim) ~= nil) or (rc.bot and next(rc.bot) ~= nil) or (rc.vc and next(rc.vc) ~= nil)
+	local q, idx = ENT.lowPts(rc.outer, sides, treated)
+	local o = { outer = q, holes = ENT.lowList(rc.holes, sides), z0 = rc.z0, z1 = rc.z1, open = rc.open, rim = rc.rim, bot = rc.bot, vc = rc.vc }
+	if not idx or #idx == #rc.outer then return o end
+	local n0 = #rc.outer
+	local function sidesMap(t)
+		if not t or next(t) == nil then return t end
+		local r = {}
+		for j = 1, #idx do
+			local i, b = idx[j], idx[j % #idx + 1]
+			repeat
+				local v = t[tostring(i)]
+				if v and (not r[tostring(j)] or v.r > r[tostring(j)].r) then r[tostring(j)] = v end
+				i = i % n0 + 1
+			until i == b
+		end
+		return r
+	end
+	o.rim, o.bot = sidesMap(rc.rim), sidesMap(rc.bot)
+	if rc.vc and next(rc.vc) ~= nil then
+		o.vc = {}
+		for j, i in ipairs(idx) do local v = rc.vc[tostring(i)] if v then o.vc[tostring(j)] = v end end
+	end
+	return o
+end
+-- one stored cut as cutter triangles (base = the part's block / recipe frame). v2.71: a cut can also be a REVOLVE.
+function ENT.cutTris(c, base, sides)
+	local F = base * CFrame.new(table.unpack(c.f))
+	if c.kind == "rev" then return ENT.revTris(c.data, F, sides) end
+	return ENT.recipeTris(ENT.lowRecipe(ENT.recipeWork(c), sides), F)
+end
+-- an extrude as triangles (frame F: the drawing's plane, z along its normal); round curves smooth, corners sharp
+function ENT.prismTris(outer, holes, z0, z1, F)
+	local pts, tt, loops = ENT.triHoles(outer, holes)
+	if not pts then return nil, "couldn't fill the shape with triangles" end
+	local function W3(q, z) return F:PointToWorldSpace(V3(q.X, q.Y, z)) end
+	local out = {}
+	for _, t in ipairs(tt) do
+		local a, b, c = pts[t[1]], pts[t[2]], pts[t[3]]
+		out[#out + 1] = { W3(a, z1), W3(b, z1), W3(c, z1), g = "top" }
+		out[#out + 1] = { W3(a, z0), W3(c, z0), W3(b, z0), g = "bot" }
+	end
+	for li, ring in ipairs(loops) do
+		local q = {}
+		for _, id in ipairs(ring) do q[#q + 1] = pts[id] end
+		local g = ENT.meshGroups(q, li * 1000)
+		for i = 1, #q do
+			local a, b = q[i], q[i % #q + 1]
+			out[#out + 1] = { W3(a, z0), W3(b, z0), W3(b, z1), g = g[i] }
+			out[#out + 1] = { W3(a, z0), W3(b, z1), W3(a, z1), g = g[i] }
+		end
+	end
+	return ENT.orientTris(out)
+end
+-- a revolve as triangles (frame F: X = the axis, Y = the profile's "out" direction)
+function ENT.revTris(R, F, sides)
+	local Aw, dw, e1b = F.Position, F.XVector, F.YVector
+	-- v2.68: steps round = what the widest point's circle needs at this level (capped by the Sides box)
+	local rmax = 0
+	for _, S in ipairs(R.shells) do for _, l in ipairs(S.loops) do for _, q in ipairs(l) do rmax = math.max(rmax, math.abs(q[2])) end end end
+	local round = math.min(ENT.sidesFor(rmax, sides), R.cap or 999)
+	local steps = math.max(math.ceil(round * math.min(R.angle, 360) / 360), 2)
+	local all = {}
+	for _, S in ipairs(R.shells) do
+		local loops = {}
+		for i, l in ipairs(S.loops) do loops[i] = ENT.lowPts(ENT.dec2(l), sides) end
+		local e1 = e1b * (S.sign or R.side or 1)
+		local tt, why = ENT.latheTris(loops, R.angle, steps, Aw, dw, e1, dw:Cross(e1))
+		if not tt then return nil, why end
+		for _, t in ipairs(tt) do all[#all + 1] = t end
+	end
+	return all
+end
+-- the recipe of a part that isn't a block: { kind, F (world), data } or nil
+function ENT.recipeOf(p)
+	if not (p and p:IsA("BasePart")) then return nil end
+	local kind, rel = p:GetAttribute("PROTO_Kind"), p:GetAttribute("PROTO_BaseRel")
+	if (kind == "ext" or kind == "rev") and typeof(rel) == "CFrame" then
+		local ok, data = pcall(function() return HttpService:JSONDecode(p:GetAttribute("PROTO_Data") or "") end)
+		if ok and type(data) == "table" then return { kind = kind, F = p.CFrame * rel, data = data } end
+	end
+	-- a plain cylinder Part = an extruded circle along its length
+	if p:IsA("Part") and p.Shape == Enum.PartType.Cylinder then
+		local sz = p.Size
+		local r = math.min(sz.Y, sz.Z) / 2
+		local q = {}
+		for i = 0, 95 do local a = i / 96 * 2 * math.pi q[#q + 1] = { r * math.cos(a), r * math.sin(a) } end
+		return { kind = "ext", F = p.CFrame * CFrame.fromMatrix(Vector3.zero, Vector3.yAxis, Vector3.zAxis),
+			data = { outer = q, holes = {}, z0 = -sz.X / 2, z1 = sz.X / 2 } }
+	end
+	return nil
+end
+function ENT.recipeBase(R, sides)
+	if R.kind == "ext" then
+		local d = R.data
+		local holes = {}
+		for i, h in ipairs(d.holes or {}) do holes[i] = ENT.lowPts(ENT.dec2(h), sides) end
+		return ENT.prismTris(ENT.lowPts(ENT.dec2(d.outer), sides), holes, d.z0, d.z1, R.F)
+	end
+	return ENT.revTris(R.data, R.F, sides)
+end
+-- is a point inside a closed set of triangles? (count crossings along a slanted ray)
+function ENT.insideTris(tris, p)
+	local d = Vector3.new(0.5773, 0.5779, 0.5765).Unit
+	local hits = 0
+	for _, t in ipairs(tris) do
+		local e1, e2 = t[2] - t[1], t[3] - t[1]
+		local h = d:Cross(e2)
+		local a = e1:Dot(h)
+		if math.abs(a) > 1e-12 then
+			local f = 1 / a
+			local sv = p - t[1]
+			local u = f * sv:Dot(h)
+			if u >= 0 and u <= 1 then
+				local q = sv:Cross(e1)
+				local v = f * d:Dot(q)
+				if v >= 0 and u + v <= 1 and f * e2:Dot(q) > 1e-9 then hits += 1 end
+			end
+		end
+	end
+	return hits % 2 == 1
+end
+-- which end of a new cut opens out of the part (nil = it goes right through)
+function ENT.cutOpen(baseTris, w0, w1)
+	local d = (w1 - w0).Magnitude > 1e-9 and (w1 - w0).Unit or Vector3.zero
+	-- (each end nudged a hair AWAY from the other end: an end lying on the surface counts as outside)
+	local in0 = ENT.insideTris(baseTris, w0 - d * 1e-3)
+	local in1 = ENT.insideTris(baseTris, w1 + d * 1e-3)
+	if in1 and not in0 then return 0 elseif in0 and not in1 then return 1 end
+	return nil
+end
+-- rebuild a recipe part from scratch: its shape at this detail, minus ALL its cuts, as ONE mesh.
+-- Returns the new part, false (cut away completely), or nil + why.
+function ENT.recipeRebuild(p, R, cuts, sides)
+	sides = sides or ENT.partDetail(p)
+	local base, why = ENT.recipeBase(R, sides)
+	if not base then return nil, why or "couldn't make the shape" end
+	local res = base
+	local t0 = os.clock()
+	if #cuts > 0 then
+		-- v2.76: the steps in order (cuts and any-edge rounds / chamfers)
+		ENT.leftOut = 0
+		ENT.leftOutSteps = {}
+		ENT.lastOpen = nil
+		local ok, r = pcall(ENT.applyFeatures, base, cuts, R.F, sides)
+		if not ok then return nil, "the rebuild failed - " .. tostring(r) end
+		res = r
+		-- (v3.35: also when it's sealed only "nearly" - a gap or two let through - so a see-through hole can be fixed)
+		if (ENT.lastOpen or 0) > 0 then ENT.recipeDump(p, { kind = R.kind, data = R.data, cuts = cuts }) end   -- (v3.67: not for left-out steps)
+		pcall(ENT.leftOutNote, p)
+	end
+	if #res == 0 then return false end
+	-- v2.82: never swap the part for a broken shape
+	local sound, whyS = ENT.soundSolid(res, nil, (#cuts > 0) and ENT.lastOpen or nil)
+	if not sound then
+		ENT.recipeDump(p, { kind = R.kind, data = R.data, cuts = cuts })
+		return nil, "the shape came out broken (" .. tostring(whyS) .. ") - your part is kept as it was"
+	end
+	local pbase = p:GetAttribute("PROTO_PaintBase")
+	local painted = ENT.applyPaint(res, ENT.paintOf(p), R.F, typeof(pbase) == "Color3" and pbase or p.Color)   -- v2.72
+	do   -- v3.02 brush paint
+		local okB, rb = pcall(ENT.applyBrush, res, ENT.brushOf(p), R.F, typeof(pbase) == "Color3" and pbase or p.Color)
+		if okB and rb then res, painted = rb, true elseif not okB then warn("PROTO brush: " .. tostring(rb)) end
+	end
+	local np, whyM = ENT.meshFromTris(res, R.F)
+	if not np then return nil, whyM or "couldn't make the mesh" end
+	pcall(function() np.CollisionFidelity = ENT.collEnum() end)
+	ENT.keepLook(np, p)
+	ENT.swapIn(p, np)
+	ENT.paintLook(np, painted)
+	np:SetAttribute("PROTO_Kind", R.kind)
+	np:SetAttribute("PROTO_Data", HttpService:JSONEncode(R.data))
+	np:SetAttribute("PROTO_BaseRel", np.CFrame:ToObjectSpace(R.F))
+	np:SetAttribute("PROTO_Cuts", HttpService:JSONEncode(cuts))
+	np:SetAttribute("PROTO_Level", sides)
+	np:SetAttribute("PROTO_Detail", nil)
+	np:SetAttribute("PROTO_Tris", #res)
+	np:SetAttribute("PROTO_Finished", nil)
+	print(("PROTO rebuild: %s + %d cut(s) from its recipe -> ONE mesh, %d triangles, detail %d (%.2fs)"):format(
+		R.kind == "rev" and "revolve" or "extrude", #cuts, #res, sides, os.clock() - t0))
+	return np
+end
+-- can this part's detail be changed? ("block" / "recipe" / nil)
+function ENT.detailKind(p)
+	if not (p and p:IsA("BasePart")) then return nil end
+	local cf = ENT.blockOf(p)
+	if cf and ENT.rebuildable(p) then return "block" end
+	if ENT.recipeOf(p) then return "recipe" end
+	return nil
+end
+-- the Detail slider: rebuild the part at this many sides (one undo step), then save the mesh
+-- (v2.72: prep(p) runs inside the same undo step, before the rebuild - e.g. to store a painted face)
+function ENT.setDetail(p, sides, prep, label)
+	-- v3.41 (glitch sweep): only one rebuild at a time. A rebuild waits on Roblox part-way, and a second one started on
+	-- the same old part then got lost. (A call from inside the running one - same thread - is still let through.)
+	local me = coroutine.running()
+	if ENT.setDetailBusy and ENT.setDetailBusy ~= me then
+		setStatus("Still working on the last change - one moment.")
+		return nil, "busy"
+	end
+	ENT.setDetailBusy = me
+	ENT.setDetailDepth = (ENT.setDetailDepth or 0) + 1
+	local okW, a, b = pcall(ENT.setDetailRun, p, sides, prep, label)
+	ENT.setDetailDepth -= 1
+	if ENT.setDetailDepth <= 0 then ENT.setDetailDepth = 0 ENT.setDetailBusy = nil end
+	if not okW then return nil, tostring(a) end
+	return a, b
+end
+-- (the rebuild itself - only called through ENT.setDetail above)
+function ENT.setDetailRun(p, sides, prep, label)
+	sides = math.clamp(math.floor(sides + 0.5), ENT.DETAIL_MIN, ENT.DETAIL_MAX)
+	local kind = ENT.detailKind(p)
+	if not kind then return nil, "this part has no recipe (made before v2.66, or not by PROTO)" end
+	local rec
+	pcall(function() rec = CHS:TryBeginRecording("PROTO_Detail", label or ("PROTO Detail level " .. sides)) end)
+	local ok, np, why = pcall(function()
+		if prep then prep(p) end
+		if kind == "block" then
+			local cf, size = ENT.blockOf(p)
+			local done = {}
+			pcall(function() done = HttpService:JSONDecode(p:GetAttribute("PROTO_EdgesDone") or "[]") end)
+			return ENT.solidRebuild(p, cf, size, done, ENT.cutsOf(p), sides)
+		end
+		return ENT.recipeRebuild(p, ENT.recipeOf(p), ENT.cutsOf(p), sides)
+	end)
+	if not ok then why, np = np, nil end
+	if rec then pcall(function() CHS:FinishRecording(rec, np and Enum.FinishRecordingOperation.Commit or Enum.FinishRecordingOperation.Cancel) end) end
+	if not np then return nil, why or "it couldn't be rebuilt" end
+	pcall(ENT.finishParts, np)
+	pcall(function() Selection:Set({ np }) end)
+	pcall(ENT.msAfterCut, { np })
+	return np
+end
+-- ===== end v2.66 PART RECIPES =====
+-- ===== v2.67 LIGHTER (Dylan: "these triangles how can we reduce them" ... "okay lets try all them") =====
+-- REDUCE: a part with no recipe (old / imported / a Roblox cut can't be read) is thinned out: nearby points are merged
+-- into one (a grid; bigger cells = fewer triangles) and triangles that collapse are dropped. Rough, but works on any
+-- mesh PROTO can read. The cell size is searched until the count is near the target.
+function ENT.thinTris(tris, cell)
+	local function key(q) return math.floor(q.X / cell) .. "," .. math.floor(q.Y / cell) .. "," .. math.floor(q.Z / cell) end
+	local sum, cnt = {}, {}
+	for _, t in ipairs(tris) do
+		for k = 1, 3 do
+			local kk = key(t[k])
+			sum[kk] = (sum[kk] or Vector3.new(0, 0, 0)) + t[k]
+			cnt[kk] = (cnt[kk] or 0) + 1
+		end
+	end
+	local out, seen = {}, {}
+	for _, t in ipairs(tris) do
+		local ka, kb, kc = key(t[1]), key(t[2]), key(t[3])
+		if ka ~= kb and kb ~= kc and ka ~= kc then
+			local s3 = { ka, kb, kc }
+			table.sort(s3)
+			local sk = table.concat(s3, "|")
+			if not seen[sk] then
+				seen[sk] = true
+				local a, b, c = sum[ka] / cnt[ka], sum[kb] / cnt[kb], sum[kc] / cnt[kc]
+				if (b - a):Cross(c - a).Magnitude > 1e-9 then out[#out + 1] = { a, b, c, g = t.g } end
+			end
+		end
+	end
+	return out
+end
+function ENT.thinTo(tris, target)
+	local lo, hi = Vector3.new(math.huge, math.huge, math.huge), Vector3.new(-math.huge, -math.huge, -math.huge)
+	for _, t in ipairs(tris) do for k = 1, 3 do lo, hi = lo:Min(t[k]), hi:Max(t[k]) end end
+	local diag = (hi - lo).Magnitude
+	if diag < 1e-6 or #tris <= target then return tris end
+	local a, b = diag / 2000, diag / 3
+	local best = tris
+	for _ = 1, 14 do
+		local m = math.sqrt(a * b)
+		local r = ENT.thinTris(tris, m)
+		if #r > target then a = m else b = m best = r end
+		if #r >= 4 and math.abs(#r - target) <= math.max(4, target * 0.05) then best = r break end
+	end
+	return best
+end
+-- REDUCE a part to about frac of its triangles. One undo step, then saved.
+function ENT.reducePart(p, frac)
+	local tris = ENT.partTris(p)
+	if not tris then return nil, "PROTO can't read this part's mesh (a Roblox cut result, or faces already hidden)" end
+	local target = math.max(4, math.floor(#tris * frac))
+	local res = ENT.thinTo(tris, target)
+	if #res < 4 or #res >= #tris then return nil, "it can't be made any lighter that way" end
+	local rec
+	pcall(function() rec = CHS:TryBeginRecording("PROTO_Reduce", "PROTO Reduce") end)
+	local np = ENT.meshFromTris(res, p.CFrame, true)
+	if np then
+		pcall(function() np.CollisionFidelity = ENT.collEnum() end)
+		ENT.keepLook(np, p)
+		ENT.swapIn(p, np)
+		np:SetAttribute("PROTO_Tris", #res)
+	end
+	if rec then pcall(function() CHS:FinishRecording(rec, np and Enum.FinishRecordingOperation.Commit or Enum.FinishRecordingOperation.Cancel) end) end
+	if not np then return nil, "couldn't make the mesh" end
+	print(("PROTO reduce: %s %d -> %d triangles"):format(np.Name, #tris, #res))
+	pcall(ENT.msAfterCut, { np })
+	pcall(function() Selection:Set({ np }) end)
+	return np
+end
+-- HIDE UNSEEN FACES: a triangle pressed flat against another solid part (the floor, a wall) can never be seen, so it
+-- goes. Each triangle is checked at its middle and near its 3 corners, a hair out from its face. Then the part is no
+-- longer a closed solid: PROTO can't cut it again directly - but a part with a recipe just rebuilds whole next time.
+local function insidePart(q, pt, probe)
+	if q:IsA("Part") then
+		local lp = q.CFrame:PointToObjectSpace(pt)
+		local h = q.Size / 2
+		local e = 1e-3
+		if q.Shape == Enum.PartType.Block then
+			return math.abs(lp.X) <= h.X + e and math.abs(lp.Y) <= h.Y + e and math.abs(lp.Z) <= h.Z + e
+		elseif q.Shape == Enum.PartType.Cylinder then
+			local r = math.min(h.Y, h.Z)
+			return math.abs(lp.X) <= h.X + e and lp.Y * lp.Y + lp.Z * lp.Z <= (r + e) ^ 2
+		elseif q.Shape == Enum.PartType.Ball then
+			return lp.Magnitude <= math.min(h.X, h.Y, h.Z) + e
+		end
+		return false
+	end
+	-- a mesh / union: ask Roblox with a tiny probe (its collision shape)
+	probe.CFrame = CFrame.new(pt)
+	local ps = OverlapParams.new()
+	ps.FilterType = Enum.RaycastFilterType.Include
+	ps.FilterDescendantsInstances = { q }
+	return #workspace:GetPartsInPart(probe, ps) > 0
+end
+function ENT.hideUnseen(p)
+	local tris = ENT.partTris(p)
+	if not tris then return nil, "PROTO can't read this part's mesh (a Roblox cut result, or faces already hidden)" end
+	local vol = 0
+	for _, t in ipairs(tris) do vol += t[1]:Dot(t[2]:Cross(t[3])) end
+	local sgn = vol >= 0 and 1 or -1   -- (which way "out" is)
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { p }
+	local probe = Instance.new("Part")
+	probe.Name = "PROTO_Preview"
+	probe.Size = Vector3.new(0.01, 0.01, 0.01)
+	probe.Anchored, probe.CanCollide, probe.CanTouch, probe.CanQuery = true, false, false, false
+	probe.Transparency, probe.Archivable, probe.Locked = 1, false, true
+	probe.Parent = workspace
+	local function solid(q)
+		return q ~= TERRAIN and q ~= probe and not ENT.isPrev(q.Name) and not ENT.isBox(q.Name) and q.Transparency < 0.05
+	end
+	local function covered(pt)
+		for _, q in ipairs(workspace:GetPartBoundsInRadius(pt, 0.005, params)) do
+			if solid(q) and insidePart(q, pt, probe) then return true end
+		end
+		return false
+	end
+	local keep, gone = {}, 0
+	local ok, err = pcall(function()
+		for _, t in ipairs(tris) do
+			local a, b, c = t[1], t[2], t[3]
+			local nrm = (b - a):Cross(c - a)
+			local hidden = false
+			if nrm.Magnitude > 1e-9 then
+				nrm = nrm.Unit * sgn * 0.02
+				local m = (a + b + c) / 3
+				hidden = true
+				for _, q in ipairs({ m, a + (m - a) * 0.1, b + (m - b) * 0.1, c + (m - c) * 0.1 }) do
+					if not covered(q + nrm) then hidden = false break end
+				end
+			end
+			if hidden then gone += 1 else keep[#keep + 1] = t end
+		end
+	end)
+	probe.Parent = nil
+	if not ok then return nil, tostring(err) end
+	if gone == 0 then return nil, "nothing on this part is hidden (nothing is pressed against it)" end
+	if #keep < 1 then return nil, "every face is hidden - it's buried inside other parts" end
+	local rec
+	pcall(function() rec = CHS:TryBeginRecording("PROTO_Hide", "PROTO Hide unseen faces") end)
+	-- v2.97 (Dylan's cut "should work" but failed): the part KEEPS its recipe now. A plain block's recipe was just its
+	-- own size - lost when it became a mesh, so the part could never be cut / rebuilt again. Now a later cut or step
+	-- change rebuilds it from the recipe (the hidden faces come back - hide them again when you're done).
+	local cf0, size0 = ENT.blockOf(p)
+	local wasBlock = cf0 and ENT.rebuildable(p)
+	local R0 = (not wasBlock) and ENT.recipeOf(p) or nil
+	local np = ENT.meshFromTris(keep, p.CFrame, true)
+	if np then
+		pcall(function() np.CollisionFidelity = ENT.collEnum() end)
+		ENT.keepLook(np, p)
+		ENT.swapIn(p, np)
+		np:SetAttribute("PROTO_Tris", #keep)
+		np:SetAttribute("PROTO_Finished", true)
+		if wasBlock then
+			np:SetAttribute("PROTO_Core", true)
+			np:SetAttribute("PROTO_BlockRel", np.CFrame:ToObjectSpace(cf0))
+			np:SetAttribute("PROTO_BlockSize", size0)
+			if not np:GetAttribute("PROTO_EdgesDone") then np:SetAttribute("PROTO_EdgesDone", "[]") end
+		elseif R0 then
+			np:SetAttribute("PROTO_BaseRel", np.CFrame:ToObjectSpace(R0.F))
+		end
+	end
+	if rec then pcall(function() CHS:FinishRecording(rec, np and Enum.FinishRecordingOperation.Commit or Enum.FinishRecordingOperation.Cancel) end) end
+	if not np then return nil, "couldn't make the mesh" end
+	print(("PROTO: hid %d unseen triangle(s) on %s - %d left%s"):format(gone, np.Name, #keep,
+		(wasBlock or R0) and " (it keeps its recipe: a later cut / change rebuilds it whole - hide them again after)" or ""))
+	pcall(ENT.msAfterCut, { np })
+	pcall(function() Selection:Set({ np }) end)
+	return np, gone
+end
+-- IMAGE / TEXT ON A FACE: on the side of the part pointing at the camera. Zero triangles - detail without geometry.
+function ENT.faceTowardCamera(p)
+	local cam = workspace.CurrentCamera
+	local to = (cam.CFrame.Position - p.Position)
+	to = to.Magnitude > 1e-6 and to.Unit or Vector3.new(0, 1, 0)
+	local best, bd
+	for _, nid in ipairs(Enum.NormalId:GetEnumItems()) do
+		local d = p.CFrame:VectorToWorldSpace(Vector3.FromNormalId(nid)):Dot(to)
+		if not bd or d > bd then best, bd = nid, d end
+	end
+	return best
+end
+function ENT.addFaceImage(p, text)
+	local id = tostring(text or ""):match("%d%d%d+")
+	if not id then return nil, "type an image ID (the number) in the box first" end
+	local face = ENT.faceTowardCamera(p)
+	local rec
+	pcall(function() rec = CHS:TryBeginRecording("PROTO_Image", "PROTO Image on face") end)
+	local d = Instance.new("Decal")
+	d.Name = "PROTO_Image"
+	d.Texture = "rbxassetid://" .. id
+	d.Face = face
+	d.Parent = p
+	if rec then pcall(function() CHS:FinishRecording(rec, Enum.FinishRecordingOperation.Commit) end) end
+	return d, face
+end
+function ENT.addFaceText(p, text)
+	text = tostring(text or "")
+	if text:gsub("%s", "") == "" then return nil, "type the text in the box first" end
+	local face = ENT.faceTowardCamera(p)
+	local rec
+	pcall(function() rec = CHS:TryBeginRecording("PROTO_Text", "PROTO Text on face") end)
+	local g = Instance.new("SurfaceGui")
+	g.Name = "PROTO_Text"
+	g.Face = face
+	g.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	g.PixelsPerStud = 50
+	g.Parent = p
+	local t = Instance.new("TextLabel")
+	t.Size = UDim2.fromScale(1, 1)
+	t.BackgroundTransparency = 1
+	t.TextScaled = true
+	t.Font = Enum.Font.GothamBold
+	t.TextColor3 = Color3.new(1, 1, 1)
+	t.Text = text
+	t.Parent = g
+	if rec then pcall(function() CHS:FinishRecording(rec, Enum.FinishRecordingOperation.Commit) end) end
+	return g, face
+end
+-- ===== end v2.67 LIGHTER =====
+-- ===== v2.72 COLOUR PER FACE (Dylan: "if its all one face we have to do colour per face") =====
+-- A PROTO part (a block, extrude, revolve - anything with a recipe) remembers its painted faces in PROTO_Paint: for each,
+-- a point on the face + which way it faces (in the part's own recipe frame) + the colour. Every rebuild finds that face
+-- again (the triangle nearest the point, facing the same way) and colours its whole smooth face IN the mesh. So paint
+-- survives cuts, Detail changes and edits. The part's own Color goes white (the mesh colours show as they are); the
+-- colour of the unpainted faces is kept in PROTO_PaintBase.
+local function closestOnTri(p, a, b, c)
+	local ab, ac, ap = b - a, c - a, p - a
+	local d1, d2 = ab:Dot(ap), ac:Dot(ap)
+	if d1 <= 0 and d2 <= 0 then return a end
+	local bp = p - b
+	local d3, d4 = ab:Dot(bp), ac:Dot(bp)
+	if d3 >= 0 and d4 <= d3 then return b end
+	local vc = d1 * d4 - d3 * d2
+	if vc <= 0 and d1 >= 0 and d3 <= 0 then return a + ab * (d1 / (d1 - d3)) end
+	local cp = p - c
+	local d5, d6 = ab:Dot(cp), ac:Dot(cp)
+	if d6 >= 0 and d5 <= d6 then return c end
+	local vb = d5 * d2 - d1 * d6
+	if vb <= 0 and d2 >= 0 and d6 <= 0 then return a + ac * (d2 / (d2 - d6)) end
+	local va = d3 * d6 - d5 * d4
+	if va <= 0 and (d4 - d3) >= 0 and (d5 - d6) >= 0 then return b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6))) end
+	local den = 1 / (va + vb + vc)
+	return a + ab * (vb * den) + ac * (vc * den)
+end
+ENT.closestOnTri = closestOnTri
+function ENT.paintOf(p)
+	local list = {}
+	pcall(function() list = HttpService:JSONDecode(p:GetAttribute("PROTO_Paint") or "[]") end)
+	return list
+end
+-- colour the triangles (world) from a part's paint list; base = the part's recipe frame. true = something painted.
+function ENT.applyPaint(tris, list, base, baseCol)
+	if not list or #list == 0 then return false end
+	-- which way "out" is for this set (the volume's sign)
+	local vol = 0
+	for _, t in ipairs(tris) do vol += t[1]:Dot(t[2]:Cross(t[3])) end
+	local sg = vol >= 0 and 1 or -1
+	local byGroup = {}
+	for _, t in ipairs(tris) do
+		t.col = baseCol
+		local g = tostring(t.g)
+		byGroup[g] = byGroup[g] or {}
+		table.insert(byGroup[g], t)
+	end
+	local atByGroup = {}   -- v3.41 (glitch sweep): each group's triangles by corner (built once, for the joined-up face below)
+	for _, e in ipairs(list) do
+		local wp = base:PointToWorldSpace(Vector3.new(e.p[1], e.p[2], e.p[3]))
+		local wn = base:VectorToWorldSpace(Vector3.new(e.n[1], e.n[2], e.n[3]))
+		local best, bd
+		for _, t in ipairs(tris) do
+			local nrm = (t[2] - t[1]):Cross(t[3] - t[1])
+			if nrm.Magnitude > 1e-12 and (nrm.Unit * sg):Dot(wn) > 0.7 then
+				local d = (closestOnTri(wp, t[1], t[2], t[3]) - wp).Magnitude
+				if not bd or d < bd then best, bd = t, d end
+			end
+		end
+		if best and bd < 0.25 then
+			local col = e.c and Color3.new(e.c[1], e.c[2], e.c[3]) or baseCol
+			-- v3.41 (glitch sweep): only the JOINED-UP face under the point (same group + sharing a corner, like the
+			-- hover outline) - a face cut in two by a through cut used to get both halves painted
+			local g = tostring(best.g)
+			local at = atByGroup[g]
+			if not at then
+				at = {}
+				for _, t in ipairs(byGroup[g]) do
+					for k = 1, 3 do
+						local vk = ENT.tkey(t[k])
+						at[vk] = at[vk] or {}
+						table.insert(at[vk], t)
+					end
+				end
+				atByGroup[g] = at
+			end
+			local seen, stack = { [best] = true }, { best }
+			while #stack > 0 do
+				local t = table.remove(stack)
+				t.col = col
+				for k = 1, 3 do
+					for _, o in ipairs(at[ENT.tkey(t[k])]) do
+						if not seen[o] then seen[o] = true stack[#stack + 1] = o end
+					end
+				end
+			end
+		end
+	end
+	return true
+end
+-- after a rebuild: a painted part shows its mesh colours as they are
+function ENT.paintLook(np, painted)
+	if not painted then
+		-- v3.41 (glitch sweep): nothing painted any more -> give the part its real colour back (it was white while
+		-- painted) and turn the part colour back on, then forget the kept colour
+		local b = np:GetAttribute("PROTO_PaintBase")
+		if typeof(b) == "Color3" then
+			pcall(function() np.Color = b end)
+			pcall(function() np.UsePartColor = true end)
+			np:SetAttribute("PROTO_PaintBase", nil)
+		end
+		return
+	end
+	pcall(function() np.Color = Color3.new(1, 1, 1) end)
+	pcall(function() np.UsePartColor = false end)
+end
+-- the recipe frame paint is stored in (block: its box, others: their recipe frame)
+function ENT.paintBase(p)
+	local cf = ENT.blockOf(p)
+	if cf and ENT.rebuildable(p) then return cf end
+	local R = ENT.recipeOf(p)
+	return R and R.F or nil
+end
+-- PAINT ONE FACE of a PROTO part (clear = back to the part's own colour). ray = the mouse ray.
+function ENT.paintMeshFace(p, ray, col, clear)
+	local base = ENT.paintBase(p)
+	if not base then return nil, "no recipe" end
+	local tris = ENT.partTris(p)
+	if not tris then return nil, "PROTO can't read this part's mesh" end
+	-- the triangle the mouse ray hits first
+	local o, d = ray.Origin, ray.Direction.Unit
+	local bestT, hitTri
+	for _, t in ipairs(tris) do
+		local e1, e2 = t[2] - t[1], t[3] - t[1]
+		local h = d:Cross(e2)
+		local a = e1:Dot(h)
+		if math.abs(a) > 1e-12 then
+			local f = 1 / a
+			local sv = o - t[1]
+			local u = f * sv:Dot(h)
+			if u >= 0 and u <= 1 then
+				local q = sv:Cross(e1)
+				local v = f * d:Dot(q)
+				local tt = f * e2:Dot(q)
+				if v >= 0 and u + v <= 1 and tt > 1e-6 and (not bestT or tt < bestT) then bestT, hitTri = tt, t end
+			end
+		end
+	end
+	if not hitTri then return nil, "point at the part's face" end
+	local hit = o + d * bestT
+	local n = (hitTri[2] - hitTri[1]):Cross(hitTri[3] - hitTri[1]).Unit
+	if n:Dot(d) > 0 then n = -n end   -- (the side facing the camera)
+	local lp, ln = base:PointToObjectSpace(hit), base:VectorToObjectSpace(n)
+	local list = ENT.paintOf(p)
+	local entry = { p = { lp.X, lp.Y, lp.Z }, n = { ln.X, ln.Y, ln.Z } }
+	if not clear then entry.c = { col.R, col.G, col.B } end
+	table.insert(list, entry)
+	if #list > 200 then table.remove(list, 1) end
+	local baseCol = p:GetAttribute("PROTO_PaintBase")
+	local prep = function(q)
+		if typeof(baseCol) ~= "Color3" then q:SetAttribute("PROTO_PaintBase", q.Color) end
+		q:SetAttribute("PROTO_Paint", HttpService:JSONEncode(list))
+	end
+	return ENT.setDetail(p, ENT.partDetail(p), prep, clear and "PROTO Clear face colour" or "PROTO Paint face")
+end
+
+-- ===== v3.65 MATERIAL ON ONE FACE (Dylan: "can we do material for one face only - just try") =====
+-- Roblox gives a part ONE material, so one face can't have its own. PROTO lays a paper-thin SKIN over just that face
+-- (its exact shape, holes and all - made from the part's own triangles) in the picked material + colour, welded to the
+-- part. Clicks go through it, it can't be selected on its own, it moves with the part. Shift-click the face = skin off.
+-- v3.66 (Dylan: "when I cut, it doesn't cut through the paint thing - save them in a form that can be applied to a
+-- face"): the skin is now a RULE kept on the part, like paint - PROTO_Skins = [{ p = point, n = normal (in the part's
+-- recipe frame), m = material, v = variant, c = colour }]. Every rebuild (cut, chamfer, change) draws every skin again
+-- from the NEW face, so cuts go through it. The skin parts themselves are just what's drawn from the rules.
+ENT.SKIN_OUT, ENT.SKIN_IN = 0.012, 0.002   -- studs above the face: the skin's top and its underside
+function ENT.skinRules(p)
+	local list = {}
+	pcall(function() list = HttpService:JSONDecode(p:GetAttribute("PROTO_Skins") or "[]") end)
+	return type(list) == "table" and list or {}
+end
+function ENT.skinFrame(p) return ENT.paintBase(p) or p.CFrame end
+-- the face at point P (world) with outward normal N: its triangles (each with its outward normal .n)
+function ENT.skinFaceTris(tris, P, N)
+	local vol = 0
+	for _, t in ipairs(tris) do vol += t[1]:Dot(t[2]:Cross(t[3])) end
+	local sg = vol >= 0 and 1 or -1
+	-- triangles in that plane, facing that way
+	local flat, best, bd = {}, nil, math.huge
+	for _, t in ipairs(tris) do
+		local cr = (t[2] - t[1]):Cross(t[3] - t[1])
+		if cr.Magnitude > 1e-9 then
+			local n = (cr * sg).Unit
+			if n:Dot(N) > 0.995 and math.abs(N:Dot(t[1] - P)) < 0.02 then
+				local e = { t[1], t[2], t[3], n = n, g = t.g }
+				table.insert(flat, e)
+				local d = ((t[1] + t[2] + t[3]) / 3 - P).Magnitude
+				if d < bd then best, bd = e, d end
+			end
+		end
+	end
+	if not best then return nil, sg end
+	-- a smooth group: all of it (a curved face too); otherwise the flat triangles joined to the nearest one
+	local g = best.g
+	if g ~= nil and tostring(g) ~= "nil" then
+		local sel = {}
+		for _, t in ipairs(tris) do
+			if tostring(t.g) == tostring(g) then
+				local cr = (t[2] - t[1]):Cross(t[3] - t[1])
+				if cr.Magnitude > 1e-9 then
+					local n = (cr * sg).Unit
+					if n:Dot(N) > 0.2 then table.insert(sel, { t[1], t[2], t[3], n = n }) end
+				end
+			end
+		end
+		if #sel > 0 then return sel, sg end
+	end
+	return flat, sg
+end
+-- is world point P on this face?
+function ENT.skinOnFace(sel, P)
+	for _, t in ipairs(sel) do
+		if math.abs(t.n:Dot(P - t[1])) < 0.03 then
+			local v0, v1, v2 = t[3] - t[1], t[2] - t[1], P - t[1]
+			local d00, d01, d02, d11, d12 = v0:Dot(v0), v0:Dot(v1), v0:Dot(v2), v1:Dot(v1), v1:Dot(v2)
+			local den = d00 * d11 - d01 * d01
+			if math.abs(den) > 1e-12 then
+				local u = (d11 * d02 - d01 * d12) / den
+				local v = (d00 * d12 - d01 * d02) / den
+				if u >= -1e-3 and v >= -1e-3 and u + v <= 1 + 1e-3 then return true end
+			end
+		end
+	end
+	return false
+end
+-- one skin part from a face's triangles
+function ENT.skinMake(p, sel, sg, rule, idx)
+	local lo, hi = Vector3.new(math.huge, math.huge, math.huge), Vector3.new(-math.huge, -math.huge, -math.huge)
+	for _, t in ipairs(sel) do
+		for k = 1, 3 do
+			local a, b = t[k] + t.n * ENT.SKIN_OUT, t[k] + t.n * ENT.SKIN_IN
+			lo, hi = lo:Min(a):Min(b), hi:Max(a):Max(b)
+		end
+	end
+	local ctr = (lo + hi) / 2
+	local em = AssetService:CreateEditableMesh()
+	local flipOut = (sg < 0) ~= (ENT.meshFlip == true)
+	for _, t in ipairs(sel) do
+		local ia, ib, ic = em:AddVertex(t[1] + t.n * ENT.SKIN_OUT - ctr), em:AddVertex(t[2] + t.n * ENT.SKIN_OUT - ctr), em:AddVertex(t[3] + t.n * ENT.SKIN_OUT - ctr)
+		if flipOut then ib, ic = ic, ib end
+		em:AddTriangle(ia, ib, ic)
+		local ja, jb, jc = em:AddVertex(t[1] + t.n * ENT.SKIN_IN - ctr), em:AddVertex(t[2] + t.n * ENT.SKIN_IN - ctr), em:AddVertex(t[3] + t.n * ENT.SKIN_IN - ctr)
+		if not flipOut then jb, jc = jc, jb end
+		em:AddTriangle(ja, jb, jc)
+	end
+	local okM, mp = pcall(function() return AssetService:CreateMeshPartAsync(Content.fromObject(em)) end)
+	if not okM or not mp then pcall(function() em:Destroy() end) return nil, tostring(mp) end
+	mp.Name = "PROTO_Skin"
+	mp.CFrame = CFrame.new(ctr)
+	mp.Anchored = false
+	mp.Massless = true
+	mp.CanCollide, mp.CanQuery, mp.CanTouch, mp.CastShadow = false, false, false, false
+	mp.Locked = true
+	pcall(function() mp.Material = Enum.Material[rule.m] end)
+	pcall(function() mp.MaterialVariant = rule.v or "" end)
+	if type(rule.c) == "table" then mp.Color = Color3.new(rule.c[1], rule.c[2], rule.c[3])
+	else local b = p:GetAttribute("PROTO_PaintBase") mp.Color = typeof(b) == "Color3" and b or p.Color end
+	mp:SetAttribute("PROTO_SkinKey", idx)
+	mp:SetAttribute("PROTO_MeshUnsaved", true)
+	local w = Instance.new("WeldConstraint")
+	w.Name = "PROTO_SkinWeld"
+	w.Part0, w.Part1 = p, mp
+	w.Parent = mp
+	mp.Parent = p
+	return mp
+end
+-- draw every skin rule on part p again (old skins out). Call inside a recording.
+function ENT.skinsRedraw(p, tris)
+	for _, c in ipairs(p:GetChildren()) do
+		if c:IsA("BasePart") and c:GetAttribute("PROTO_SkinKey") ~= nil then c.Parent = nil end   -- (never Destroy: Ctrl+Z)
+	end
+	local rules = ENT.skinRules(p)
+	if #rules == 0 then return 0 end
+	tris = tris or ENT.partTris(p)
+	if not tris then return 0 end
+	local F = ENT.skinFrame(p)
+	local made = {}
+	for i, r in ipairs(rules) do
+		local P = F:PointToWorldSpace(Vector3.new(r.p[1], r.p[2], r.p[3]))
+		local N = F:VectorToWorldSpace(Vector3.new(r.n[1], r.n[2], r.n[3])).Unit
+		local sel, sg = ENT.skinFaceTris(tris, P, N)
+		if sel and #sel > 0 then
+			local mp = ENT.skinMake(p, sel, sg, r, i)
+			if mp then table.insert(made, mp) end
+		end
+	end
+	if #made > 0 then pcall(function() ENT.msAfterCut(made) end) end
+	return #made
+end
+-- the click: add (or Shift = take off) the skin rule for the face under the mouse, then draw them all again
+function ENT.faceSkin(p, ray, clear)
+	local tris = ENT.partTris(p)
+	if not tris or #tris == 0 then return nil, "PROTO can't read this part's shape" end
+	local o, d = ray.Origin, ray.Direction.Unit
+	local bestT, hitTri
+	for _, t in ipairs(tris) do
+		local e1, e2 = t[2] - t[1], t[3] - t[1]
+		local h = d:Cross(e2)
+		local a = e1:Dot(h)
+		if math.abs(a) > 1e-12 then
+			local f = 1 / a
+			local sv = o - t[1]
+			local u = f * sv:Dot(h)
+			if u >= 0 and u <= 1 then
+				local q = sv:Cross(e1)
+				local v = f * d:Dot(q)
+				local tt = f * e2:Dot(q)
+				if v >= 0 and u + v <= 1 and tt > 1e-6 and (not bestT or tt < bestT) then bestT, hitTri = tt, t end
+			end
+		end
+	end
+	if not hitTri then return nil, "point at the part's face" end
+	local hit = o + d * bestT
+	local vol = 0
+	for _, t in ipairs(tris) do vol += t[1]:Dot(t[2]:Cross(t[3])) end
+	local N = ((hitTri[2] - hitTri[1]):Cross(hitTri[3] - hitTri[1]) * (vol >= 0 and 1 or -1)).Unit
+	local sel = ENT.skinFaceTris(tris, hit, N)
+	if not sel then return nil, "couldn't find that face" end
+	-- the rules: this face's old one(s) out, the new one in
+	local F = ENT.skinFrame(p)
+	local keep, had = {}, false
+	for _, r in ipairs(ENT.skinRules(p)) do
+		local P = F:PointToWorldSpace(Vector3.new(r.p[1], r.p[2], r.p[3]))
+		if ENT.skinOnFace(sel, P) then had = true else table.insert(keep, r) end
+	end
+	if clear then
+		if not had then return nil, "no material on that face" end
+	else
+		local lp, ln = F:PointToObjectSpace(hit), F:VectorToObjectSpace(N)
+		table.insert(keep, {
+			p = { lp.X, lp.Y, lp.Z }, n = { ln.X, ln.Y, ln.Z },
+			m = (ENT.paintMat or Enum.Material.Plastic).Name, v = ENT.paintVariant or "",
+			c = ENT.paintDoCol and { ENT.paintCol.R, ENT.paintCol.G, ENT.paintCol.B } or nil,
+		})
+	end
+	local ok = record(clear and "PROTO Take material off face" or "PROTO Material on face", function()
+		p:SetAttribute("PROTO_Skins", (#keep > 0) and HttpService:JSONEncode(keep) or nil)
+		ENT.skinsRedraw(p, tris)
+	end)
+	if not ok then return nil, "couldn't put the material on" end
+	return true
+end
+-- after a part is swapped for a new one (rebuild / save): welds that held the old one hold the new one
+function ENT.reweld(old, new, root)
+	for _, w in ipairs(root:GetDescendants()) do
+		if w:IsA("WeldConstraint") then
+			if w.Part0 == old then w.Part0 = new end
+			if w.Part1 == old then w.Part1 = new end
+		end
+	end
+end
+-- ===== end v3.65 MATERIAL ON ONE FACE =====
+-- v3.44 (paint check): Pick on a PROTO part with colour in its mesh: the colour of the face under the mouse (read from
+-- the mesh itself), else the part's own colour (kept in PROTO_PaintBase - its Color is white while painted)
+function ENT.pickMeshColour(t, ray)
+	if not ENT.hasMeshPaint(t) then return nil end
+	local got
+	pcall(function()
+		local em, owned = ENT.msMeshOf(t)
+		if not em then return end
+		local o = t.CFrame:PointToObjectSpace(ray.Origin)
+		local d = t.CFrame:VectorToObjectSpace(ray.Direction.Unit * 5000)
+		local okR, _, fid = pcall(function() return em:RaycastLocal(o, d) end)
+		if okR and fid then
+			local ids = em:GetFaceColors(fid)
+			if ids and ids[1] then got = em:GetColor(ids[1]) end
+		end
+		if owned then pcall(function() em:Destroy() end) end
+	end)
+	if typeof(got) == "Color3" then return got end
+	local b = t:GetAttribute("PROTO_PaintBase")
+	return typeof(b) == "Color3" and b or nil
+end
+-- ===== v3.02 HEX PICKER + BRUSH PAINT (Dylan: "a colour hex like this, paint like this, and one per face") =====
+-- HEX PICKER: a honeycomb of colours (hue round it, white in the middle, darker at the edge) + a row of greys.
+function ENT.hexPickerOpen()
+	if ENT.pickerGui then ENT.pickerGui.Enabled = true ENT.pickerPlace() return end
+	local g = Instance.new("ScreenGui")
+	g.Name = "PROTO_Picker"
+	g.ResetOnSpawn = false
+	g.IgnoreGuiInset = true
+	g.DisplayOrder = 70
+	g.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	g.Parent = CoreGui
+	ENT.pickerGui = g
+	-- v3.41 (glitch sweep): closed under the mouse = no MouseLeave, so "mouse is over the bar" is cleared here
+	g:GetPropertyChangedSignal("Enabled"):Connect(function() if not g.Enabled then ENT.overHud = false end end)
+	-- (a click anywhere else closes it)
+	local back = Instance.new("TextButton")
+	back.Text = ""
+	back.BackgroundTransparency = 1
+	back.Size = UDim2.fromScale(1, 1)
+	back.AutoButtonColor = false
+	back.Parent = g
+	back.MouseButton1Click:Connect(function() g.Enabled = false end)
+	local N, CS = 6, 20
+	local dx, dy = CS, CS * 0.87
+	local W, H = dx * (2 * N + 1) + 24, dy * (2 * N) + CS + 70
+	local f = Instance.new("Frame")
+	f.Name = "Picker"
+	f.Size = UDim2.fromOffset(W, H)
+	f.BackgroundColor3 = Color3.fromRGB(28, 29, 34)
+	f.BorderSizePixel = 0
+	f.Active = true
+	f.Parent = g
+	Instance.new("UICorner", f).CornerRadius = UDim.new(0, 8)
+	local st = Instance.new("UIStroke") st.Color = Color3.fromRGB(70, 110, 160) st.Parent = f
+	ENT.pickerFrame = f
+	f.MouseEnter:Connect(function() ENT.overHud = true end)
+	f.MouseLeave:Connect(function() ENT.overHud = false end)
+	local hint = Instance.new("TextLabel")
+	hint.BackgroundTransparency = 1
+	hint.Position = UDim2.new(0, 12, 1, -24)
+	hint.Size = UDim2.new(1, -24, 0, 18)
+	hint.Font = Enum.Font.GothamMedium
+	hint.TextSize = 11
+	hint.TextColor3 = Color3.fromRGB(190, 200, 215)
+	hint.TextXAlignment = Enum.TextXAlignment.Left
+	hint.Text = "Pick a colour"
+	hint.Parent = f
+	local function cell(x, y, col)
+		local b = Instance.new("TextButton")
+		b.Text = ""
+		b.AutoButtonColor = false
+		b.AnchorPoint = Vector2.new(0.5, 0.5)
+		b.Position = UDim2.fromOffset(x, y)
+		b.Size = UDim2.fromOffset(CS - 2, CS - 2)
+		b.BackgroundColor3 = col
+		b.BorderSizePixel = 0
+		b.Parent = f
+		Instance.new("UICorner", b).CornerRadius = UDim.new(0.5, 0)
+		local bs = Instance.new("UIStroke") bs.Color = Color3.new(1, 1, 1) bs.Thickness = 2 bs.Enabled = false bs.Parent = b
+		-- v3.04: a dot in the middle = the colour you have now
+		local dot = Instance.new("Frame")
+		dot.AnchorPoint = Vector2.new(0.5, 0.5)
+		dot.Position = UDim2.fromScale(0.5, 0.5)
+		dot.Size = UDim2.fromOffset(6, 6)
+		dot.BorderSizePixel = 0
+		dot.BackgroundColor3 = (col.R + col.G + col.B > 1.6) and Color3.new(0, 0, 0) or Color3.new(1, 1, 1)
+		dot.Visible = false
+		dot.Parent = b
+		Instance.new("UICorner", dot).CornerRadius = UDim.new(0.5, 0)
+		ENT.pickerCells = ENT.pickerCells or {}
+		table.insert(ENT.pickerCells, { col = col, dot = dot })
+		b.MouseEnter:Connect(function() bs.Enabled = true hint.Text = ENT.hexOf(col) end)
+		b.MouseLeave:Connect(function() bs.Enabled = false hint.Text = "Pick a colour" end)
+		b.MouseButton1Click:Connect(function()
+			ENT.paintCol = col
+			ENT.paintRefresh()
+			g.Enabled = false
+			setStatus("Colour " .. ENT.hexOf(col) .. " - click parts / faces, or brush, to paint.")
+		end)
+	end
+	local cx, cy = W / 2, 12 + dy * N + CS / 2
+	for r = -N, N do
+		for q = -N, N do
+			local d = math.max(math.abs(q), math.abs(r), math.abs(q + r))
+			if d <= N then
+				local x, y = cx + dx * (q + r / 2), cy + dy * r
+				local col
+				if d == 0 then col = Color3.new(1, 1, 1)
+				else
+					local h = (math.atan2(y - cy, x - cx) / (2 * math.pi)) % 1
+					local sat = math.min(1, d / (N - 2))
+					local val = (d <= N - 2) and 1 or (1 - (d - (N - 2)) * 0.22)
+					col = Color3.fromHSV(h, sat, val)
+				end
+				cell(x, y, col)
+			end
+		end
+	end
+	for i = 0, 12 do
+		local v = 1 - i / 12
+		cell(12 + CS / 2 + i * ((W - 24 - CS) / 12), H - 44, Color3.new(v, v, v))
+	end
+	ENT.pickerPlace()
+end
+-- open it by the mouse, kept on the screen
+-- v3.63: MATERIAL PICKER - a grid of the materials, the one you have now in blue; click one = that material, closes
+-- v3.64 (Dylan: "each material shows what it is - fabric is fabric - and an Add material at the bottom"):
+--   every tile shows a little swatch of the real material (in your colour) above its name; the place's own custom
+--   materials (MaterialVariants in MaterialService) are in the grid too; "+ Add material" at the bottom makes a new one
+--   from a texture image ID (on top of the material you have picked now).
+function ENT.matPickerOpen()
+	local g = ENT.matGui
+	if not g then
+		g = Instance.new("ScreenGui")
+		g.Name = "PROTO_MatPicker"
+		g.ResetOnSpawn = false
+		g.IgnoreGuiInset = true
+		g.DisplayOrder = 70
+		g.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		g.Parent = CoreGui
+		ENT.matGui = g
+		g:GetPropertyChangedSignal("Enabled"):Connect(function() if not g.Enabled then ENT.overHud = false end end)
+		local back = Instance.new("TextButton")
+		back.Text = ""
+		back.BackgroundTransparency = 1
+		back.Size = UDim2.fromScale(1, 1)
+		back.AutoButtonColor = false
+		back.Parent = g
+		back.MouseButton1Click:Connect(function() g.Enabled = false end)
+		local COLS, BW, BH = 4, 96, 72
+		local f = Instance.new("Frame")
+		f.Name = "Picker"
+		f.Size = UDim2.fromOffset(COLS * (BW + 4) + 26, 470)
+		f.BackgroundColor3 = Color3.fromRGB(28, 29, 34)
+		f.BorderSizePixel = 0
+		f.Active = true
+		f.Parent = g
+		Instance.new("UICorner", f).CornerRadius = UDim.new(0, 8)
+		local st = Instance.new("UIStroke") st.Color = Color3.fromRGB(70, 110, 160) st.Parent = f
+		ENT.matFrame = f
+		f.MouseEnter:Connect(function() ENT.overHud = true end)
+		f.MouseLeave:Connect(function() ENT.overHud = false end)
+		local sc = Instance.new("ScrollingFrame")
+		sc.Position = UDim2.fromOffset(10, 10)
+		sc.Size = UDim2.new(1, -16, 1, -86)
+		sc.BackgroundTransparency = 1
+		sc.BorderSizePixel = 0
+		sc.ScrollBarThickness = 6
+		sc.CanvasSize = UDim2.new()
+		sc.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		sc.Parent = f
+		ENT.matScroll = sc
+		local gl = Instance.new("UIGridLayout")
+		gl.CellSize = UDim2.fromOffset(BW, BH)
+		gl.CellPadding = UDim2.fromOffset(4, 4)
+		gl.SortOrder = Enum.SortOrder.LayoutOrder
+		gl.Parent = sc
+		-- + ADD MATERIAL: name + texture image ID -> a new MaterialVariant in MaterialService
+		local row = Instance.new("Frame")
+		row.BackgroundTransparency = 1
+		row.Position = UDim2.new(0, 10, 1, -70)
+		row.Size = UDim2.new(1, -20, 0, 28)
+		row.Parent = f
+		local function box(ph, x, w)
+			local b = Instance.new("TextBox")
+			b.PlaceholderText = ph
+			b.Text = ""
+			b.ClearTextOnFocus = false
+			b.Position = UDim2.fromOffset(x, 0)
+			b.Size = UDim2.fromOffset(w, 28)
+			b.BackgroundColor3 = Color3.fromRGB(16, 17, 20)
+			b.BorderSizePixel = 0
+			b.Font = Enum.Font.Gotham
+			b.TextSize = 11
+			b.TextColor3 = Color3.new(1, 1, 1)
+			b.PlaceholderColor3 = Color3.fromRGB(120, 125, 140)
+			b.Parent = row
+			Instance.new("UICorner", b).CornerRadius = UDim.new(0, 4)
+			return b
+		end
+		local nameBox = box("Name", 0, 110)
+		local idBox = box("Texture image ID", 116, 150)
+		local add = Instance.new("TextButton")
+		add.Text = "+ Add material"
+		add.Position = UDim2.fromOffset(272, 0)
+		add.Size = UDim2.new(1, -272, 0, 28)
+		add.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
+		add.BorderSizePixel = 0
+		add.Font = Enum.Font.GothamBold
+		add.TextSize = 11
+		add.TextColor3 = Color3.new(1, 1, 1)
+		add.Parent = row
+		Instance.new("UICorner", add).CornerRadius = UDim.new(0, 4)
+		add.MouseButton1Click:Connect(function()
+			local id = tonumber((string.match(idBox.Text or "", "%d+")))
+			if not id then setStatus("ADD MATERIAL: paste the texture's IMAGE ID (the number) in the box, then press + Add material.") return end
+			local MS = game:GetService("MaterialService")
+			local name = (string.gsub(nameBox.Text or "", "^%s*(.-)%s*$", "%1"))
+			if name == "" then
+				local n = 1
+				while MS:FindFirstChild("My material " .. n) do n += 1 end
+				name = "My material " .. n
+			end
+			local base = ENT.paintMat or Enum.Material.Plastic
+			local ok = record("PROTO Add material " .. name, function()
+				local v = Instance.new("MaterialVariant")
+				v.Name = name
+				v.BaseMaterial = base
+				v.ColorMap = "rbxassetid://" .. id
+				v.Parent = MS
+			end)
+			if not ok then setStatus("ADD MATERIAL: Roblox wouldn't make it - check the ID is an IMAGE (not a decal).") return end
+			ENT.paintMat, ENT.paintVariant, ENT.paintDoMat = base, name, true
+			nameBox.Text, idBox.Text = "", ""
+			pcall(ENT.matFill)
+			ENT.paintRefresh()
+			setStatus(("Added material '%s' (texture %d on %s) - it's in MaterialService, picked now. Click parts to paint it on."):format(name, id, base.Name))
+		end)
+		local hint = Instance.new("TextLabel")
+		hint.BackgroundTransparency = 1
+		hint.Position = UDim2.new(0, 12, 1, -34)
+		hint.Size = UDim2.new(1, -24, 0, 26)
+		hint.Font = Enum.Font.GothamMedium
+		hint.TextSize = 11
+		hint.TextWrapped = true
+		hint.TextColor3 = Color3.fromRGB(190, 200, 215)
+		hint.TextXAlignment = Enum.TextXAlignment.Left
+		hint.Text = "Pick a material. Add your own: give it a name + a texture IMAGE ID - it goes on top of the material picked now."
+		hint.Parent = f
+	end
+	g.Enabled = true
+	pcall(ENT.matFill)
+	ENT.matPickerPlace()
+end
+-- the tiles: Roblox's materials, then the place's own (MaterialVariants), each with a swatch of what it looks like
+function ENT.matFill()
+	local sc = ENT.matScroll
+	if not sc then return end
+	for _, c in ipairs(sc:GetChildren()) do if not c:IsA("UIGridLayout") then c:Destroy() end end   -- (PROTO's own picker tiles)
+	ENT.matCells = {}
+	local order = 0
+	local function tile(label, m, variant)
+		order += 1
+		local b = Instance.new("TextButton")
+		b.Text = ""
+		b.AutoButtonColor = false
+		b.LayoutOrder = order
+		b.BackgroundColor3 = Color3.fromRGB(48, 50, 58)
+		b.BorderSizePixel = 0
+		b.Parent = sc
+		Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
+		local stroke = Instance.new("UIStroke") stroke.Thickness = 2 stroke.Color = Color3.fromRGB(0, 140, 255) stroke.Enabled = false stroke.Parent = b
+		-- a small window looking at a flat block of that material
+		local vp = Instance.new("ViewportFrame")
+		vp.Position = UDim2.fromOffset(4, 4)
+		vp.Size = UDim2.new(1, -8, 1, -24)
+		vp.BackgroundColor3 = Color3.fromRGB(20, 21, 25)
+		vp.BorderSizePixel = 0
+		vp.Ambient = Color3.fromRGB(160, 160, 165)
+		vp.LightColor = Color3.new(1, 1, 1)
+		vp.LightDirection = Vector3.new(-0.6, -1, -0.8)
+		vp.Parent = b
+		Instance.new("UICorner", vp).CornerRadius = UDim.new(0, 4)
+		local part = Instance.new("Part")
+		part.Anchored = true
+		part.Size = Vector3.new(10, 6, 1)
+		part.CFrame = CFrame.new()
+		part.Material = m
+		pcall(function() part.MaterialVariant = variant end)
+		part.Color = ENT.paintCol or Color3.fromRGB(163, 162, 165)
+		part.Parent = vp
+		local cam = Instance.new("Camera")
+		cam.FieldOfView = 40
+		cam.CFrame = CFrame.lookAt(Vector3.new(0, 0, 5), Vector3.new(0, 0, 0))
+		cam.Parent = vp
+		vp.CurrentCamera = cam
+		local nm = Instance.new("TextLabel")
+		nm.BackgroundTransparency = 1
+		nm.Position = UDim2.new(0, 2, 1, -20)
+		nm.Size = UDim2.new(1, -4, 0, 18)
+		nm.Font = Enum.Font.GothamMedium
+		nm.TextSize = 11
+		nm.TextTruncate = Enum.TextTruncate.AtEnd
+		nm.TextColor3 = Color3.new(1, 1, 1)
+		nm.Text = label
+		nm.Parent = b
+		b.MouseButton1Click:Connect(function()
+			ENT.paintMat = m
+			ENT.paintVariant = variant
+			if not ENT.paintDoMat then ENT.paintDoMat = true end   -- (picking a material means you want it painted)
+			if ENT.matGui then ENT.matGui.Enabled = false end
+			ENT.paintRefresh()
+			setStatus("Material: " .. label .. ". Click parts to paint it on.")
+		end)
+		table.insert(ENT.matCells, { b = b, m = m, v = variant, part = part, stroke = stroke })
+	end
+	for _, name in ipairs(ENT.MATS or { "Plastic" }) do
+		local ok, m = pcall(function() return Enum.Material[name] end)
+		if ok and m then tile(name, m, "") end
+	end
+	-- the place's own materials
+	pcall(function()
+		for _, v in ipairs(game:GetService("MaterialService"):GetDescendants()) do
+			if v:IsA("MaterialVariant") then tile(v.Name, v.BaseMaterial, v.Name) end
+		end
+	end)
+end
+function ENT.matPickerPlace(keep)
+	local f = ENT.matFrame
+	if not f then return end
+	for _, e in ipairs(ENT.matCells or {}) do
+		local on = e.m == ENT.paintMat and (e.v or "") == (ENT.paintVariant or "")
+		e.b.BackgroundColor3 = on and Color3.fromRGB(0, 120, 215) or Color3.fromRGB(48, 50, 58)
+		e.stroke.Enabled = on
+		pcall(function() e.part.Color = ENT.paintCol end)
+	end
+	if keep then return end
+	local m = UIS:GetMouseLocation()
+	local vs = workspace.CurrentCamera.ViewportSize
+	local x = math.clamp(m.X - f.Size.X.Offset / 2, 4, math.max(4, vs.X - f.Size.X.Offset - 4))
+	local y = math.clamp(m.Y + 12, 4, math.max(4, vs.Y - f.Size.Y.Offset - 4))
+	f.Position = UDim2.fromOffset(x, y)
+end
+function ENT.pickerPlace()
+	local f = ENT.pickerFrame
+	if not f then return end
+	-- the cell nearest the colour you have now gets the dot (only if it's really that colour)
+	local c, best, bd = ENT.paintCol, nil, 0.02
+	for _, e in ipairs(ENT.pickerCells or {}) do
+		e.dot.Visible = false
+		local d = math.abs(e.col.R - c.R) + math.abs(e.col.G - c.G) + math.abs(e.col.B - c.B)
+		if d < bd then best, bd = e, d end
+	end
+	if best then best.dot.Visible = true end
+	local m = UIS:GetMouseLocation()
+	local vs = workspace.CurrentCamera.ViewportSize
+	local x = math.clamp(m.X - f.Size.X.Offset / 2, 4, math.max(4, vs.X - f.Size.X.Offset - 4))
+	local y = math.clamp(m.Y + 12, 4, math.max(4, vs.Y - f.Size.Y.Offset - 4))
+	f.Position = UDim2.fromOffset(x, y)
+end
+
+-- BRUSH: dabs stored with the part's recipe (PROTO_Brush: { x, y, z, radius, r, g, b, strength, nx, ny, nz } in the
+-- recipe frame; no colour = back to the part's own colour). Every rebuild splits the faces that need it near the dabs
+-- (only there - the rest of the part stays light) and gives each corner its blended colour.
+function ENT.brushOf(p)
+	local list = {}
+	pcall(function() list = HttpService:JSONDecode(p:GetAttribute("PROTO_Brush") or "[]") end)
+	return list
+end
+function ENT.brushSize()
+	local r = tonumber(U.brushR and U.brushR.Text) or 1
+	local st = tonumber(U.brushS and U.brushS.Text) or 1
+	if r ~= r or math.abs(r) == math.huge then r = 1 end   -- v3.44 (paint check): "nan" / "inf" typed in the box
+	if st ~= st or math.abs(st) == math.huge then st = 1 end
+	return math.clamp(r, 0.05, 50), math.clamp(st, 0.05, 1)
+end
+-- the PROTO part + point + normal under the mouse
+function ENT.brushHit(p)
+	if not (p and p:IsA("BasePart") and ENT.detailKind(p)) then return nil end
+	local T = ENT.partTopo(p)
+	if not T then return nil end
+	local o, d = mouse.UnitRay.Origin, mouse.UnitRay.Direction.Unit
+	local ti, tt = ENT.rayTris(T.tris, o, d)
+	if not ti then return nil end
+	local t = T.tris[ti]
+	local n = (t[2] - t[1]):Cross(t[3] - t[1])
+	n = n.Magnitude > 1e-12 and n.Unit or -d
+	if n:Dot(d) > 0 then n = -n end
+	return o + d * tt, n
+end
+-- the brush circle on the surface
+function ENT.brushRing(pos, n, r, col)
+	ENT.brushPool = ENT.brushPool or newPool("BoxHandleAdornment", true)
+	pBegin(ENT.brushPool)
+	if pos then
+		local u = (math.abs(n.Y) < 0.9 and Vector3.yAxis or Vector3.xAxis):Cross(n).Unit
+		local v = n:Cross(u)
+		local prev
+		for i = 0, 32 do
+			local a = i / 32 * 2 * math.pi
+			local q = pos + n * 0.02 + (u * math.cos(a) + v * math.sin(a)) * r
+			if prev then pLine(ENT.brushPool, prev, q, col, 3) end
+			prev = q
+		end
+	end
+	pEnd(ENT.brushPool)
+end
+function ENT.brushRingOff()
+	if ENT.brushPool then pBegin(ENT.brushPool) pEnd(ENT.brushPool) end
+	if ENT.brushDots then pBegin(ENT.brushDots) pEnd(ENT.brushDots) end
+end
+-- add one dab (and its mirror) to the stroke
+function ENT.brushDab(S, pos, n)
+	local r, st = ENT.brushSize()
+	if S.last and (pos - S.last).Magnitude < r * 0.35 then return end
+	S.last = pos
+	local base = S.base
+	local function add(lp, ln)
+		local c = (not S.erase) and ENT.paintCol or nil
+		S.dabs[#S.dabs + 1] = {
+			math.floor(lp.X * 1000 + 0.5) / 1000, math.floor(lp.Y * 1000 + 0.5) / 1000, math.floor(lp.Z * 1000 + 0.5) / 1000,
+			math.floor(r * 1000 + 0.5) / 1000,
+			c and math.floor(c.R * 1000 + 0.5) / 1000 or nil, c and math.floor(c.G * 1000 + 0.5) / 1000 or nil, c and math.floor(c.B * 1000 + 0.5) / 1000 or nil,
+			st, math.floor(ln.X * 100 + 0.5) / 100, math.floor(ln.Y * 100 + 0.5) / 100, math.floor(ln.Z * 100 + 0.5) / 100 }
+	end
+	local lp, ln = base:PointToObjectSpace(pos), base:VectorToObjectSpace(n)
+	add(lp, ln)
+	if ENT.brushSym then add(Vector3.new(2 * (S.symX or 0) - lp.X, lp.Y, lp.Z), Vector3.new(-ln.X, ln.Y, ln.Z)) end
+	-- (the stroke so far, as dots)
+	ENT.brushDots = ENT.brushDots or newPool("SphereHandleAdornment", true)
+	pDot(ENT.brushDots, pos + n * 0.03, S.erase and Color3.fromRGB(200, 200, 200) or ENT.paintCol, math.max(0.05, r * 0.35))
+end
+function ENT.brushDown(p)
+	if ENT.rebuildBusy then setStatus("Still working on the last one - one moment.") return end
+	local pos, n = ENT.brushHit(p)
+	if not pos then setStatus("BRUSH: paint on a PROTO part (one with a recipe - it shows FEATURES on the right).") return end
+	ENT.brushDots = ENT.brushDots or newPool("SphereHandleAdornment", true)
+	pBegin(ENT.brushDots)
+	ENT.brushStroke = { p = p, base = ENT.paintBase(p), dabs = {}, erase = shiftDown() }
+	-- v3.44 (paint check): X sym mirrors across the PART's middle (an extrude's frame is its drawing's, often off to the side)
+	if not ENT.rebuildable(p) then pcall(function() ENT.brushStroke.symX = ENT.brushStroke.base:PointToObjectSpace(p.Position).X end) end   -- (a block: its frame is its middle already)
+	ENT.brushDab(ENT.brushStroke, pos, n)
+end
+function ENT.brushMove()
+	-- v3.44 (paint check): let go somewhere PROTO didn't hear it (over the toolbar / panel) - the stroke ends there
+	if ENT.brushStroke and not UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then ENT.brushCommit() end
+	local S = ENT.brushStroke
+	local p = S and S.p or mouse.Target
+	local pos, n = ENT.brushHit(p)
+	local r = ENT.brushSize()
+	ENT.brushRing(pos, n, r, (S and S.erase) and Color3.fromRGB(220, 220, 220) or ENT.paintCol)
+	if S and pos then ENT.brushDab(S, pos, n) end
+	if S then pEnd(ENT.brushDots) end
+end
+-- let go: the stroke goes into the part's recipe and the part is rebuilt with it (one Ctrl+Z step)
+function ENT.brushCommit()
+	local S = ENT.brushStroke
+	ENT.brushStroke = nil
+	if ENT.brushDots then pBegin(ENT.brushDots) pEnd(ENT.brushDots) end
+	if not (S and #S.dabs > 0) then return end
+	-- v3.44 (paint check): the part was swapped for its saved copy while you painted - the stroke goes on that one
+	local hops = 0
+	while S.p and not S.p.Parent and ENT.swappedTo and ENT.swappedTo[S.p] and hops < 20 do S.p = ENT.swappedTo[S.p] hops += 1 end
+	if not (S.p and S.p.Parent) then setStatus("BRUSH: that part isn't there any more - nothing painted.") return end
+	local p = S.p
+	local list = ENT.brushOf(p)
+	for _, d in ipairs(S.dabs) do list[#list + 1] = d end
+	local cut = 0
+	while #list > 1500 do table.remove(list, 1) cut += 1 end
+	local baseCol = p:GetAttribute("PROTO_PaintBase")
+	ENT.rebuildBusy = true
+	setStatus("BRUSH: painting...")
+	local ok, np, why = pcall(ENT.setDetail, p, ENT.partDetail(p), function(q)
+		if typeof(baseCol) ~= "Color3" then q:SetAttribute("PROTO_PaintBase", q.Color) end
+		q:SetAttribute("PROTO_Brush", HttpService:JSONEncode(list))
+	end, S.erase and "PROTO Brush (back to the part colour)" or "PROTO Brush paint")
+	ENT.rebuildBusy = false
+	if ok and np then
+		local tr = typeof(np) == "Instance" and np:GetAttribute("PROTO_Tris") or nil
+		setStatus("Painted (" .. #S.dabs .. " dabs" .. (tr and (", the part is " .. tr .. " triangles") or "") .. ")." .. (cut > 0 and " (oldest dabs dropped - 1500 max)" or "") .. " Ctrl+Z undoes it.")
+	else
+		setStatus("BRUSH: " .. tostring(ok and why or np))
+		warn("PROTO brush: " .. tostring(ok and why or np))
+	end
+	pcall(ENT.detailRefresh)
+end
+-- v3.44 (paint check): which part the paint buttons (Clear brush, decals) act on: in Paint mode the part you just
+-- painted / selected - it used to be the part clicked earlier in sketch mode
+function ENT.paintTargetPart()
+	if mode == "paint" then
+		local sel = Selection:Get()[1]
+		if sel and sel:IsA("BasePart") and sel.Parent then return sel end
+		local pl, hops = ENT.paintLast, 0
+		while pl and not pl.Parent and ENT.swappedTo and ENT.swappedTo[pl] and hops < 20 do pl = ENT.swappedTo[pl] hops += 1 end
+		if pl and pl.Parent then return pl end
+	end
+	return nil
+end
+function ENT.brushClear()
+	local p = ENT.paintTargetPart() or target
+	if not (p and p.Parent and #ENT.brushOf(p) > 0) then
+		for _, o in ipairs(Selection:Get()) do if o:IsA("BasePart") and #ENT.brushOf(o) > 0 then p = o break end end
+	end
+	if not (p and p.Parent and #ENT.brushOf(p) > 0) then setStatus("No brush paint on the picked part.") return end
+	local ok, np, why = pcall(ENT.setDetail, p, ENT.partDetail(p), function(q) q:SetAttribute("PROTO_Brush", nil) end, "PROTO Clear brush paint")
+	setStatus((ok and np) and "Brush paint taken off. Ctrl+Z puts it back." or ("Couldn't: " .. tostring(ok and why or np)))
+end
+-- the part's triangles (world) -> split where the dabs are, a colour at each corner. nil = no brush paint.
+function ENT.applyBrush(tris, list, base, baseCol)
+	if not list or #list == 0 or not base then return nil end
+	local D, maxR = {}, 0
+	for _, d in ipairs(list) do
+		local w = base:PointToWorldSpace(Vector3.new(d[1], d[2], d[3]))
+		local wn = (d[9] and base:VectorToWorldSpace(Vector3.new(d[9], d[10], d[11]))) or nil
+		local col = d[5] and Color3.new(d[5], d[6], d[7]) or nil
+		D[#D + 1] = { p = w, r = math.max(d[4] or 1, 0.02), c = col, s = d[8] or 1, n = wn }
+		maxR = math.max(maxR, d[4] or 1)
+	end
+	local C = math.max(maxR, 0.05)
+	local grid = {}
+	local function cellOf(p) return math.floor(p.X / C), math.floor(p.Y / C), math.floor(p.Z / C) end
+	for i, d in ipairs(D) do
+		local x, y, z = cellOf(d.p)
+		local k = x .. "," .. y .. "," .. z
+		grid[k] = grid[k] or {}
+		table.insert(grid[k], i)
+	end
+	-- the dabs within reach of a point (+ extra), in painting order
+	local function near(pt, extra)
+		local reach = maxR + extra
+		local res = {}
+		if reach / C > 3 then
+			for i, d in ipairs(D) do if (d.p - pt).Magnitude < d.r + extra then res[#res + 1] = i end end
+			return res
+		end
+		local x, y, z = cellOf(pt)
+		local rr = math.ceil(reach / C)
+		for ix = x - rr, x + rr do for iy = y - rr, y + rr do for iz = z - rr, z + rr do
+			for _, i in ipairs(grid[ix .. "," .. iy .. "," .. iz] or {}) do
+				if (D[i].p - pt).Magnitude < D[i].r + extra then res[#res + 1] = i end
+			end
+		end end end
+		table.sort(res)
+		return res
+	end
+	-- 1) split the triangles near the dabs (their longest side, in halves, until small enough for the brush) -
+	-- decided per SIDE, so both triangles on a side split it the same way (no cracks)
+	local cur = tris
+	local budget = math.min(ENT.MAX_TRIS or 10000, 9000)
+	local function ekey(a, b)
+		local ka = string.format("%.4f,%.4f,%.4f", a.X, a.Y, a.Z)
+		local kb = string.format("%.4f,%.4f,%.4f", b.X, b.Y, b.Z)
+		return (ka < kb) and (ka .. "|" .. kb) or (kb .. "|" .. ka)
+	end
+	for _ = 1, 10 do
+		local marks, any = {}, false
+		for _, t in ipairs(cur) do
+			local cen = (t[1] + t[2] + t[3]) / 3
+			local rad = math.max((t[1] - cen).Magnitude, (t[2] - cen).Magnitude, (t[3] - cen).Magnitude)
+			local L, li = -1, 1
+			for k = 1, 3 do
+				local l = (t[k % 3 + 1] - t[k]).Magnitude
+				if l > L then L, li = l, k end
+			end
+			local want = false
+			for _, i in ipairs(near(cen, rad)) do
+				local d = D[i]
+				if L > d.r * 0.6 and (closestOnTri(d.p, t[1], t[2], t[3]) - d.p).Magnitude < d.r then want = true break end
+			end
+			if want then marks[ekey(t[li], t[li % 3 + 1])] = true any = true end
+		end
+		if not any then break end
+		local nxt = {}
+		for _, t in ipairs(cur) do
+			local m = {}
+			local nm = 0
+			for k = 1, 3 do
+				local a, b = t[k], t[k % 3 + 1]
+				if marks[ekey(a, b)] then m[k] = (a + b) / 2 nm += 1 end
+			end
+			local function T3(a, b, c) nxt[#nxt + 1] = { a, b, c, g = t.g, col = t.col } end
+			if nm == 0 then nxt[#nxt + 1] = t
+			elseif nm == 3 then
+				T3(t[1], m[1], m[3]) T3(m[1], t[2], m[2]) T3(m[3], m[2], t[3]) T3(m[1], m[2], m[3])
+			elseif nm == 1 then
+				local k = m[1] and 1 or (m[2] and 2 or 3)
+				local a, b, c = t[k], t[k % 3 + 1], t[(k + 1) % 3 + 1]
+				T3(a, m[k], c) T3(m[k], b, c)
+			else
+				-- two sides: the one NOT split is (c, a) after turning the triangle round
+				local k = (not m[3]) and 1 or ((not m[1]) and 2 or 3)
+				local a, b, c = t[k], t[k % 3 + 1], t[(k + 1) % 3 + 1]
+				local mab, mbc = m[k], m[k % 3 + 1]
+				T3(mab, b, mbc) T3(a, mab, mbc) T3(a, mbc, c)
+			end
+		end
+		cur = nxt
+		if #cur > budget then break end
+	end
+	-- 2) a colour at each corner: the face's own colour, then every dab that reaches it, blended in order
+	local cache = {}
+	local function colourAt(pt, startCol, fn)
+		local key = string.format("%.4f,%.4f,%.4f", pt.X, pt.Y, pt.Z) .. "|" .. startCol:ToHex() .. "|" .. string.format("%.2f,%.2f,%.2f", fn.X, fn.Y, fn.Z)
+		local hit = cache[key]
+		if hit then return hit end
+		local col = startCol
+		for _, i in ipairs(near(pt, 0)) do
+			local d = D[i]
+			if not d.n or d.n:Dot(fn) > 0.2 then
+				local x = (d.p - pt).Magnitude / d.r
+				if x < 1 then
+					local w = d.s * (1 - x * x) ^ 2
+					col = col:Lerp(d.c or baseCol, math.clamp(w, 0, 1))
+				end
+			end
+		end
+		cache[key] = col
+		return col
+	end
+	local vol = 0
+	for _, t in ipairs(cur) do vol += t[1]:Dot(t[2]:Cross(t[3])) end
+	local sg = vol >= 0 and 1 or -1
+	local any = false
+	for _, t in ipairs(cur) do
+		local fn = (t[2] - t[1]):Cross(t[3] - t[1])
+		fn = fn.Magnitude > 1e-12 and fn.Unit * sg or Vector3.yAxis
+		local c0 = t.col or baseCol
+		local c1, c2, c3 = colourAt(t[1], c0, fn), colourAt(t[2], c0, fn), colourAt(t[3], c0, fn)
+		if c1 ~= c0 or c2 ~= c0 or c3 ~= c0 or t.col then
+			t.cols = { c1, c2, c3 }
+			any = true
+		end
+	end
+	-- (every face needs a colour once some have one - the part's own colour turns white to show them)
+	for _, t in ipairs(cur) do if not t.cols then local c0 = t.col or baseCol t.cols = { c0, c0, c0 } end end
+	return any and cur or nil
+end
+-- ===== end v3.02 HEX PICKER + BRUSH =====
+-- WHOLE PART on a painted PROTO part: the unpainted faces' colour changes, painted faces stay
+-- v3.44 (paint check): a face that MOVES (block size / extrude depth changed) takes its paint along - painted faces
+-- and brush dabs sit at fixed spots in the part's frame and were left behind (lost) when the face moved.
+-- move(axis, value) -> the new value for a point ON a face square to that axis at that value, or nil (not moved).
+function ENT.paintFollow(q, move)
+	local function dom(n) local ax, m = 1, math.abs(n[1]) for i = 2, 3 do if math.abs(n[i]) > m then ax, m = i, math.abs(n[i]) end end return ax end
+	local plist, blist = ENT.paintOf(q), ENT.brushOf(q)
+	local ch = false
+	for _, en in ipairs(plist) do
+		if type(en.p) == "table" and type(en.n) == "table" then
+			local ax = dom(en.n)
+			local v = move(ax, en.p[ax])
+			if v then en.p[ax] = v ch = true end
+		end
+	end
+	local bch = false
+	for _, d in ipairs(blist) do
+		if d[9] and d[10] and d[11] then
+			local ax = dom({ d[9], d[10], d[11] })
+			local v = move(ax, d[ax])
+			if v then d[ax] = v bch = true end
+		end
+	end
+	if ch then q:SetAttribute("PROTO_Paint", HttpService:JSONEncode(plist)) end
+	if bch then q:SetAttribute("PROTO_Brush", HttpService:JSONEncode(blist)) end
+end
+function ENT.paintBaseColour(p, col)
+	return ENT.setDetail(p, ENT.partDetail(p), function(q) q:SetAttribute("PROTO_PaintBase", col) end, "PROTO Paint")
+end
+-- ===== end v2.72 COLOUR PER FACE =====
+-- ===== v2.73 FEATURE TREE (Dylan: "a SolidWorks-style feature tree - every step remembered and editable") =====
+-- The picked PROTO part's steps, in order: its base shape, its edge rounds / chamfers, its cuts, its painted faces.
+-- Change a number (size, depth, angle, round size) or remove a step, and the part is rebuilt from scratch with the
+-- change - one undo step, one mesh, saved. Nothing is ever patched on top.
+function ENT.newCutId() return string.sub(HttpService:GenerateGUID(false), 1, 8) end
+local function fmtN(x) return (math.abs(x - math.floor(x + 0.5)) < 1e-3) and tostring(math.floor(x + 0.5)) or string.format("%.2f", x) end
+ENT.fmtN = fmtN
+-- the list of steps: { name, value (text) or nil, edit = fn(p, text) -> prep or nil+why, del = fn(p) -> prep }
+function ENT.stepsOf(p)
+	local steps = {}
+	local kind = ENT.detailKind(p)
+	if not kind then return steps end
+	local cuts = ENT.cutsOf(p)
+	local function setCuts(q, list) q:SetAttribute("PROTO_Cuts", HttpService:JSONEncode(list)) end
+	if kind == "block" then
+		local _, size = ENT.blockOf(p)
+		steps[#steps + 1] = { name = "Block", value = ("%s, %s, %s"):format(fmtN(size.X), fmtN(size.Y), fmtN(size.Z)),
+			hint = "width, height, length",
+			edit = function(_, text)
+				local x, y, z = string.match(text, "([%d%.]+)[^%d%.]+([%d%.]+)[^%d%.]+([%d%.]+)")
+				x, y, z = tonumber(x), tonumber(y), tonumber(z)
+				if not (x and y and z and x > 0.01 and y > 0.01 and z > 0.01) then return nil, "type three sizes, like 24, 24, 34" end
+				return function(q)
+					-- v3.44 (paint check): paint on the outside faces moves with them (the block stays centred)
+					local oh, nh = { size.X / 2, size.Y / 2, size.Z / 2 }, { x / 2, y / 2, z / 2 }
+					pcall(ENT.paintFollow, q, function(ax, v)
+						if math.abs(math.abs(v) - oh[ax]) < 0.3 then return (v >= 0 and 1 or -1) * nh[ax] end
+						return nil
+					end)
+					if q:IsA("Part") and not q:GetAttribute("PROTO_BlockSize") then q.Size = Vector3.new(x, y, z)
+					else q:SetAttribute("PROTO_BlockSize", Vector3.new(x, y, z)) end
+				end
+			end }
+		local done = {}
+		pcall(function() done = HttpService:JSONDecode(p:GetAttribute("PROTO_EdgesDone") or "[]") end)
+		for di, d in ipairs(done) do
+			local nm = (d.t == "fillet" and "Round") or (d.t == "chamfer" and "Chamfer") or "Fill"
+			steps[#steps + 1] = { name = nm .. " edge " .. di, value = d.r and fmtN(d.r) or nil, hint = "size",
+				edit = d.r and function(_, text)
+					local r = tonumber(text)
+					if not r or r <= 0 then return nil, "type a size above 0" end
+					return function(q)
+						local list = HttpService:JSONDecode(q:GetAttribute("PROTO_EdgesDone") or "[]")
+						if list[di] then list[di].r = r end
+						q:SetAttribute("PROTO_EdgesDone", HttpService:JSONEncode(list))
+					end
+				end or nil,
+				del = function()
+					return function(q)
+						local list = HttpService:JSONDecode(q:GetAttribute("PROTO_EdgesDone") or "[]")
+						table.remove(list, di)
+						q:SetAttribute("PROTO_EdgesDone", HttpService:JSONEncode(list))
+					end
+				end }
+		end
+	else
+		local R = ENT.recipeOf(p)
+		if R.kind == "ext" then
+			local d = R.data
+			steps[#steps + 1] = { name = "Extrude", value = fmtN(math.abs(d.z1 - d.z0)), hint = "depth",
+				edit = function(_, text)
+					local v = tonumber(text)
+					if not v or v <= 0.01 then return nil, "type a depth above 0" end
+					return function(q)
+						local R2 = ENT.recipeOf(q)
+						local d2 = R2.data
+						local oz0, oz1 = d2.z0, d2.z1
+						-- (the end on the drawing stays put)
+						if math.abs(d2.z0) <= math.abs(d2.z1) then d2.z1 = d2.z0 + v * ((d2.z1 >= d2.z0) and 1 or -1)
+						else d2.z0 = d2.z1 - v * ((d2.z1 >= d2.z0) and 1 or -1) end
+						-- v3.44 (paint check): paint on the end that moved goes with it (paint is kept in the drawing's frame:
+						-- Z = out of the drawing)
+						pcall(ENT.paintFollow, q, function(ax, val)
+							if ax ~= 3 then return nil end
+							if math.abs(val - oz1) < 0.3 and oz1 ~= d2.z1 then return d2.z1 end
+							if math.abs(val - oz0) < 0.3 and oz0 ~= d2.z0 then return d2.z0 end
+							return nil
+						end)
+						q:SetAttribute("PROTO_Kind", "ext")
+						q:SetAttribute("PROTO_Data", HttpService:JSONEncode(d2))
+						if not q:GetAttribute("PROTO_BaseRel") then q:SetAttribute("PROTO_BaseRel", q.CFrame:ToObjectSpace(R2.F)) end
+					end
+				end }
+		else
+			steps[#steps + 1] = { name = "Revolve", value = fmtN(R.data.angle), hint = "angle",
+				edit = function(_, text)
+					local v = tonumber(text)
+					if not v or v <= 0 or v > 360 then return nil, "type an angle from 1 to 360" end
+					return function(q)
+						local d2 = ENT.recipeOf(q).data
+						d2.angle = v
+						q:SetAttribute("PROTO_Data", HttpService:JSONEncode(d2))
+					end
+				end }
+		end
+	end
+	for ci, c in ipairs(cuts) do
+		local treat = 0
+		for _, t in ipairs({ c.rim, c.bot, c.vc }) do if type(t) == "table" then for _ in pairs(t) do treat += 1 end end end
+		local nm = (c.kind == "rev" and "Revolved cut " or "Cut ") .. ci .. (treat > 0 and (" (+" .. treat .. " edge)") or "")
+		local function delPrep()
+			return function(q)
+				local list = ENT.cutsOf(q)
+				local gone = table.remove(list, ci)
+				setCuts(q, list)
+				-- (its outline goes too, so its edges stop lighting up)
+				if gone and gone.id then
+					for _, ch in ipairs(q:GetChildren()) do
+						local ids = ENT.isOutline(ch.Name) and ch:GetAttribute("PROTO_CutIds")
+						if type(ids) == "string" then
+							local keep = {}
+							for id in string.gmatch(ids, "[^,]+") do if id ~= gone.id then keep[#keep + 1] = id end end
+							if #keep == 0 then ch.Parent = nil else ch:SetAttribute("PROTO_CutIds", table.concat(keep, ",")) end
+						end
+					end
+				end
+			end
+		end
+		if c.kind == "edge" then
+			steps[#steps + 1] = { name = (c.t == "fillet" and "Round" or "Chamfer") .. " edge (step " .. ci .. ")", value = fmtN(c.r), hint = "size",
+				edit = function(_, text)
+					local v = tonumber(text)
+					if not v or v <= 0.001 then return nil, "type a size above 0" end
+					return function(q)
+						local list = ENT.cutsOf(q)
+						if list[ci] then list[ci].r = v end
+						setCuts(q, list)
+					end
+				end,
+				del = delPrep }
+		elseif c.kind == "shell" then
+			local no = #(c.open or {})
+			steps[#steps + 1] = { name = "Shell (step " .. ci .. ", " .. (no == 0 and "closed" or (no .. " open face" .. (no == 1 and "" or "s"))) .. ")", value = fmtN(c.t), hint = "wall",
+				edit = function(_, text)
+					local v = tonumber(text)
+					if not v or v <= 0.01 then return nil, "type a wall thickness above 0" end
+					return function(q)
+						local list = ENT.cutsOf(q)
+						if list[ci] then list[ci].t = v end
+						setCuts(q, list)
+					end
+				end,
+				del = delPrep }
+		elseif c.kind == "rev" then
+			steps[#steps + 1] = { name = nm, del = delPrep }
+		else
+			steps[#steps + 1] = { name = nm, value = fmtN(math.abs(c.z1 - c.z0)), hint = "depth", cutIndex = ci,
+				edit = function(_, text)
+					local v = tonumber(text)
+					if not v or v <= 0.01 then return nil, "type a depth above 0" end
+					return function(q)
+						local list = ENT.cutsOf(q)
+						local c2 = list[ci]
+						if not c2 then return end
+						-- (the opening stays put; the floor moves)
+						if c2.open == 1 then c2.z0 = c2.z1 - v
+						else c2.z1 = c2.z0 + v end
+						setCuts(q, list)
+					end
+				end,
+				del = delPrep }
+		end
+	end
+	local brush = ENT.brushOf and ENT.brushOf(p) or {}
+	if #brush > 0 then
+		steps[#steps + 1] = { name = "Brush paint (" .. #brush .. " dabs)",
+			del = function() return function(q) q:SetAttribute("PROTO_Brush", nil) end end }
+	end
+	local paint = ENT.paintOf(p)
+	if #paint > 0 then
+		steps[#steps + 1] = { name = "Painted faces (" .. #paint .. ")",
+			del = function()
+				return function(q)
+					local base = q:GetAttribute("PROTO_PaintBase")
+					q:SetAttribute("PROTO_Paint", nil)
+					-- v3.41 (glitch sweep): keep the part's real colour while brush paint is still on it
+					if #ENT.brushOf(q) == 0 then
+						if typeof(base) == "Color3" then q.Color = base end
+						q:SetAttribute("PROTO_PaintBase", nil)
+					end
+				end
+			end }
+	end
+	return steps
+end
+-- run a step change: rebuild the part with it (same detail level), one undo step
+function ENT.stepChange(p, prep, label)
+	return ENT.setDetail(p, ENT.partDetail(p), prep, label)
+end
+-- ===== end v2.73 FEATURE TREE =====
+-- ===== v2.74 REAL FACES + EDGES (Dylan: "the whole wrap / DIM thing was small-minded thinking - each face needs to
+-- be interactable and each edge chamfered - we need an update to the face system") =====
+-- A part's faces and edges are read from its OWN triangles - not from a box round it.
+--   FACE = a joined-up region of the mesh with one smooth group (a flat side, a hole's round wall, a chamfer strip).
+--   EDGE = a sharp border between two faces, chained into one line or loop (a box edge, the whole rim of a hole).
+-- Works on any mesh PROTO builds or can read. Positions are welded to 0.001 studs; points that sit on another face's
+-- side (the cut leaves those) are handled by looking up which face is on the other side of each border piece.
+local TQ = 1e3
+local function tkey(p) return math.floor(p.X * TQ + 0.5) .. "," .. math.floor(p.Y * TQ + 0.5) .. "," .. math.floor(p.Z * TQ + 0.5) end
+ENT.tkey = tkey
+function ENT.topo(tris)
+	local n = #tris
+	local nrm, area = {}, {}
+	for i, t in ipairs(tris) do
+		local c = (t[2] - t[1]):Cross(t[3] - t[1])
+		area[i] = c.Magnitude / 2
+		nrm[i] = c.Magnitude > 1e-12 and c.Unit or Vector3.new(0, 0, 0)
+	end
+	-- "out" for this solid (volume sign): faces' normals are flipped to point out
+	local vol = 0
+	for _, t in ipairs(tris) do vol += t[1]:Dot(t[2]:Cross(t[3])) end
+	local sg = vol >= 0 and 1 or -1
+	for i = 1, n do nrm[i] = nrm[i] * sg end
+	-- FACES: triangles of one smooth group that share a point
+	local parent = {}
+	for i = 1, n do parent[i] = i end
+	local function root(x) while parent[x] ~= x do parent[x] = parent[parent[x]] x = parent[x] end return x end
+	local byVert, flatAt = {}, {}
+	local keys = {}
+	for i, t in ipairs(tris) do
+		keys[i] = { tkey(t[1]), tkey(t[2]), tkey(t[3]) }
+		if t.g ~= nil then
+			-- one smooth group + a shared point = one face
+			local g = tostring(t.g)
+			for k = 1, 3 do
+				local vk = keys[i][k] .. "|" .. g
+				local o = byVert[vk]
+				if o then local a, b = root(o), root(i) if a ~= b then parent[a] = b end else byVert[vk] = i end
+			end
+		else
+			-- v2.76b (Dylan: a turned block's face came out as its 2 triangles): no group = triangles sharing a point
+			-- that lie FLAT against each other (same direction, same plane) are one face
+			for k = 1, 3 do
+				local vk = keys[i][k]
+				flatAt[vk] = flatAt[vk] or {}
+				for _, o in ipairs(flatAt[vk]) do
+					if nrm[o]:Dot(nrm[i]) > 0.9999 and math.abs((tris[o][1] - t[1]):Dot(nrm[i])) < 1e-3 then
+						local a, b = root(o), root(i)
+						if a ~= b then parent[a] = b end
+					end
+				end
+				table.insert(flatAt[vk], i)
+			end
+		end
+	end
+	-- v3.36 (Dylan's chamfers left out): two FLAT faces in the same plane that touch are one face, even when they came
+	-- from different cuts (a pocket and a slot meeting make one wall). They used to stay two, so the edge along that
+	-- wall broke in two at the join - a chamfer clicked along all of it then couldn't find it. (Round / chamfer faces stay
+	-- their own: the corner joining needs them.)
+	do
+		local rootFlat = {}
+		for i = 1, n do
+			local r = root(i)
+			if area[i] > 1e-9 then
+				local f0 = rootFlat[r]
+				if f0 == nil then rootFlat[r] = nrm[i]
+				elseif f0 ~= false and f0:Dot(nrm[i]) < 0.9995 then rootFlat[r] = false end
+			end
+		end
+		local at2 = {}
+		for i, t in ipairs(tris) do
+			local g = tostring(t.g)
+			if area[i] > 1e-9 and rootFlat[root(i)] and not g:find("E%d+e") then
+				for k = 1, 3 do
+					local vk = keys[i][k]
+					at2[vk] = at2[vk] or {}
+					for _, o in ipairs(at2[vk]) do
+						local a, b = root(o), root(i)
+						if a ~= b and nrm[o]:Dot(nrm[i]) > 0.9999 and math.abs((tris[o][1] - t[1]):Dot(nrm[i])) < 1e-3 then parent[a] = b end
+					end
+					table.insert(at2[vk], i)
+				end
+			end
+		end
+	end
+	local faces, faceOf = {}, {}
+	for i = 1, n do
+		local r = root(i)
+		local F = faces[r]
+		if not F then F = { tris = {}, id = 0 } faces[r] = F end
+		table.insert(F.tris, i)
+	end
+	local list = {}
+	for _, F in pairs(faces) do
+		list[#list + 1] = F
+	end
+	table.sort(list, function(a, b) return a.tris[1] < b.tris[1] end)
+	for id, F in ipairs(list) do
+		F.id = id
+		local A, cx, nn = 0, Vector3.new(0, 0, 0), Vector3.new(0, 0, 0)
+		for _, i in ipairs(F.tris) do
+			faceOf[i] = id
+			local t = tris[i]
+			A += area[i]
+			cx += (t[1] + t[2] + t[3]) / 3 * area[i]
+			nn += nrm[i] * area[i]
+		end
+		F.area = A
+		F.centre = A > 0 and cx / A or tris[F.tris[1]][1]
+		F.normal = nn.Magnitude > 1e-12 and nn.Unit or nrm[F.tris[1]]
+		local flat = true
+		for _, i in ipairs(F.tris) do if area[i] > 1e-9 and nrm[i]:Dot(F.normal) < 0.9995 then flat = false break end end
+		F.flat = flat
+		F.g = tris[F.tris[1]].g
+	end
+	-- each face's border pieces (a triangle side that no other triangle of the same face shares)
+	local sideUse = {}
+	for i = 1, n do
+		local k = keys[i]
+		for e = 1, 3 do
+			local a, b = k[e], k[e % 3 + 1]
+			local sk2 = (a < b) and (a .. ">" .. b) or (b .. ">" .. a)
+			local key = faceOf[i] .. "#" .. sk2
+			sideUse[key] = (sideUse[key] or 0) + 1
+		end
+	end
+	-- a grid of the triangles, to find which face is on the other side of a border piece
+	local lo, hi = Vector3.new(math.huge, math.huge, math.huge), Vector3.new(-math.huge, -math.huge, -math.huge)
+	for _, t in ipairs(tris) do for k = 1, 3 do lo, hi = lo:Min(t[k]), hi:Max(t[k]) end end
+	local diag = (hi - lo).Magnitude
+	local C = math.max(diag / math.max(2, math.floor(n ^ (1 / 3) * 2)), 1e-3)
+	local grid = {}
+	local function cell(p) return math.floor((p.X - lo.X) / C), math.floor((p.Y - lo.Y) / C), math.floor((p.Z - lo.Z) / C) end
+	for i, t in ipairs(tris) do
+		local a = t[1]:Min(t[2]):Min(t[3]) - Vector3.new(1e-3, 1e-3, 1e-3)
+		local b = t[1]:Max(t[2]):Max(t[3]) + Vector3.new(1e-3, 1e-3, 1e-3)
+		local x0, y0, z0 = cell(a)
+		local x1, y1, z1 = cell(b)
+		for x = x0, x1 do for y = y0, y1 do for z = z0, z1 do
+			local ck = x .. "," .. y .. "," .. z
+			grid[ck] = grid[ck] or {}
+			table.insert(grid[ck], i)
+		end end end
+	end
+	local function nearestOther(p, fid)
+		local x, y, z = cell(p)
+		local best, bd
+		for _, i in ipairs(grid[x .. "," .. y .. "," .. z] or {}) do
+			if faceOf[i] ~= fid then
+				local t = tris[i]
+				local d = (ENT.closestOnTri(p, t[1], t[2], t[3]) - p).Magnitude
+				if d < 2e-3 and (not bd or d < bd) then best, bd = i, d end
+			end
+		end
+		return best
+	end
+	-- border pieces -> (face A, face B) pieces; only the lower-numbered face's pieces are kept (one copy)
+	local pairsSeg = {}
+	for i = 1, n do
+		local k = keys[i]
+		local t = tris[i]
+		for e = 1, 3 do
+			local a, b = k[e], k[e % 3 + 1]
+			local sk2 = (a < b) and (a .. ">" .. b) or (b .. ">" .. a)
+			if sideUse[faceOf[i] .. "#" .. sk2] == 1 then
+				local pa, pb = t[e], t[e % 3 + 1]
+				local mid = (pa + pb) / 2
+				local j = nearestOther(mid, faceOf[i])
+				if j then
+					local fa, fb = faceOf[i], faceOf[j]
+					if fa < fb then
+						local pk = fa .. ":" .. fb
+						pairsSeg[pk] = pairsSeg[pk] or { a = fa, b = fb, segs = {} }
+						table.insert(pairsSeg[pk].segs, { pa, pb, nrm[i], nrm[j], tris[j], tris[i] })
+					end
+				end
+			end
+		end
+	end
+	-- chain each pair's pieces into lines / loops
+	local edges = {}
+	for _, P in pairs(pairsSeg) do
+		local adj, used = {}, {}
+		for si, s in ipairs(P.segs) do
+			for _, kk in ipairs({ tkey(s[1]), tkey(s[2]) }) do adj[kk] = adj[kk] or {} table.insert(adj[kk], si) end
+		end
+		for si0 = 1, #P.segs do
+			if not used[si0] then
+				-- walk back to an end (or round a loop), then forward
+				local function walk(si, fromKey)
+					local pts, nA, nB, segsOut = {}, {}, {}, {}
+					local cur, key = si, fromKey
+					local closed = false
+					while cur and not used[cur] do
+						used[cur] = true
+						local s = P.segs[cur]
+						local k1, k2 = tkey(s[1]), tkey(s[2])
+						local p0, p1 = s[1], s[2]
+						if key == k2 then p0, p1 = s[2], s[1] k1, k2 = k2, k1 end
+						if #pts == 0 then pts[1] = p0 end
+						pts[#pts + 1] = p1
+						segsOut[#segsOut + 1] = s
+						key = k2
+						local nxt
+						if #adj[key] == 2 then
+							for _, o in ipairs(adj[key]) do if o ~= cur then nxt = o end end
+						end
+						if nxt and used[nxt] and tkey(pts[1]) == key then closed = true end
+						cur = nxt
+					end
+					return pts, segsOut, closed
+				end
+				-- find a start: go backwards from si0 while the chain continues
+				local s = P.segs[si0]
+				local startSeg, startKey = si0, tkey(s[1])
+				do
+					local seen = { [si0] = true }
+					local cur, key = si0, tkey(s[1])
+					while true do
+						local list = adj[key]
+						if #list ~= 2 then break end
+						local prev
+						for _, o in ipairs(list) do if o ~= cur then prev = o end end
+						if not prev or seen[prev] or used[prev] then break end
+						seen[prev] = true
+						local ps = P.segs[prev]
+						local ka, kb = tkey(ps[1]), tkey(ps[2])
+						key = (ka == key) and kb or ka
+						cur = prev
+						startSeg, startKey = prev, key
+					end
+				end
+				local pts, segsOut, closed = walk(startSeg, startKey)
+				if closed then table.remove(pts) end
+				-- average normals of the two faces along it, and convex / sharp
+				local nAv, nBv, conv, sharpN = Vector3.new(0, 0, 0), Vector3.new(0, 0, 0), 0, 0
+				for _, sgm in ipairs(segsOut) do
+					nAv += sgm[3] nBv += sgm[4]
+					local other = sgm[5]
+					local oc = (other[1] + other[2] + other[3]) / 3
+					local mid = (sgm[1] + sgm[2]) / 2
+					if (oc - mid):Dot(sgm[3]) < -1e-6 then conv += 1 else conv -= 1 end
+					if sgm[3]:Dot(sgm[4]) < 0.94 then sharpN += 1 end
+				end
+				local L = 0
+				for i2 = 1, #pts - 1 do L += (pts[i2 + 1] - pts[i2]).Magnitude end
+				if closed then L += (pts[1] - pts[#pts]).Magnitude end
+				edges[#edges + 1] = {
+					a = P.a, b = P.b, pts = pts, closed = closed, segs = segsOut, length = L,
+					convex = conv >= 0, sharp = sharpN * 2 >= #segsOut,
+					nA = nAv.Magnitude > 0 and nAv.Unit or nAv, nB = nBv.Magnitude > 0 and nBv.Unit or nBv,
+				}
+			end
+		end
+	end
+	table.sort(edges, function(x, y) if x.a ~= y.a then return x.a < y.a end if x.b ~= y.b then return x.b < y.b end return x.length > y.length end)
+	return { faces = list, faceOf = faceOf, edges = edges, nrm = nrm, tris = tris }
+end
+-- the triangle a ray hits first: index, distance
+function ENT.rayTris(tris, o, d)
+	d = d.Unit
+	local bestT, best
+	for i, t in ipairs(tris) do
+		local e1, e2 = t[2] - t[1], t[3] - t[1]
+		local h = d:Cross(e2)
+		local a = e1:Dot(h)
+		if math.abs(a) > 1e-12 then
+			local f = 1 / a
+			local sv = o - t[1]
+			local u = f * sv:Dot(h)
+			if u >= 0 and u <= 1 then
+				local q = sv:Cross(e1)
+				local v = f * d:Dot(q)
+				local tt = f * e2:Dot(q)
+				if v >= 0 and u + v <= 1 and tt > 1e-6 and (not bestT or tt < bestT) then bestT, best = tt, i end
+			end
+		end
+	end
+	return best, bestT
+end
+-- the edge nearest a ray (within a tolerance that grows with distance): edge, distance along the ray
+function ENT.edgeNearRay(T, o, d, onlySharp)
+	d = d.Unit
+	local best, bd, bt
+	for _, E in ipairs(T.edges) do
+		if not onlySharp or E.sharp then
+			local m = #E.pts
+			for i = 1, (E.closed and m or m - 1) do
+				local a, b = E.pts[i], E.pts[i % m + 1]
+				local d2 = b - a
+				local r0 = o - a
+				local A, B, Cc = d:Dot(d), d:Dot(d2), d2:Dot(d2)
+				local D, Ee = d:Dot(r0), d2:Dot(r0)
+				local den = A * Cc - B * B
+				if den > 1e-12 then
+					local te = math.clamp((A * Ee - B * D) / den, 0, 1)
+					local pe = a + d2 * te
+					local tr = math.max(0, (pe - o):Dot(d))
+					local dist = ((o + d * tr) - pe).Magnitude
+					local tol = math.max(0.25, tr * 0.03)
+					if dist < tol and (not bd or dist / tol < bd) then best, bd, bt = E, dist / tol, tr end
+				end
+			end
+		end
+	end
+	return best, bt
+end
+-- a sketch plane on a flat face: square to the face's longest real BORDER (not a triangle's diagonal), facing out,
+-- centred in the middle of the face (the middle of its extent, so an L-shaped face is centred on its outline too)
+function ENT.facePlaneOf(T, F)
+	local n = F.normal
+	local tris = T.tris
+	local bestL, u = -1, nil
+	for _, E in ipairs(T.edges) do
+		if E.a == F.id or E.b == F.id then
+			local m = #E.pts
+			for i = 1, (E.closed and m or m - 1) do
+				local e = E.pts[i % m + 1] - E.pts[i]
+				local el = e.Magnitude
+				if el > bestL then bestL, u = el, e / el end
+			end
+		end
+	end
+	if not u then
+		-- (no borders found: the longest triangle side)
+		for _, i in ipairs(F.tris) do
+			local t = tris[i]
+			for k = 1, 3 do
+				local e = t[k % 3 + 1] - t[k]
+				local el = e.Magnitude
+				if el > bestL then bestL, u = el, e / el end
+			end
+		end
+	end
+	u = u and (u - n * n:Dot(u)) or Vector3.new(0, 0, 0)
+	u = u.Magnitude > 1e-9 and u.Unit or (math.abs(n.Y) < 0.9 and Vector3.new(0, 1, 0):Cross(n).Unit or Vector3.new(1, 0, 0))
+	local v = n:Cross(u)
+	-- the face's extent along u / v -> its middle, and half-sizes
+	local lu, hu2, lv, hv2 = math.huge, -math.huge, math.huge, -math.huge
+	for _, i in ipairs(F.tris) do
+		for k = 1, 3 do
+			local w = tris[i][k] - F.centre
+			local a, b = w:Dot(u), w:Dot(v)
+			lu, hu2, lv, hv2 = math.min(lu, a), math.max(hu2, a), math.min(lv, b), math.max(hv2, b)
+		end
+	end
+	local o = F.centre + u * ((lu + hu2) / 2) + v * ((lv + hv2) / 2)
+	return { o = o, u = u, v = v, n = n, hu = (hu2 - lu) / 2, hv = (hv2 - lv) / 2 }
+end
+-- the faces + edges of a part (cached until it changes)
+ENT.topoCache = setmetatable({}, { __mode = "k" })
+function ENT.partTopo(p)
+	local key = tostring(p:GetAttribute("PROTO_Tris")) .. "|" .. tostring(p.CFrame) .. "|" .. tostring(p.Size) .. "|" .. tostring(p:IsA("MeshPart") and p.MeshId or "")
+	local c = ENT.topoCache[p]
+	if c and c.key == key then return c.T end
+	local tris = ENT.partTris(p)
+	if not tris then return nil end
+	local ok, T = pcall(ENT.topo, tris)
+	if not ok then warn("PROTO faces: " .. tostring(T)) return nil end
+	ENT.topoCache[p] = { key = key, T = T }
+	return T
+end
+-- ===== end v2.74 REAL FACES + EDGES =====
+-- ===== v2.75 ANY EDGE: chamfer / round (Dylan: "each edge can be chamfered") =====
+do   -- (v2.85: this section's helpers stay inside - the 200-name limit)
+-- Any edge PROTO finds (ENT.topo) can be chamfered or rounded. The chamfer / round's shape is swept along the WHOLE
+-- edge (a straight edge, a hole's rim, a curved border): at each point of the edge the two faces' directions give the
+-- cross-section. An edge that sticks OUT has that shape cut away; an edge that goes IN (a pocket's floor, an inside
+-- corner) gets it ADDED - a round there fills the corner. It's a recipe step: on every rebuild the edge is found again
+-- by where it was, so it follows when an earlier step changes.
+-- A union (join of two solids) for the "add" case - same tree as the cut
+function ENT.CSG.union(A, B)
+	return ENT.CSG.unionRaw(A, B)
+end
+-- per point of an edge: the point, which way the edge runs, and "into face A" / "into face B" directions
+-- v2.80: each direction comes from its face's own plane (square to the piece, in the face), and at a bend the two
+-- pieces' directions are joined MITRED (made longer by the bend) so the trim shape keeps the same size all round.
+function ENT.edgeFrames(E)
+	local pts, segs = E.pts, E.segs
+	local m = #pts
+	local nseg = E.closed and m or m - 1
+	local function inward(seg, tri, n)
+		-- into the face: square to the piece, lying in the face, pointing at the face's own triangle
+		local a, b = seg[1], seg[2]
+		local ab = (b - a)
+		local L = ab.Magnitude
+		if L < 1e-9 then return nil end
+		ab = ab / L
+		local c = (tri[1] + tri[2] + tri[3]) / 3
+		local w = c - a
+		local perp = w - ab * w:Dot(ab)
+		if n and n.Magnitude > 0.5 then
+			local d = n:Cross(ab)
+			d = d - ab * d:Dot(ab)
+			if d.Magnitude > 1e-9 then
+				d = d.Unit
+				if perp:Dot(d) < 0 then d = -d end
+				return d
+			end
+		end
+		if perp.Magnitude > 1e-9 then return perp.Unit end
+		return nil
+	end
+	local function triN(tri)
+		local cr = (tri[2] - tri[1]):Cross(tri[3] - tri[1])
+		return cr.Magnitude > 1e-12 and cr.Unit or nil
+	end
+	local dirA, dirB = {}, {}
+	for si = 1, math.min(nseg, #segs) do
+		local sg = segs[si]
+		dirA[si] = inward(sg, sg[6], triN(sg[6]))
+		dirB[si] = inward(sg, sg[5], triN(sg[5]))
+	end
+	local out = {}
+	for k = 1, m do
+		local prevS = (k > 1) and (k - 1) or (E.closed and nseg or nil)
+		local nextS = (k <= nseg) and k or nil
+		local t = Vector3.new(0, 0, 0)
+		local dA, dB = Vector3.new(0, 0, 0), Vector3.new(0, 0, 0)
+		local useA, useB = {}, {}
+		for _, si in ipairs({ prevS or 0, nextS or 0 }) do
+			if si > 0 and segs[si] then
+				local a, b = pts[si], pts[si % m + 1]
+				if (b - a).Magnitude > 1e-9 then t += (b - a).Unit end
+				if dirA[si] then dA += dirA[si] useA[#useA + 1] = dirA[si] end
+				if dirB[si] then dB += dirB[si] useB[#useB + 1] = dirB[si] end
+			end
+		end
+		if t.Magnitude < 1e-9 or dA.Magnitude < 1e-9 or dB.Magnitude < 1e-9 then return nil end
+		t = t.Unit
+		dA = dA - t * dA:Dot(t)
+		dB = dB - t * dB:Dot(t)
+		if dA.Magnitude < 1e-9 or dB.Magnitude < 1e-9 then return nil end
+		dA, dB = dA.Unit, dB.Unit
+		-- mitre: as long as it needs to be to sit the right distance from BOTH pieces' faces (capped at 2x)
+		local function mitre(d, list)
+			local c = 1
+			for _, e in ipairs(list) do c = math.min(c, d:Dot(e)) end
+			return 1 / math.max(c, 0.5)
+		end
+		out[k] = { p = pts[k], t = t, dA = dA, dB = dB, sA = mitre(dA, useA), sB = mitre(dB, useB) }
+	end
+	return out
+end
+-- v2.80 (Dylan: "do a shape to trim ... do a triangle around the area then cut"): the cross-section of the TRIM SHAPE
+-- at one point. It's measured along the two faces (a = into face A, b = into face B):
+--   chamfer = the triangle corner / (r, 0) / (0, r)          round = the corner, the two touching points, the arc
+-- and it's made a hair bigger OUTSIDE the part on the two face sides (so it never lies flat on a face), but NOT on the
+-- chamfer / round side - that's the new surface. It stays right next to the edge: nothing reaches across a hole or
+-- into other cuts, so a rim that runs past other holes trims cleanly. An inside edge uses the same shape, added.
+local function section(fr, r, fillet, steps)
+	local P = fr.p
+	local dA, dB = fr.dA * fr.sA, fr.dB * fr.sB
+	local cosPhi = math.clamp(fr.dA:Dot(fr.dB), -0.999, 0.999)
+	local phi = math.acos(cosPhi)              -- the angle between the two faces (inside the material, or inside the gap)
+	local m = math.max(0.004, r * 0.04)        -- the hair (studs) the shape reaches past each face
+	local mu = m / math.max(math.sin(phi), 0.2)
+	local function at(a, b) return P + dA * a + dB * b end
+	local pts
+	if not fillet then
+		pts = { at(-mu, -mu), at(r + mu, -mu), at(-mu, r + mu) }
+	else
+		local tl = r / math.tan(phi / 2)
+		local bis = (fr.dA + fr.dB)
+		bis = bis.Magnitude > 1e-9 and bis.Unit or fr.dA
+		local C = P + bis * (r / math.sin(phi / 2))
+		local a0, a1 = (P + fr.dA * tl - C).Unit, (P + fr.dB * tl - C).Unit
+		local turn = math.acos(math.clamp(a0:Dot(a1), -1, 1))
+		local ax = a0:Cross(a1)
+		ax = ax.Magnitude > 1e-9 and ax.Unit or fr.t
+		local dl = math.max(r * 0.002, 5e-4)
+		pts = { at(-mu, -mu), at(tl, -mu) }
+		for j = 0, steps do
+			local ang = turn * j / steps
+			-- (turn a0 round ax by ang; the mitre stretch is put on after, round the edge point)
+			local v = a0 * math.cos(ang) + ax:Cross(a0) * math.sin(ang) + ax * (ax:Dot(a0) * (1 - math.cos(ang)))
+			local q = C + v * r - P
+			-- back into (a, b) along the unit directions, then out again along the mitred ones
+			local den = 1 - cosPhi * cosPhi
+			local qa, qb = q:Dot(fr.dA), q:Dot(fr.dB)
+			local a = (qa - qb * cosPhi) / den
+			local b = (qb - qa * cosPhi) / den
+			-- (v2.84: the arc's two ends are lifted a hair OFF the faces - an end lying exactly on a face it only just
+			-- touches is the one thing the cut can't sort cleanly; the hair is far too small to see)
+			if j == 0 then b = -dl elseif j == steps then a = -dl end
+			pts[#pts + 1] = at(a, b)
+		end
+		pts[#pts + 1] = at(-mu, tl)   -- (the arc runs from at(tl, 0) to at(0, tl))
+	end
+	return pts
+end
+-- the TRIM SHAPE along the edge, as ONE closed solid (world triangles): the section carried along the whole edge
+-- (round a loop it joins up; an open edge gets flat ends a hair past its ends). r = size, fillet = round (else chamfer).
+-- Returns the triangles and add (true = an inside edge: the shape is ADDED, else it's CUT away).
+-- (v2.82b) points along a STRAIGHT stretch of an edge add nothing (the cut leaves extra ones there) - and a tiny piece
+-- next to one can make the shape fold. Keep only the real bends (and the ends).
+function ENT.edgeTidy(E)
+	local pts, segs = E.pts, E.segs
+	local m = #pts
+	if m < 3 then return E end
+	local nseg = E.closed and m or m - 1
+	local keep = {}
+	for k = 1, m do
+		if not E.closed and (k == 1 or k == m) then keep[k] = true
+		else
+			local a, b, c = pts[(k - 2) % m + 1], pts[k], pts[k % m + 1]
+			local d1, d2 = b - a, c - b
+			if d1.Magnitude < 1e-3 or d2.Magnitude < 1e-3 then keep[k] = false
+			else keep[k] = d1.Unit:Dot(d2.Unit) < 0.9994 end
+		end
+	end
+	local np, ns = {}, {}
+	local ids = {}
+	for k = 1, m do if keep[k] then ids[#ids + 1] = k end end
+	if #ids < 2 or (E.closed and #ids < 3) then return E end
+	for ii, k in ipairs(ids) do
+		np[ii] = pts[k]
+		-- the piece from this kept point to the next: the longest original piece in between stands for it
+		local k2 = ids[ii % #ids + 1]
+		if E.closed or ii < #ids then
+			local best, bl = nil, -1
+			local j = k
+			repeat
+				local sg = segs[j]
+				if sg then
+					local l = (sg[2] - sg[1]).Magnitude
+					if l > bl then best, bl = sg, l end
+				end
+				j = j % m + 1
+			until j == k2 or j == k
+			ns[#ns + 1] = best
+		end
+	end
+	local T2 = table.clone(E)
+	T2.pts, T2.segs = np, ns
+	return T2
+end
+function ENT.edgeSweep(E, r, fillet, L)
+	local caps = { E.capS, E.capE }
+	E = ENT.edgeTidy(E)
+	E.capS, E.capE = caps[1], caps[2]
+	local frs = ENT.edgeFrames(E)
+	if not frs then return nil, "couldn't follow that edge" end
+	local add = not E.convex
+	-- round: as many steps round as a circle this size needs (a quarter of it for a square edge)
+	local steps = 1
+	if fillet then steps = math.max(2, math.ceil(ENT.sidesFor(r, L) / 4)) end
+	local rings = {}
+	for k, fr in ipairs(frs) do rings[k] = section(fr, r, fillet, steps) end
+	-- an open edge: each end is laid flat on the face the edge runs into (v2.81 - so a chamfer that runs into a
+	-- slope / a round / another chamfer meets it with no gap), then carried a hair past
+	if not E.closed then
+		local ext = math.max(0.002, r * 0.01)
+		-- the end lies ON that face: where the face's far side is open air, an added shape stops right on it (and
+		-- becomes part of that face); where it's solid, a cut stops right on it (its end is new face there, part of
+		-- that face). The other way round it goes a hair past, into the air / the solid, so nothing lies flat.
+		local capG = {}
+		-- v3.29 (Dylan: "the fillets don't seem to be aware of the corners"): an INSIDE round / chamfer (it fills) that
+		-- runs into a corner where there's solid past its end (the floor, other fills) carries on INTO it by its own size,
+		-- so the corner fills in round - not a flat end left standing. Filling where it's already solid changes nothing;
+		-- it's stopped short of the far side so it can never poke out of a thin part.
+		local function fillOn(k, out)
+			local fr = frs[k]
+			local dir = fr.t * out
+			local o = fr.p + (fr.dA * fr.sA + fr.dB * fr.sB) * (r * 0.3)
+			local deep = r * 1.05
+			local S = ENT.sweepSolid
+			if S then
+				local _, d1 = ENT.rayTris(S, o, dir)
+				if not d1 then return ext end   -- (open air past the end: just the hair)
+				local startIn = ENT.insideTris(S, o)
+				local lim = d1
+				if not startIn then
+					local _, d2 = ENT.rayTris(S, o + dir * (d1 + 1e-3), dir)
+					lim = d2 and (d1 + d2) or d1
+				end
+				deep = math.min(deep, lim - 0.02)
+			end
+			return math.max(deep, ext)
+		end
+		local function endRing(k, cap, out)
+			local fr = frs[k]
+			local t = fr.t
+			local ring = rings[k]
+			local tn = cap and t:Dot(cap.n) or 0
+			if not cap or math.abs(tn) < 0.25 then
+				local moved = {}
+				local go = add and fillOn(k, out) or ext
+				for j, q in ipairs(ring) do moved[j] = q + t * (go * out) end
+				return moved
+			end
+			local air = (tn * out) > 0          -- going on past the end leaves the part through that face
+			local past = (add and not air) or (not add and air)
+			local go = (add and not air) and fillOn(k, out) or ext
+			local moved = {}
+			for j, q in ipairs(ring) do
+				local sj = -(q - cap.V):Dot(cap.n) / tn
+				if math.abs(sj) > 3 * r + 0.01 then sj = 0 end
+				moved[j] = q + t * sj + (past and t * (go * out) or Vector3.new(0, 0, 0))
+			end
+			if not past then capG[out] = cap.g end
+			return moved
+		end
+		local keep1, keepN = rings[1], rings[#rings]
+		rings[1] = endRing(1, E.capS, -1)
+		rings[#rings] = endRing(#rings, E.capE, 1)
+		-- (a laid-flat end that would fold back over the next ring = back to a square end)
+		local function folds(k, k2)
+			local d = frs[k2].p - frs[k].p
+			if d.Magnitude < 1e-9 then return false end
+			d = d.Unit
+			for j = 1, #rings[k] do if (rings[k2][j] - rings[k][j]):Dot(d) < -1e-6 then return true end end
+			return false
+		end
+		if #rings >= 2 and folds(1, 2) then
+			for j, q in ipairs(keep1) do keep1[j] = q - frs[1].t * ext end
+			rings[1] = keep1
+			capG[-1] = nil
+		end
+		if #rings >= 2 and folds(#rings - 1, #rings) then
+			for j, q in ipairs(keepN) do keepN[j] = q + frs[#frs].t * ext end
+			rings[#rings] = keepN
+			capG[1] = nil
+		end
+		E.capG = capG
+	end
+	-- every ring turned the same way round the edge
+	local function orient(ring, t)
+		local c = Vector3.new(0, 0, 0)
+		for _, q in ipairs(ring) do c += q end
+		c /= #ring
+		local s = 0
+		for j = 1, #ring do s += (ring[j] - c):Cross(ring[j % #ring + 1] - c):Dot(t) end
+		if s < 0 then local rv = {} for j = #ring, 1, -1 do rv[#rv + 1] = ring[j] end return rv end
+		return ring
+	end
+	for k = 1, #rings do rings[k] = orient(rings[k], frs[k].t) end
+	local nk = #rings
+	local nr = #rings[1]
+	-- the shape must not fold over itself (too big for a tight bend): then it's left out, not cut wrong
+	for k = 1, (E.closed and nk or nk - 1) do
+		local k2 = k % nk + 1
+		local d = frs[k2].p - frs[k].p
+		if d.Magnitude > 1e-9 then
+			d = d.Unit
+			for j = 1, nr do
+				if (rings[k2][j] - rings[k][j]):Dot(d) < -1e-6 then
+					return nil, "it's too big for that edge's bend - make it smaller"
+				end
+			end
+		end
+	end
+	local tris = {}
+	-- v3.38 (Dylan: "the chamfer does fake cuts"): a sharp bend in the run (a mitred corner) starts a new smooth group.
+	-- One group all the way round blended the light across the corner, so a flat chamfer shaded like a smudge, not a cut.
+	local nsec = E.closed and nk or nk - 1
+	local secG, gid = {}, 1
+	local function secDir(k) local d = frs[k % nk + 1].p - frs[k].p return d.Magnitude > 1e-9 and d.Unit or nil end
+	local SHARP = math.cos(math.rad(35))
+	local prevD
+	for k = 1, nsec do
+		local d = secDir(k)
+		if d and prevD and prevD:Dot(d) <= SHARP then gid += 1 end
+		if d then prevD = d end
+		secG[k] = gid
+	end
+	if E.closed and gid > 1 then
+		local d1, dn = secDir(1), secDir(nsec)
+		if d1 and dn and dn:Dot(d1) > SHARP then for k = 1, nsec do if secG[k] == gid then secG[k] = 1 end end end
+	end
+	for k = 1, nsec do
+		local A, B = rings[k], rings[k % nk + 1]
+		local gp = (secG[k] - 1) * 100
+		for j = 1, nr do
+			local j2 = j % nr + 1
+			tris[#tris + 1] = { A[j], A[j2], B[j2], g = "ew" .. (gp + j) }
+			tris[#tris + 1] = { A[j], B[j2], B[j], g = "ew" .. (gp + j) }
+		end
+	end
+	if not E.closed then
+		-- end caps (flat, square to the edge)
+		for e = 1, 2 do
+			local ring = (e == 1) and rings[1] or rings[nk]
+			local t = (e == 1) and frs[1].t or frs[nk].t
+			local e1 = (ring[1] - ring[2])
+			e1 = (e1 - t * e1:Dot(t))
+			e1 = e1.Magnitude > 1e-9 and e1.Unit or frs[1].dA
+			local e2 = t:Cross(e1)
+			local o = ring[1]
+			local q2 = {}
+			for _, q in ipairs(ring) do q2[#q2 + 1] = V2((q - o):Dot(e1), (q - o):Dot(e2)) end
+			local tp, tt = ENT.triHoles(q2, {})
+			if not tp then return nil, "couldn't close the ends" end
+			-- (triHoles turns it anticlockwise = facing +t; the start cap faces back)
+			-- (v3.26: an end laid flat on a SLANTED face isn't square to the edge - the cap uses the end's own points, so it
+			-- meets the sides exactly; squashing it square left a gap, the cut came out broken, and the fallback square end
+			-- left a notch where two chamfers meet)
+			local same = #tp == #ring
+			local function W(i2) if same then return ring[i2] end local v = tp[i2] return o + e1 * v.X + e2 * v.Y end
+			-- (an end lying on a face takes that face's group: it joins up with it)
+			local raw = E.capG and E.capG[(e == 1) and -1 or 1]
+			for _, tr in ipairs(tt) do
+				if e == 1 then tris[#tris + 1] = { W(tr[1]), W(tr[3]), W(tr[2]), g = "ecap" .. e, rawG = raw }
+				else tris[#tris + 1] = { W(tr[1]), W(tr[2]), W(tr[3]), g = "ecap" .. e, rawG = raw } end
+			end
+		end
+	end
+	return ENT.orientTris(tris), add
+end
+-- find a stored edge again on new triangles: the edge whose line runs closest to the stored points
+-- v2.81: an edge that's got SHORTER since (a chamfer / round next to it took its end off) is still the same edge:
+-- the stored points sit on its line carried on past its ends, and its middle sits on the stored line.
+function ENT.edgeFind(T, pts, r, exact)
+	r = r or 0
+	local function polyDist(list, closed, p, extend)
+		local m = #list
+		local d = math.huge
+		for i = 1, (closed and m or m - 1) do
+			local a, b = list[i], list[i % m + 1]
+			local ab = b - a
+			local l2 = ab:Dot(ab)
+			local tt = l2 > 0 and (p - a):Dot(ab) / l2 or 0
+			local lo, hi = 0, 1
+			if extend and not closed and l2 > 0 then
+				local L = math.sqrt(l2)
+				if i == 1 then lo = -extend / L end
+				if i == m - 1 then hi = 1 + extend / L end
+			end
+			tt = math.clamp(tt, lo, hi)
+			d = math.min(d, (a + ab * tt - p).Magnitude)
+		end
+		return d
+	end
+	local best, bs
+	for _, E in ipairs(T.edges) do
+		if #E.pts >= 2 then
+			local s1, s2 = 0, 0
+			for _, p in ipairs(pts) do
+				s1 += polyDist(E.pts, E.closed, p)
+				s2 += polyDist(E.pts, E.closed, p, (not exact) and (2 * r + 0.5) or nil)
+			end
+			s1 /= math.max(#pts, 1)
+			s2 /= math.max(#pts, 1)
+			local sc = s1
+			if s2 < 0.02 and #pts >= 2 then
+				-- (shortened: its middle must still be on the stored line)
+				local mid = E.pts[math.max(1, math.floor((#E.pts + 1) / 2))]
+				if #E.pts == 2 then mid = (E.pts[1] + E.pts[2]) / 2 end
+				local md = polyDist(pts, false, mid)
+				if md < 1e-3 then sc = math.min(sc, s2) end
+			end
+			if not bs or sc < bs then best, bs = E, sc end
+		end
+	end
+	return best, bs
+end
+-- v2.81 CORNERS (Dylan: "fix the corners on the inside of a cut"). Edges that meet at a corner are trimmed as ONE
+-- shape with a mitred corner, instead of two shapes with square ends that leave a notch / a gap:
+--   * other chamfer / round steps of the same kind and size whose edges join on (a pocket's 4 rim edges = 1 loop)
+--   * a round or chamfer made by an earlier step that the edge runs into (the foot of a rounded inside corner):
+--     the trim carries on round it, onto the next edge if that one's being done too.
+-- An edge is only joined on when both share one face (the top, or the floor) and their other faces go the same way.
+local function isEdgeFace(T, fid)
+	local F = T.faces[fid]
+	if not F or F.g == nil then return false end
+	local g = tostring(F.g)
+	return g:find("E%d+ew%d") ~= nil or g:find("E%d+ecap") ~= nil
+end
+local function intoFace(seg, tri)
+	local a, b = seg[1], seg[2]
+	local ab = b - a
+	if ab.Magnitude < 1e-9 then return nil end
+	ab = ab.Unit
+	local c = (tri[1] + tri[2] + tri[3]) / 3
+	local w = c - a
+	local perp = w - ab * w:Dot(ab)
+	local n = (tri[2] - tri[1]):Cross(tri[3] - tri[1])
+	if n.Magnitude > 1e-12 then
+		local d = n.Unit:Cross(ab)
+		if d.Magnitude > 1e-9 then
+			d = d.Unit
+			if perp:Dot(d) < 0 then d = -d end
+			return d
+		end
+	end
+	return perp.Magnitude > 1e-9 and perp.Unit or nil
+end
+-- an edge as a chain item: its points in order (turned round if rev) and its pieces
+local function itemPts(N, rev)
+	local p, sg = {}, {}
+	local m = #N.pts
+	for k = 1, m do p[k] = rev and N.pts[m - k + 1] or N.pts[k] end
+	local ns = #N.segs
+	for k = 1, ns do sg[k] = rev and N.segs[ns - k + 1] or N.segs[k] end
+	return p, sg
+end
+-- the triangle of face f on N's piece at point key vk (nil if N doesn't end there)
+local function triAt(N, f, vk)
+	local tk = ENT.tkey
+	local s
+	if tk(N.pts[1]) == vk then s = N.segs[1] elseif tk(N.pts[#N.pts]) == vk then s = N.segs[#N.segs] end
+	if not s then return nil end
+	return (f == N.a) and s[6] or s[5], s
+end
+function ENT.edgeChain(T, E, pend)
+	local tk = ENT.tkey
+	pend = pend or {}
+	local at = {}
+	for _, N in ipairs(T.edges) do
+		if not N.closed then
+			for _, p in ipairs({ N.pts[1], N.pts[#N.pts] }) do
+				local k = tk(p)
+				at[k] = at[k] or {}
+				table.insert(at[k], N)
+			end
+		end
+	end
+	local used, absorbed = { [E] = true }, {}
+	local items = { { N = E, rev = false } }
+	local K, closed = nil, E.closed
+	local function other(N, f) return (N.a == f) and N.b or N.a end
+	local function shares(N, M)
+		local c = 0
+		local f
+		for _, x in ipairs({ N.a, N.b }) do if x == M.a or x == M.b then c += 1 f = x end end
+		return c == 1 and f or nil
+	end
+	-- grow at the chain's END
+	local function grow()
+		while not closed do
+			local last = items[#items]
+			local lp = itemPts(last.N, last.rev)
+			local V = lp[#lp]
+			local vk = tk(V)
+			local tEnd = lp[#lp] - lp[#lp - 1]
+			if tEnd.Magnitude < 1e-9 then return end
+			tEnd = tEnd.Unit
+			local best, bestDot, bestRev
+			for _, N in ipairs(at[vk] or {}) do
+				if not used[N] and N.convex == E.convex then
+					local f = shares(N, last.N)
+					if f and (not K or f == K) then
+						local o0, o1 = other(last.N, f), other(N, f)
+						local isPend = pend[N] ~= nil
+						-- v3.28 (Dylan: "fillets need fixing"): coming off a ROUND, an edge that carries on smoothly (tangent) is
+						-- followed too, like SolidWorks - a floor round going round a rounded corner's foot carries on along the
+						-- next floor edge instead of stopping there with its end showing
+						local onEF = isEdgeFace(T, o1)
+						if isPend or onEF or last.viaRound then
+							local rev = tk(N.pts[1]) ~= vk
+							local np = itemPts(N, rev)
+							local tN = np[2] - np[1]
+							if tN.Magnitude > 1e-9 then
+								tN = tN.Unit
+								local dt = tEnd:Dot(tN)
+								-- the other faces must go the same way from the corner (both walls down, both up...)
+								local tri0, s0 = triAt(last.N, o0, vk)
+								local tri1, s1 = triAt(N, o1, vk)
+								local d0 = tri0 and intoFace(s0, tri0)
+								local d1 = tri1 and intoFace(s1, tri1)
+								local okDir = isPend and dt > -0.3 or dt > 0.5
+								if not isPend and not onEF and dt <= 0.9 then okDir = false end   -- (v3.28: only a smooth carry-on)
+								-- v3.26 (Dylan: "a chamfer needs to know when it hits another one"): on its own, a step carries on
+								-- round a ROUNDED corner (that face continues smoothly), but not round another CHAMFER's face - there it
+								-- stops, its end laid flat on that chamfer, so the two meet in a clean mitre (no notch, nothing extra cut)
+								if okDir and not isPend and T.faces[o1] then
+									local si = tonumber(tostring(T.faces[o1].g):match("E(%d+)ew%d+$") or "")
+									local sf = si and ENT.chainFeats and ENT.chainFeats[si]
+									if sf and sf.kind == "edge" and sf.t == "chamfer" then okDir = false end
+								end
+								if okDir and d0 and d1 and d0:Dot(d1) > 0.5 and (not best or dt > bestDot) then
+									best, bestDot, bestRev = N, dt, rev
+								end
+							end
+						end
+					end
+				end
+			end
+			if not best then return end
+			K = K or shares(best, last.N)
+			used[best] = true
+			if pend[best] then absorbed[#absorbed + 1] = pend[best] end
+			local bf = shares(best, last.N)
+			local bo = bf and other(best, bf)
+			items[#items + 1] = { N = best, rev = bestRev, viaRound = (pend[best] == nil) and bo ~= nil and isEdgeFace(T, bo) }
+			local bp = itemPts(best, bestRev)
+			local fp = itemPts(items[1].N, items[1].rev)
+			if tk(bp[#bp]) == tk(fp[1]) then closed = true end
+		end
+	end
+	if not closed then
+		grow()
+		if not closed then
+			-- and at its START (turn the chain round, grow, keep it that way)
+			local r2 = {}
+			for k = #items, 1, -1 do r2[#r2 + 1] = { N = items[k].N, rev = not items[k].rev } end
+			items = r2
+			grow()
+		end
+	end
+	if #items == 1 and E.closed then return E, absorbed end
+	-- put it together: points, pieces (the shared face's triangle always on the A side)
+	local pts, segs = {}, {}
+	for ii, it in ipairs(items) do
+		local p, sg = itemPts(it.N, it.rev)
+		for k = (ii == 1) and 1 or 2, #p do pts[#pts + 1] = p[k] end
+		local swap = K ~= nil and it.N.a ~= K
+		for _, sgm in ipairs(sg) do
+			if swap then segs[#segs + 1] = { sgm[1], sgm[2], sgm[4], sgm[3], sgm[6], sgm[5] }
+			else segs[#segs + 1] = sgm end
+		end
+	end
+	if closed and #pts > 1 and tk(pts[#pts]) == tk(pts[1]) then table.remove(pts) end
+	local C = { pts = pts, segs = segs, closed = closed, convex = E.convex, a = E.a, b = E.b, length = 0 }
+	for k = 1, #pts - 1 do C.length += (pts[k + 1] - pts[k]).Magnitude end
+	-- open ends: the faces the chain runs into there (laid flat on them - edgeSweep)
+	if not closed then
+		-- (which way is out: the mesh's own turn, from its volume)
+		local vol = 0
+		for _, t3 in ipairs(T.tris) do vol += t3[1]:Dot(t3[2]:Cross(t3[3])) end
+		local sgn = vol >= 0 and 1 or -1
+		local function capAt(it, atStart)
+			local p = itemPts(it.N, it.rev)
+			local V = atStart and p[1] or p[#p]
+			local tOut = atStart and (p[1] - p[2]) or (p[#p] - p[#p - 1])
+			if tOut.Magnitude < 1e-9 then return nil end
+			tOut = tOut.Unit
+			local vk = tk(V)
+			local mine = { [it.N.a] = true, [it.N.b] = true }
+			-- the face the end runs into: of the other faces at that corner, the one most square to the edge
+			local best, bd
+			for _, N in ipairs(at[vk] or {}) do
+				for _, f in ipairs({ N.a, N.b }) do
+					if not mine[f] then
+						local tri = triAt(N, f, vk)
+						if tri then
+							local n = (tri[2] - tri[1]):Cross(tri[3] - tri[1])
+							if n.Magnitude > 1e-12 then
+								n = n.Unit * sgn
+								local d = math.abs(n:Dot(tOut))
+								if not bd or d > bd then best, bd = { V = V, n = n, g = tri.g }, d end
+							end
+						end
+					end
+				end
+			end
+			return best
+		end
+		C.capS = capAt(items[1], true)
+		C.capE = capAt(items[#items], false)
+	end
+	return C, absorbed
+end
+-- ALL of a part's steps in order, on top of its base shape (world triangles in, world triangles out)
+-- feats: the stored list (cuts and edge steps); base = the recipe frame; L = detail level
+-- v2.82 SAFETY (Dylan 20:31: a rebuild came out as 11 triangles and every edge step after it was "not there"):
+-- every edge step's result is CHECKED - sealed (every triangle side shared, no holes) and the volume moved the right
+-- way by no more than the trim shape. A bad result is thrown away: the edge is tried again on its own (no joining),
+-- and if that's bad too the step is left out - the part is never wrecked by one step.
+local function sideCheck(tris)
+	local function key(p) return string.format("%.4f,%.4f,%.4f", p.X + 0, p.Y + 0, p.Z + 0) end
+	local e, n = {}, 0
+	for _, t in ipairs(tris) do
+		for k = 1, 3 do
+			local a, b = key(t[k]), key(t[k % 3 + 1])
+			e[a .. ">" .. b] = (e[a .. ">" .. b] or 0) + 1
+			n += 1
+		end
+	end
+	local bad = 0
+	for k2, c in pairs(e) do
+		local a, b = k2:match("(.+)>(.+)")
+		if c ~= 1 or e[b .. ">" .. a] ~= 1 then bad += c end
+	end
+	return bad, n
+end
+ENT.sideCheck = sideCheck
+local function volOf(tris) local v = 0 for _, t in ipairs(tris) do v += t[1]:Dot(t[2]:Cross(t[3])) / 6 end return v end
+-- is this solid (world triangles) sound? (a few hairline gaps on a big mesh are allowed - Roblox's 32-bit numbers
+-- leave the odd one on a complicated cut; a wreck isn't). before = the open sides it had already (a step mustn't add many)
+function ENT.soundSolid(tris, before, openIds)
+	if #tris < 4 then return false, "nothing left" end
+	-- (openIds: the gaps counted on the cut's own joined-up points - exact; else counted by position)
+	local bad, n
+	if openIds then bad, n = openIds, #tris * 3 else bad, n = sideCheck(tris) end
+	local allow = math.floor(n * 0.005)
+	if before then allow = before + math.floor(n * 0.002) end
+	if bad > allow then return false, ("%d open sides"):format(bad) end
+	return true, bad
+end
+local function copyPolys(A)
+	local o = {}
+	for i, P in ipairs(A) do o[i] = { v = table.clone(P.v), n = P.n, w = P.w, g = P.g } end
+	return o
+end
+-- v2.84 FASTER: every rebuild used to work out ALL the steps again from the bare shape. Now the shape after each step
+-- is remembered (in this Studio session), keyed by the shape + every step up to it. Adding a chamfer = only the new
+-- step is worked out; change step 3 = steps 3 onwards again. (Nothing is saved to the place - it's just a memory.)
+ENT.featCache = ENT.featCache or {}
+ENT.featCacheN = ENT.featCacheN or 0
+local function sigOf(v)
+	local t = type(v)
+	if t == "number" then return string.format("%.5f", v) end
+	if t ~= "table" then return tostring(v) end
+	local keys = {}
+	for k in pairs(v) do keys[#keys + 1] = k end
+	table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+	local parts = {}
+	for _, k in ipairs(keys) do parts[#parts + 1] = tostring(k) .. "=" .. sigOf(v[k]) end
+	return "{" .. table.concat(parts, ",") .. "}"
+end
+local function baseSig(baseTris, base)
+	-- (the bare shape in its own frame: triangle count + a running sum of its points)
+	local h1, h2 = #baseTris, 0
+	for i, t in ipairs(baseTris) do
+		for k = 1, 3 do
+			local q = base:PointToObjectSpace(t[k])
+			h1 = (h1 * 31 + math.floor(q.X * 1000 + 0.5) * 7 + math.floor(q.Y * 1000 + 0.5) * 13 + math.floor(q.Z * 1000 + 0.5)) % 2147483647
+			h2 += math.abs(q.X) + math.abs(q.Y) * 2 + math.abs(q.Z) * 3
+		end
+	end
+	return h1 .. ":" .. string.format("%.3f", h2) .. ":" .. tostring(#baseTris)
+end
+function ENT.applyFeatures(baseTris, feats, base, L)
+	ENT.chainFeats = feats   -- v3.26: which step made which face (a chamfer's face stops the next chamfer)
+	local CSG = ENT.CSG
+	local A = CSG.fromTris(baseTris, base, "A")
+	local done = {}
+	local key = baseSig(baseTris, base) .. "|L" .. tostring(L)
+	local function remember(k, msgs, lo)
+		if ENT.featCacheN > 120 then ENT.featCache = {} ENT.featCacheN = 0 end
+		local d = {}
+		for k2, v in pairs(done) do d[k2] = v end
+		ENT.featCache[k] = { A = copyPolys(A), done = d, msgs = msgs, lo = lo }
+		ENT.featCacheN += 1
+	end
+	for i, f in ipairs(feats) do
+		if #A == 0 then break end
+		key = key .. "|" .. sigOf(f)
+		-- v3.40 (Dylan: "it does three or four then it cuts out"): a round / chamfer joins up with LATER steps of the same
+		-- kind (one mitred run), so what it makes depends on them too. They're part of its key now - a step slotted in
+		-- before it, or one taken out, used to bring back the old result: the new chamfer was skipped.
+		if f.kind == "edge" then
+			local later = {}
+			for j = i + 1, #feats do
+				local g = feats[j]
+				if g.kind == "edge" and g.t == f.t then later[#later + 1] = j .. ":" .. sigOf(g) end
+			end
+			key = key .. "#" .. table.concat(later, ";")
+		end
+		local hit = ENT.featCache[key]
+		if hit then
+			-- (worked out before: take it as it was)
+			A = copyPolys(hit.A)
+			done = {}
+			for k2, v in pairs(hit.done) do done[k2] = v end
+			for _, m in ipairs(hit.msgs) do warn(m) end
+			ENT.leftOut = (ENT.leftOut or 0) + hit.lo
+			continue
+		end
+		local msgs, lo0 = {}, ENT.leftOut or 0
+		local realWarn = warn
+		local warn = function(m) msgs[#msgs + 1] = m realWarn(m) end
+		if done[i] then
+			remember(key, msgs, 0)
+			continue
+		end
+		if f.kind == "edge" then
+			local tris, open0 = CSG.toTris(A, base)
+			ENT.sweepSolid = tris   -- v3.29: what's solid now (an inside round's end runs on into it)
+			local T = ENT.topo(tris)
+			local function find(g)
+				local pts = {}
+				for _, q in ipairs(g.pts or {}) do pts[#pts + 1] = base:PointToWorldSpace(Vector3.new(q[1], q[2], q[3])) end
+				local E, score = ENT.edgeFind(T, pts, g.r)
+				if E and score < math.max(0.3, g.r * 0.5) then return E end
+				return nil
+			end
+			local E = find(f)
+			if E then
+				-- (v2.81) later steps of the same kind + size on edges that join this one = one shape, mitred corners
+				-- (only steps whose edge is EXACTLY here now - one that only shows up after other steps waits its turn)
+				local pend = {}
+				for j = i + 1, #feats do
+					local g = feats[j]
+					if not done[j] and g.kind == "edge" and g.t == f.t and math.abs((g.r or 0) - f.r) < 1e-6 then
+						local pts = {}
+						for _, q in ipairs(g.pts or {}) do pts[#pts + 1] = base:PointToWorldSpace(Vector3.new(q[1], q[2], q[3])) end
+						local Ej, sj = ENT.edgeFind(T, pts, 0, true)
+						-- (v3.40: and it was clicked on the edge as it is NOW, end to end - one clicked after this step had
+						-- already rounded the corner is shorter, and waits its turn: it carries on round this one)
+						local whole = Ej ~= nil
+						if Ej and not Ej.closed and #pts >= 2 then
+							for _, q in ipairs({ Ej.pts[1], Ej.pts[#Ej.pts] }) do
+								local dq = math.huge
+								for k = 1, #pts - 1 do
+									local a, b = pts[k], pts[k + 1]
+									local ab = b - a
+									local l2 = ab:Dot(ab)
+									local tt = l2 > 0 and math.clamp((q - a):Dot(ab) / l2, 0, 1) or 0
+									dq = math.min(dq, (a + ab * tt - q).Magnitude)
+								end
+								if dq > 0.01 then whole = false end
+							end
+						end
+						if Ej and whole and sj < 0.01 and Ej ~= E and not pend[Ej] then pend[Ej] = j end
+					end
+				end
+				local vol0 = volOf(tris)
+				local bad0 = open0
+				-- the trim shape, then ONE cut (or one join for an inside edge) - and check what came out
+				local function try1(shape, rr, lenient)
+					local sw, add = ENT.edgeSweep(shape, rr, f.t == "fillet", L)
+					if not sw then return nil, add end
+					local okR, A2 = pcall(function()
+						local B = CSG.fromTris(sw, base, "E" .. i)
+						local A1 = copyPolys(A)
+						if add then return CSG.union(A1, B) end
+						return CSG.subtract(A1, B)
+					end)
+					if not okR then return nil, "the cut failed (" .. tostring(A2) .. ")" end
+					local out, open1 = CSG.toTris(A2, base, lenient)
+					local sound, why = ENT.soundSolid(out, bad0, open1)
+					if not sound then return nil, "it came out broken (" .. why .. ")" end
+					local v1, vs = volOf(out), math.abs(volOf(sw))
+					local tol = 1e-3 + vol0 * 1e-6
+					local moved = add and (v1 - vol0) or (vol0 - v1)
+					if moved < -tol or moved > vs + tol then return nil, "it came out the wrong size" end
+					return A2
+				end
+				-- v3.30: the cut is worked out with 32-bit-ish numbers; where the trim shape's faces line up EXACTLY with
+				-- the part's own thin faces (a block's rounded edge), it can come out wrong. Then it's tried again with the
+				-- size a hair different (0.03% - far too small to see), which moves every one of those faces off the line.
+				local function try(shape, lenient)
+					local caps = { shape.capS, shape.capE, shape.capG }
+					local A2, why = try1(shape, f.r, lenient)
+					-- (v3.33: the size a hair different next; closing slim gaps (lenient) only as the very last go - after the
+					-- joined-up shape AND the edge on its own have both failed the strict way. A shape that's only sealed by
+					-- closing gaps can trip the steps after it)
+					for _, it in ipairs({ { 1.0003, lenient }, { 0.9997, lenient } }) do
+						if A2 then break end
+						shape.capS, shape.capE, shape.capG = caps[1], caps[2], caps[3]
+						local w2
+						A2, w2 = try1(shape, f.r * it[1], it[2])
+					end
+					return A2, why
+				end
+				local okC, C, absorbed = pcall(ENT.edgeChain, T, E, pend)
+				local A2, why
+				local capsE = { E.capS, E.capE, E.capG }
+				for _, len in ipairs({ false, true }) do
+					if A2 then break end
+					if okC and C and C ~= E then
+						A2, why = try(C, len)
+						if A2 then for _, j in ipairs(absorbed) do done[j] = true end end
+					end
+					-- (the joined-up shape couldn't be made: this edge on its own, the others in their turn)
+					if not A2 then
+						E.capS, E.capE, E.capG = nil, nil, nil
+						A2, why = try(E, len)
+					end
+				end
+				if A2 then
+					A = A2
+				else
+					warn("PROTO: step " .. i .. " (edge) left out - " .. tostring(why))
+					ENT.leftOut = (ENT.leftOut or 0) + 1
+				end
+			else
+				-- v3.30: an edge an EARLIER round / chamfer already took in (it carried on along it smoothly) is done -
+				-- its line now lies on that earlier step's face. That's not "left out".
+				local taken = false
+				local sp = f.pts or {}
+				if #sp >= 2 then
+					local a = base:PointToWorldSpace(Vector3.new(sp[1][1], sp[1][2], sp[1][3]))
+					local b = base:PointToWorldSpace(Vector3.new(sp[#sp][1], sp[#sp][2], sp[#sp][3]))
+					local m = (a + b) / 2
+					local lim = (f.r or 1) * 1.5 + 0.05
+					for _, F in ipairs(T.faces) do
+						local g = tostring(F.g)
+						local j = tonumber(g:match("^E(%d+)ew") or "")
+						if j and j < i then
+							for _, ti in ipairs(F.tris) do
+								local t3 = T.tris[ti]
+								-- (nearest point of the triangle to m)
+								local A3, B3, C3 = t3[1], t3[2], t3[3]
+								local n3 = (B3 - A3):Cross(C3 - A3)
+								local d3 = math.huge
+								if n3.Magnitude > 1e-12 then
+									local nu = n3.Unit
+									local q = m - nu * (m - A3):Dot(nu)
+									local c1 = (B3 - A3):Cross(q - A3):Dot(n3)
+									local c2 = (C3 - B3):Cross(q - B3):Dot(n3)
+									local c3 = (A3 - C3):Cross(q - C3):Dot(n3)
+									if c1 >= 0 and c2 >= 0 and c3 >= 0 then d3 = math.abs((m - A3):Dot(nu)) end
+								end
+								for _, sg in ipairs({ { A3, B3 }, { B3, C3 }, { C3, A3 } }) do
+									local u, v = sg[1], sg[2]
+									local uv = v - u
+									local l2 = uv:Dot(uv)
+									local tt = l2 > 0 and math.clamp((m - u):Dot(uv) / l2, 0, 1) or 0
+									d3 = math.min(d3, (u + uv * tt - m).Magnitude)
+								end
+								if d3 < lim then taken = true break end
+							end
+						end
+						if taken then break end
+					end
+				end
+				if not taken then
+					-- v3.67 (Dylan's log): no line per step on every rebuild - noted, and said ONCE after (ENT.leftOutNote)
+					ENT.leftOutSteps = ENT.leftOutSteps or {}
+					table.insert(ENT.leftOutSteps, i)
+					ENT.leftOut = (ENT.leftOut or 0) + 1
+				end
+			end
+		elseif f.kind == "shell" then
+			-- v2.86 SHELL: the inside shape (every face moved in by the wall, the open faces out) cut away in ONE cut
+			local why, A2
+			local okS, B, w1 = pcall(CSG.shellCutter, A, f.t, f.open or {})
+			if not okS then why = tostring(B) B = nil elseif not B then why = w1 end
+			if B then
+				local okR, R = pcall(CSG.subtract, copyPolys(A), B)
+				if not okR then why = "the cut failed (" .. tostring(R) .. ")"
+				elseif #R == 0 then why = "nothing was left"
+				else
+					local out, open1 = CSG.toTris(R, base)
+					local sound, whyS = ENT.soundSolid(out, nil, open1)
+					if not sound then
+						local out2, open2 = CSG.toTris(R, base, true)
+						if ENT.soundSolid(out2, nil, open2) then out, open1, sound = out2, open2, true end
+					end
+					if sound and volOf(out) > 0 then A2 = R else why = "it came out broken (" .. tostring(whyS) .. ")" end
+				end
+			end
+			if A2 then
+				A = A2
+			else
+				warn("PROTO: step " .. i .. " (shell) left out - " .. tostring(why))
+				ENT.leftOut = (ENT.leftOut or 0) + 1
+				ENT.lastShellWhy = why
+			end
+		else
+			local ct = ENT.cutTris(f, base, L)
+			if ct then A = CSG.subtract(A, CSG.fromTris(ct, base, "C" .. i)) end
+			-- v3.41 (glitch sweep): say so when a cut can't be made (it used to be skipped without a word)
+			if not ct then
+				warn("PROTO: step " .. i .. " (cut) left out - its outline couldn't be made (it may cross itself)")
+				ENT.leftOut = (ENT.leftOut or 0) + 1
+			end
+		end
+		remember(key, msgs, (ENT.leftOut or 0) - lo0)
+	end
+	local out, open = CSG.toTris(A, base)
+	if open > 0 then
+		local o2, n2 = CSG.toTris(A, base, true)
+		if n2 < open then out, open = o2, n2 end
+	end
+	ENT.lastOpen = open   -- (v2.84: the finished shape's gaps, counted exactly - the rebuild checks this)
+	return out
+end
+end
+-- ===== end v2.75 ANY EDGE =====
+-- ===== v2.76 REAL FACES + EDGES in the mouse =====
+local topoPool = newPool("BoxHandleAdornment", true)
+-- light up a face's real outline (nil = clear)
+function ENT.drawTopoFace(T, F)
+	pBegin(topoPool)
+	if T and F then
+		for _, E in ipairs(T.edges) do
+			if E.a == F.id or E.b == F.id then
+				local m = #E.pts
+				for i = 1, (E.closed and m or m - 1) do pLine(topoPool, E.pts[i], E.pts[i % m + 1], Color3.fromRGB(80, 170, 255), 4) end
+			end
+		end
+	end
+	pEnd(topoPool)
+end
+-- light up one edge, all of it (orange = sticks out, green = goes in)
+function ENT.drawTopoEdge(E)
+	pBegin(topoPool)
+	if E then
+		local m = #E.pts
+		local col = E.convex and Color3.fromRGB(80, 230, 120) or Color3.fromRGB(160, 255, 200)   -- v3.31: green = it can do it
+		for i = 1, (E.closed and m or m - 1) do pLine(topoPool, E.pts[i], E.pts[i % m + 1], col, 6) end
+	end
+	pEnd(topoPool)
+end
+-- is this edge just one of a block's own straight box edges? (those keep the exact old way: balls at the corners)
+function ENT.isBoxEdge(p, E)
+	local cf, size = ENT.blockOf(p)
+	if not cf or E.closed then return false end
+	local h = { size.X / 2, size.Y / 2, size.Z / 2 }
+	local hitAxes
+	for _, q in ipairs({ E.pts[1], E.pts[#E.pts] }) do
+		local l = cf:PointToObjectSpace(q)
+		local L = { l.X, l.Y, l.Z }
+		local on = {}
+		for k = 1, 3 do if math.abs(math.abs(L[k]) - h[k]) < 2e-3 then on[#on + 1] = k end end
+		if #on < 2 then return false end
+		local key = on[1] .. on[2]
+		if hitAxes and hitAxes ~= key then return false end
+		hitAxes = key
+	end
+	-- and straight
+	local a, b = E.pts[1], E.pts[#E.pts]
+	for _, q in ipairs(E.pts) do
+		local ab = b - a
+		local d = (q - a) - ab * ((q - a):Dot(ab) / math.max(ab:Dot(ab), 1e-12))
+		if d.Magnitude > 2e-3 then return false end
+	end
+	return true
+end
+-- CHAMFER / ROUND ANY EDGE: stored as a step in the part's recipe, then the part is rebuilt (one undo step, saved)
+-- v3.32 (Dylan: "still getting the outside fillets wrong"): a new round / chamfer whose edge RUNS INTO rounds /
+-- chamfers done earlier (a box's upright corner, after its top edges were chamfered) goes into the recipe BEFORE them -
+-- so they're worked out again round it (the top chamfer follows the rounded corner) instead of it cutting through them.
+-- The order you click in stops mattering. Never moved before a cut / shell, or before a step it sits ON (an edge made
+-- by that step needs that step first).
+function ENT.edgeInsertAt(list, pts)
+	local n = #list
+	if #pts < 2 then return n + 1 end
+	local function V(q) return Vector3.new(q[1], q[2], q[3]) end
+	local function distPoly(p, sp)
+		local d = math.huge
+		for k = 1, #sp - 1 do
+			local a, b = V(sp[k]), V(sp[k + 1])
+			local ab = b - a
+			local l2 = ab:Dot(ab)
+			local t = l2 > 0 and math.clamp((p - a):Dot(ab) / l2, 0, 1) or 0
+			d = math.min(d, (a + ab * t - p).Magnitude)
+		end
+		return d
+	end
+	local e1, e2 = V(pts[1]), V(pts[#pts])
+	local mid = (#pts == 2) and (e1 + e2) / 2 or V(pts[math.floor((#pts + 1) / 2)])
+	local at = n + 1
+	for j = n, 1, -1 do
+		local s = list[j]
+		if s.kind ~= "edge" or not s.pts or #s.pts < 2 then break end
+		local lim = (s.r or 1) * 1.5 + 0.05
+		if distPoly(mid, s.pts) <= lim then break end
+		if distPoly(e1, s.pts) <= lim or distPoly(e2, s.pts) <= lim then at = j end
+	end
+	return at
+end
+function ENT.edgeStep(p, E, r, isF)
+	local base = ENT.paintBase(p)
+	if not base then return nil, "this part has no recipe" end
+	local pts = {}
+	for _, q in ipairs(E.pts) do local l = base:PointToObjectSpace(q) pts[#pts + 1] = { l.X, l.Y, l.Z } end
+	ENT.lastEdgeMoved = nil
+	-- v3.36: the same round / chamfer on the same edge twice (a second click) isn't added again
+	do
+		local t = isF and "fillet" or "chamfer"
+		local function V(q) return Vector3.new(q[1], q[2], q[3]) end
+		local function onLine(p0, sp)
+			for k = 1, #sp - 1 do
+				local a, b = V(sp[k]), V(sp[k + 1])
+				local ab = b - a
+				local l2 = ab:Dot(ab)
+				local tt = l2 > 0 and math.clamp((p0 - a):Dot(ab) / l2, 0, 1) or 0
+				if (a + ab * tt - p0).Magnitude < 0.05 then return true end
+			end
+			return false
+		end
+		for j, s in ipairs(ENT.cutsOf(p)) do
+			if s.kind == "edge" and s.t == t and math.abs((s.r or 0) - r) < 1e-6 and s.pts and #s.pts >= 2 then
+				local same = true
+				for _, q in ipairs(pts) do if not onLine(V(q), s.pts) then same = false break end end
+				if same then for _, q in ipairs(s.pts) do if not onLine(V(q), pts) then same = false break end end end
+				if same then
+					-- (v3.37: Dylan sees "fake" chamfers - one in the list that doesn't show. Clicking it again lands here,
+					-- so the recipe goes to Output for fixing)
+					pcall(ENT.recipeDumpPart, p)
+					return nil, "that edge already has this " .. (isF and "round" or "chamfer") .. " (step " .. j .. ")."
+				end
+			end
+		end
+	end
+	return ENT.stepChange(p, function(q)
+		local list = ENT.cutsOf(q)
+		local at = ENT.edgeInsertAt(list, pts)
+		if at <= #list then ENT.lastEdgeMoved = #list + 1 - at end
+		table.insert(list, at, { kind = "edge", id = ENT.newCutId(), t = isF and "fillet" or "chamfer", r = r, pts = pts })
+		q:SetAttribute("PROTO_Cuts", HttpService:JSONEncode(list))
+	end, "PROTO " .. (isF and "Round" or "Chamfer") .. " edge")
+end
+-- ===== end v2.76 REAL FACES + EDGES in the mouse =====
+-- ===== v3.50 SMOOTH EDGES (Dylan: "ROBLEND's chamfer is S tier, PROTO's is bad - even the way it finds lines"; "the one
+-- mesh alive system looks way smoother, can we try that") =====
+-- 1) FINDING THE EDGE: in screen pixels - the edge nearest the mouse within 10 pixels wins, and edges hidden behind
+--    the part are skipped (it used to measure in studs along the mouse ray and could light up an edge round the back).
+-- 2) PICK FIRST: click edges to add them (orange), click one again to drop it. Several at once is fine.
+-- 3) SIZE LIVE: drag the arrow on the edge (or type Size) - the part shows the result as you go: ONE preview mesh kept
+--    alive and refilled in place (not a new part each time). Nothing is made yet.
+-- 4) ENTER = make it: every picked edge goes in as ONE change (one Ctrl+Z), so corners join up. Esc = drop the picks.
+ENT.EDGE_PX = 10
+ENT.eSelPool = newPool("BoxHandleAdornment", true)
+-- the nearest edge of T to the mouse on screen, that isn't hidden behind the part
+function ENT.edgePickScreen(T)
+	local cam = workspace.CurrentCamera
+	if not (cam and T) then return nil end
+	local mp = Vector2.new(mouse.X, mouse.Y)
+	local o = cam.CFrame.Position
+	local cands = {}
+	for _, E in ipairs(T.edges) do
+		local m = #E.pts
+		for i = 1, (E.closed and m or m - 1) do
+			local a, b = E.pts[i], E.pts[i % m + 1]
+			local sa = cam:WorldToViewportPoint(a)
+			local sb = cam:WorldToViewportPoint(b)
+			if sa.Z > 0 and sb.Z > 0 then
+				local A, B = Vector2.new(sa.X, sa.Y), Vector2.new(sb.X, sb.Y)
+				local ab = B - A
+				local l2 = ab:Dot(ab)
+				local t = l2 > 1e-9 and math.clamp((mp - A):Dot(ab) / l2, 0, 1) or 0
+				local d = (A + ab * t - mp).Magnitude
+				if d <= ENT.EDGE_PX then cands[#cands + 1] = { E = E, d = d, w = a + (b - a) * t } end
+			end
+		end
+	end
+	table.sort(cands, function(x, y) return x.d < y.d end)
+	for k = 1, math.min(#cands, 8) do
+		local c = cands[k]
+		local v = c.w - o
+		local dist = v.Magnitude
+		if dist > 1e-6 then
+			local _, tt = ENT.rayTris(T.tris, o, v / dist)
+			-- (hidden = the ray hits the part well before it gets to the edge)
+			if not tt or tt >= dist - math.max(0.05, dist * 0.003) then return c.E, c.w end
+		end
+	end
+	return nil
+end
+-- the picked edges: { p = part, list = { E, ... } }
+function ENT.eSelKey(E)
+	local a, b = E.pts[1], E.pts[#E.pts]
+	local mid = E.pts[math.max(1, math.floor((#E.pts + 1) / 2))]
+	local function k(q) return string.format("%.2f,%.2f,%.2f", q.X, q.Y, q.Z) end
+	return k(a) .. "|" .. k(b) .. "|" .. k(mid) .. "|" .. #E.pts
+end
+function ENT.eSelDraw()
+	pBegin(ENT.eSelPool)
+	local S = ENT.eSel
+	if S and S.p and S.p.Parent then
+		for _, E in ipairs(S.list) do
+			local m = #E.pts
+			for i = 1, (E.closed and m or m - 1) do pLine(ENT.eSelPool, E.pts[i], E.pts[i % m + 1], Color3.fromRGB(255, 150, 30), 7) end
+		end
+	end
+	pEnd(ENT.eSelPool)
+end
+-- click on a lit edge: add it / drop it
+function ENT.eSelToggle(p, E)
+	local S = ENT.eSel
+	if not S or S.p ~= p then
+		ENT.eSelClear(true)
+		S = { p = p, list = {}, keys = {} }
+		ENT.eSel = S
+	end
+	local key = ENT.eSelKey(E)
+	if S.keys[key] then
+		for i, e in ipairs(S.list) do if ENT.eSelKey(e) == key then table.remove(S.list, i) break end end
+		S.keys[key] = nil
+	else
+		table.insert(S.list, E)
+		S.keys[key] = true
+	end
+	ENT.eSelDraw()
+	ENT.eSelHandle()
+	ENT.edgeLiveDirty = true
+	local nm = (ENT.edgeTool == "fillet") and "ROUND" or "CHAMFER"
+	if #S.list == 0 then
+		ENT.liveHide()
+		setStatus(nm .. ": click edges to pick them (orange). Then drag the arrow or type Size - Enter = make it.")
+	else
+		setStatus(("%s: %d edge(s) picked. Drag the arrow (or type Size) - you see it live. Enter = make it, Esc = drop the picks."):format(nm, #S.list))
+	end
+	pcall(ENT.featRefresh, true)
+end
+function ENT.eSelClear(keepStatus)
+	ENT.eSel = nil
+	pBegin(ENT.eSelPool) pEnd(ENT.eSelPool)
+	if ENT.eSizeH then ENT.eSizeH.Adornee = nil end
+	ENT.liveHide()
+	if not keepStatus then pcall(ENT.featRefresh, true) end
+end
+-- the arrow on the first picked edge: drag = size
+function ENT.eSelHandle()
+	local S = ENT.eSel
+	if not (S and #S.list > 0) then if ENT.eSizeH then ENT.eSizeH.Adornee = nil end return end
+	if not ENT.eSizeH then
+		local anc = Instance.new("Part")
+		anc.Name = "PROTO_Preview"
+		anc.Anchored, anc.CanCollide, anc.CanTouch, anc.CanQuery, anc.CastShadow = true, false, false, false, false
+		anc.Transparency = 1
+		anc.Locked = true
+		anc.Archivable = false
+		anc.Size = Vector3.new(0.4, 0.4, 0.4)
+		ENT.eSizeAnc = anc
+		local h = Instance.new("Handles")
+		h.Style = Enum.HandlesStyle.Movement
+		h.Color3 = Color3.fromRGB(255, 150, 30)
+		h.Faces = Faces.new(Enum.NormalId.Top)
+		h.Parent = adornRoot
+		ENT.eSizeH = h
+		local r0
+		h.MouseButton1Down:Connect(function() r0 = ENT.filletSize() or 1 end)
+		h.MouseDrag:Connect(function(_, d)
+			if not r0 then return end
+			local r = r0 + d
+			local g = ctrlDown() and 0 or (shiftDown() and 0.01 or 0.1)
+			if g > 0 then r = math.floor(r / g + 0.5) * g end
+			r = math.max(r, 0.05)
+			if U.filletR then U.filletR.Text = string.format("%g", math.floor(r * 1000 + 0.5) / 1000) end
+			ENT.edgeLiveDirty = true
+		end)
+		h.MouseButton1Up:Connect(function() r0 = nil ENT.edgeLiveDirty = true end)
+	end
+	-- on the middle of the first picked edge, pointing out between its two faces
+	local E = S.list[1]
+	local T = ENT.partTopo(S.p)
+	local mid = E.pts[math.max(1, math.floor((#E.pts + 1) / 2))]
+	if #E.pts == 2 then mid = (E.pts[1] + E.pts[2]) / 2 end
+	local out = Vector3.new(0, 1, 0)
+	if T and T.faces[E.a] and T.faces[E.b] then
+		local nn = T.faces[E.a].normal + T.faces[E.b].normal
+		if nn.Magnitude > 1e-6 then out = nn.Unit end
+		if not E.convex then out = -out end
+	end
+	local along = (E.pts[#E.pts] - E.pts[1])
+	along = along.Magnitude > 1e-6 and along.Unit or Vector3.new(1, 0, 0)
+	local side = along:Cross(out)
+	if side.Magnitude < 1e-6 then side = out:Cross(Vector3.new(0, 0, 1)) end
+	ENT.eSizeAnc.CFrame = CFrame.fromMatrix(mid, side.Unit, out)
+	ENT.eSizeAnc.Parent = workspace
+	ENT.eSizeH.Adornee = ENT.eSizeAnc
+end
+-- the picked edges as recipe steps (in the part's recipe frame)
+function ENT.eSelSteps(r)
+	local S = ENT.eSel
+	local base = S and ENT.paintBase(S.p)
+	if not base then return nil end
+	local t = (ENT.edgeTool == "fillet") and "fillet" or "chamfer"
+	local steps = {}
+	for _, E in ipairs(S.list) do
+		local pts = {}
+		for _, q in ipairs(E.pts) do local l = base:PointToObjectSpace(q) pts[#pts + 1] = { l.X, l.Y, l.Z } end
+		steps[#steps + 1] = { kind = "edge", id = ENT.newCutId(), t = t, r = r, pts = pts }
+	end
+	return steps
+end
+-- the part as it would be with extra steps: its triangles (nothing made, nothing changed)
+function ENT.previewTris(p, extra)
+	local kind = ENT.detailKind(p)
+	if not kind then return nil end
+	local cuts = ENT.cutsOf(p)
+	for _, s in ipairs(extra) do cuts[#cuts + 1] = s end
+	ENT.captureTris, ENT.captured, ENT.previewing = true, nil, true
+	local ok, err = pcall(function()
+		if kind == "block" then
+			local cf, size = ENT.blockOf(p)
+			local done = {}
+			pcall(function() done = HttpService:JSONDecode(p:GetAttribute("PROTO_EdgesDone") or "[]") end)
+			ENT.solidRebuild(p, cf, size, done, cuts, ENT.partDetail(p))
+		else
+			ENT.recipeRebuild(p, ENT.recipeOf(p), cuts, ENT.partDetail(p))
+		end
+	end)
+	ENT.captureTris, ENT.previewing = false, false
+	local c = ENT.captured
+	ENT.captured = nil
+	if not ok then return nil, tostring(err) end
+	return c
+end
+-- ONE preview mesh, kept alive: its triangles are swapped in place (no new part each time)
+function ENT.liveFill(em, tris, frame, ctr)
+	for _, f in ipairs(em:GetFaces()) do em:RemoveFace(f) end
+	pcall(function() em:RemoveUnused() end)
+	local ids, colIds = {}, {}
+	local info = { slots = {}, pos = {}, g = {}, n = #tris }   -- v3.53: each triangle corner -> its mesh corner (for the stretch)
+	ENT.fillInfo = info
+	local function vid(p, g)
+		local k = math.floor(p.X * 1e4 + 0.5) .. "," .. math.floor(p.Y * 1e4 + 0.5) .. "," .. math.floor(p.Z * 1e4 + 0.5) .. "|" .. tostring(g)
+		local id = ids[k]
+		if not id then id = em:AddVertex(p - ctr) ids[k] = id info.pos[id] = p - ctr end
+		return id
+	end
+	local vol = 0
+	local list = {}
+	for i, t in ipairs(tris) do
+		local a, b, c = frame:PointToObjectSpace(t[1]), frame:PointToObjectSpace(t[2]), frame:PointToObjectSpace(t[3])
+		if (b - a):Cross(c - a).Magnitude > 1e-9 then
+			list[#list + 1] = { a, b, c, t.g, t.col, i }
+			vol += a:Dot(b:Cross(c))
+		end
+	end
+	local inside = vol < 0
+	for _, t in ipairs(list) do
+		local ia, ib, ic = vid(t[1], t[4]), vid(t[2], t[4]), vid(t[3], t[4])
+		info.slots[t[6]] = { ia, ib, ic }
+		info.g[t[6]] = tostring(t[4])
+		if inside ~= (ENT.meshFlip == true) then ib, ic = ic, ib end
+		local f = em:AddTriangle(ia, ib, ic)
+		if t[5] then
+			pcall(function()
+				local key = t[5]:ToHex()
+				local cid = colIds[key]
+				if not cid then cid = em:AddColor(t[5], 1) colIds[key] = cid end
+				em:SetFaceColors(f, { cid, cid, cid })
+			end)
+		end
+	end
+	return #list
+end
+function ENT.liveShow(cap, look)
+	local tris, frame = cap.tris, cap.frame or CFrame.new()
+	local L = ENT.live
+	-- (same part being previewed + the mesh still alive: refill it in place)
+	if L and L.part and L.part.Parent and L.look == look and L.frame == frame then
+		local ok = pcall(ENT.liveFill, L.em, tris, frame, L.ctr)
+		if ok then
+			L.info = ENT.fillInfo
+			pcall(function() L.part.Color = cap.tinted and Color3.new(1, 1, 1) or look.Color end)   -- v3.55
+			return true
+		end
+	end
+	ENT.liveHide(true)
+	local lo, hi = Vector3.new(math.huge, math.huge, math.huge), Vector3.new(-math.huge, -math.huge, -math.huge)
+	for _, t in ipairs(tris) do
+		for k = 1, 3 do local q = frame:PointToObjectSpace(t[k]) lo, hi = lo:Min(q), hi:Max(q) end
+	end
+	if lo.X > hi.X then return false end
+	local ctr = (lo + hi) / 2
+	local ok, err = pcall(function()
+		local em = AssetService:CreateEditableMesh()
+		ENT.liveFill(em, tris, frame, ctr)
+		local mp = AssetService:CreateMeshPartAsync(Content.fromObject(em))
+		mp.Name = "PROTO_Preview"
+		mp.Anchored, mp.CanCollide, mp.CanTouch, mp.CanQuery, mp.CastShadow = true, false, false, false, true
+		mp.Locked = true
+		mp.Archivable = false
+		mp.CFrame = frame * CFrame.new(ctr)
+		if look then
+			mp.Color, mp.Material, mp.MaterialVariant = look.Color, look.Material, look.MaterialVariant
+			mp.Reflectance = look.Reflectance
+		end
+		if cap.tinted then mp.Color = Color3.new(1, 1, 1) end   -- v3.55: its faces carry their own colours
+		mp.Parent = workspace
+		ENT.live = { em = em, part = mp, ctr = ctr, frame = frame, look = look, info = ENT.fillInfo }
+	end)
+	if not ok then warn("PROTO live preview: " .. tostring(err)) return false end
+	return true
+end
+function ENT.liveHide(keepOrig)
+	local L = ENT.live
+	ENT.live = nil
+	if L then
+		pcall(function() L.part:Destroy() end)   -- (PROTO's own preview mesh)
+		pcall(function() L.em:Destroy() end)
+	end
+	if not keepOrig then ENT.mo = nil end   -- v3.53
+	if not keepOrig and ENT.liveOrig then
+		pcall(function() ENT.liveOrig.LocalTransparencyModifier = 0 end)
+		ENT.liveOrig = nil
+	end
+end
+-- once a frame at most: the picked edges at the size now -> the live preview
+function ENT.edgeLiveStep()
+	ENT.edgeLiveDirty = false
+	local S = ENT.eSel
+	if not (S and S.p and S.p.Parent and #S.list > 0 and ENT.edgeTool) then return end
+	local r = ENT.filletSize()
+	if not r or r <= 0 or r ~= r then return end
+	-- v3.53: slides every frame (ENT.moDrive), the exact result when you stop
+	local key = "edge|" .. tostring(ENT.edgeTool) .. "|" .. tostring(S.p)
+	for _, E in ipairs(S.list) do key ..= "|" .. tostring(E) end
+	local shown = ENT.moDrive("edge", key, S.p, r, function(v)
+		local steps = ENT.eSelSteps(v)
+		if not steps then return nil end
+		local cap, why = ENT.previewTris(S.p, steps)
+		if not cap and why then setStatus("Preview: " .. tostring(why)) end
+		return cap
+	end)
+	if shown then
+		if ENT.liveOrig ~= S.p then
+			if ENT.liveOrig then pcall(function() ENT.liveOrig.LocalTransparencyModifier = 0 end) end
+			ENT.liveOrig = S.p
+		end
+		pcall(function() S.p.LocalTransparencyModifier = 1 end)   -- (the real part hides while you look at the preview)
+	end
+end
+-- ENTER: every picked edge in ONE change
+function ENT.eSelApply()
+	local S = ENT.eSel
+	if not (S and S.p and S.p.Parent and #S.list > 0) then return false end
+	if not ENT.meshGate() then return true end
+	if ENT.rebuildBusy then setStatus("Still working on the last one - one moment.") return true end
+	local isF = ENT.edgeTool == "fillet"
+	local nm = isF and "ROUND" or "CHAMFER"
+	local r = ENT.filletSize()
+	if not r or r <= 0 or r ~= r then setStatus(nm .. ": type a size above 0.") return true end
+	local steps = ENT.eSelSteps(r)
+	local p = S.p
+	ENT.liveHide()
+	ENT.rebuildBusy = true
+	setStatus(nm .. ": making it...")
+	local ok, np, why = pcall(ENT.stepChange, p, function(q)
+		local list = ENT.cutsOf(q)
+		for _, s in ipairs(steps) do list[#list + 1] = s end
+		q:SetAttribute("PROTO_Cuts", HttpService:JSONEncode(list))
+	end, ("PROTO %s %d edge(s)"):format(isF and "Round" or "Chamfer", #steps))
+	ENT.rebuildBusy = false
+	ENT.eSelClear(true)
+	if ok and np then
+		setStatus(("%s done on %d edge(s) (%s) - one step each in FEATURES. Ctrl+Z undoes it."):format(nm, #steps, fmt(r)))
+	else
+		setStatus(nm .. ": " .. tostring(ok and why or np))
+		warn("PROTO " .. nm .. ": " .. tostring(ok and why or np))
+	end
+	pcall(ENT.featRefresh, true)
+	pcall(ENT.edgeHover)
+	return true
+end
+-- ===== end v3.50 SMOOTH EDGES =====
+-- ===== v3.51 LIVE CUT (Dylan: "can we do that for extrude and cut so the cutting process is smoother") =====
+-- While a CUT preview is open, the part you sketched on shows the cut in it LIVE - the hole / pocket as it will be,
+-- following the depth as you drag - in the same kept-alive preview mesh as the live edges (refilled in place, not a new
+-- part each time). The real part hides meanwhile. ACCEPT makes it for real; CANCEL / Esc shows the part again.
+-- (Other parts the cut also hits still show the red ghost. Overlap is not previewed this way.)
+function ENT.cutLiveSteps(p)
+	local e = ex
+	if not (e and sk and p) then return nil end
+	local z0, z1 = extentZ(e.D, e.S)
+	local pl = sk.pl
+	local frame = CFrame.fromMatrix(pl.o, pl.u, pl.v)
+	local grow = ENT.cutGrow and ENT.cutGrow()
+	local function vlist(q) local o = {} for _, v in ipairs(q) do o[#o + 1] = { v.X, v.Y } end return o end
+	local kind = ENT.detailKind(p)
+	if not kind then return nil end
+	local rel, base, sides
+	if kind == "block" then
+		local cf = ENT.blockOf(p)
+		if not cf then return nil end
+		rel = cf:ToObjectSpace(frame)
+	else
+		local Rc = ENT.recipeOf(p)
+		if not Rc then return nil end
+		sides = ENT.partDetail(p)
+		base = ENT.recipeBase(Rc, sides)
+		rel = Rc.F:ToObjectSpace(frame)
+	end
+	local steps = {}
+	local mark = { frame = frame, list = {} }   -- v3.55: where the cut is (the preview colours those faces red)
+	for _, r in ipairs(e.regions or {}) do
+		local r2 = r
+		if r.inside and #r.inside > 1 then r2 = { inside = ENT.innermost(r.inside), whole = r.whole } end
+		if not (r2.whole or (r2.inside and #r2.inside == 1)) then return nil end
+		local sh = r2.whole or r2.inside[1]
+		local g = (grow and grow > 0) and ENT.grown(sh, grow) or sh
+		local holes = ENT.meshHoles(r2, outline(sh))
+		if not holes then return nil end
+		local full = outline(g)
+		local open
+		if base then
+			local c2 = V2(0, 0)
+			for _, q in ipairs(full) do c2 += q end
+			c2 /= #full
+			open = ENT.cutOpen(base, frame:PointToWorldSpace(V3(c2.X, c2.Y, z0)), frame:PointToWorldSpace(V3(c2.X, c2.Y, z1)))
+		end
+		local hs = {}
+		for _, h in ipairs(holes) do hs[#hs + 1] = vlist(h) end
+		steps[#steps + 1] = { id = "live", f = { rel:GetComponents() }, outer = vlist(full), holes = hs, z0 = z0, z1 = z1, open = open, rim = {}, bot = {}, vc = {} }
+		table.insert(mark.list, { pts = full, holes = holes, z0 = math.min(z0, z1), z1 = math.max(z0, z1) })
+	end
+	return steps, mark
+end
+-- v3.55 (Dylan: "why is this cutting before it's meant to be cut?"): the live cut looked finished. The faces the cut
+-- makes (its walls + floor) are coloured red until ACCEPT, like the red cut ghost - so it reads as "will be cut here".
+ENT.CUT_TINT = Color3.fromRGB(255, 90, 90)
+function ENT.cutTint(cap, mark, p)
+	local function inPoly(q, poly)
+		local inside, n = false, #poly
+		for i = 1, n do
+			local a, b = poly[i], poly[i % n + 1]
+			if (a.Y > q.Y) ~= (b.Y > q.Y) and q.X < (b.X - a.X) * (q.Y - a.Y) / (b.Y - a.Y) + a.X then inside = not inside end
+		end
+		return inside
+	end
+	local function nearEdge(q, poly, eps)
+		local n = #poly
+		for i = 1, n do
+			local a, b = poly[i], poly[i % n + 1]
+			local ab = b - a
+			local L2 = ab.X * ab.X + ab.Y * ab.Y
+			local t = L2 > 1e-12 and math.clamp(((q - a).X * ab.X + (q - a).Y * ab.Y) / L2, 0, 1) or 0
+			if (q - (a + ab * t)).Magnitude <= eps then return true end
+		end
+		return false
+	end
+	local base = p.Color
+	local eps = 0.02
+	for _, t in ipairs(cap.tris) do
+		local c = mark.frame:PointToObjectSpace((t[1] + t[2] + t[3]) / 3)
+		local q = Vector2.new(c.X, c.Y)
+		local hit = false
+		for _, m in ipairs(mark.list) do
+			if c.Z >= m.z0 - eps and c.Z <= m.z1 + eps then
+				local inOuter = inPoly(q, m.pts) or nearEdge(q, m.pts, eps)
+				if inOuter then
+					hit = true
+					for _, h in ipairs(m.holes or {}) do
+						if inPoly(q, h) and not nearEdge(q, h, eps) then hit = false break end
+					end
+				end
+			end
+			if hit then break end
+		end
+		t.col = hit and ENT.CUT_TINT or (t.col or base)
+	end
+	cap.tinted = true
+end
+-- v3.56 (Dylan: "just do a red ghost, then I click cut, then it cuts - people will get confused"): the live cut is OFF.
+-- Cut shows only the red ghost; the part is cut when you press ACCEPT. (true = the v3.51-3.55 live cut again.)
+ENT.cutLiveOn = false
+function ENT.cutLiveStep()
+	ENT.cutLiveDirty = false
+	local e = ex
+	local p = sk and sk.host
+	if not (e and e.cut and not e.ov and p and p.Parent and ENT.cutLiveOn ~= false) then
+		if ENT.cutLiveShown then ENT.cutLiveShown = nil ENT.liveHide() end
+		return
+	end
+	-- v3.53: the depth slides the cut in every frame (ENT.moDrive), the exact result when you stop
+	local key = "cut|" .. tostring(e) .. "|" .. tostring(e.S) .. "|" .. tostring(ENT.cutGrow and ENT.cutGrow()) .. "|" .. tostring(p)
+	local shown = ENT.moDrive("cut", key, p, e.D, function(v)
+		local D0 = e.D
+		e.D = v
+		local okS, steps, mark = pcall(ENT.cutLiveSteps, p)
+		e.D = D0
+		if not (okS and steps and #steps > 0) then return nil end
+		local cap = ENT.previewTris(p, steps)
+		if cap and cap.tris and mark and ENT.CUT_TINT then pcall(ENT.cutTint, cap, mark, p) end
+		return cap
+	end)
+	if shown then
+		ENT.cutLiveShown = true
+		if ENT.liveOrig ~= p then
+			if ENT.liveOrig then pcall(function() ENT.liveOrig.LocalTransparencyModifier = 0 end) end
+			ENT.liveOrig = p
+		end
+		pcall(function() p.LocalTransparencyModifier = 1 end)
+	end
+end
+-- ===== end v3.51 LIVE CUT =====
+-- ===== v3.53 STRETCH (Dylan: "they should just stretch in like the extrudes stretch out - the stretching feels very nice") =====
+-- A chamfer's size and a cut's depth move every corner of the result in a STRAIGHT LINE (checked: test 41). So the live
+-- preview works the result out for real only now and then, learns from two real results which way each corner goes and
+-- how fast, and in between just SLIDES the corners - every frame, like the extrude box stretching. When you stop
+-- moving (ENT.MORPH_IDLE) it works the exact result out again and snaps to it. If the shape itself changes (a round
+-- gets another step, a cut breaks through) it can't slide, so it just shows the real result and learns again.
+ENT.MORPH = true          -- false = the v3.51 way (a real result ~16 times a second, no sliding)
+ENT.MORPH_IDLE = 0.18     -- seconds without moving -> the exact result
+-- learn: the real result at value v vs the one on screen (at M.v0). Same triangles in the same order -> each mesh
+-- corner's speed. The exact corners go on screen. false = the shape changed (not a stretch).
+function ENT.moLearn(cap, v)
+	local L, M = ENT.live, ENT.mo
+	if not (L and L.info and M and M.v0 and cap and cap.tris) then return false end
+	local I = L.info
+	local dv = v - M.v0
+	if math.abs(dv) < 1e-6 then return false end
+	if #cap.tris ~= I.n or (cap.frame or CFrame.new()) ~= L.frame then return false end
+	local frame, ctr = L.frame, L.ctr
+	local newPos = {}
+	for i, sl in pairs(I.slots) do
+		local t = cap.tris[i]
+		if tostring(t.g) ~= I.g[i] then return false end
+		for k = 1, 3 do
+			local id = sl[k]
+			local q = frame:PointToObjectSpace(t[k]) - ctr
+			local o = newPos[id]
+			if o then
+				if (o - q).Magnitude > 1e-3 then return false end   -- (two corners that were one aren't now)
+			else
+				newPos[id] = q
+			end
+		end
+	end
+	-- a triangle that was flat (left out) and has area now = new faces, not a stretch
+	for i, t in ipairs(cap.tris) do
+		if not I.slots[i] and (t[2] - t[1]):Cross(t[3] - t[1]).Magnitude > 1e-6 then return false end
+	end
+	local em, vel = L.em, {}
+	for id, q in pairs(newPos) do
+		local d = q - I.pos[id]
+		if d.Magnitude > 1e-7 then vel[id] = d / dv end
+		em:SetPosition(id, q)
+		I.pos[id] = q
+	end
+	M.v0, M.vel, M.shown = v, vel, v
+	return true
+end
+-- slide: every moving corner to where it is at value v (cheap - no maths on the shape)
+function ENT.moTick(v)
+	local L, M = ENT.live, ENT.mo
+	if not (L and L.info and M and M.vel) then return false end
+	if v == M.shown then return true end
+	local dv = v - M.v0
+	local em, pos = L.em, L.info.pos
+	for id, sp in pairs(M.vel) do em:SetPosition(id, pos[id] + sp * dv) end
+	M.shown = v
+	return true
+end
+-- one live value (edge size / cut depth) on part p. build(v) -> the real result's triangles at v.
+-- Returns true while the preview is on screen.
+function ENT.moDrive(kind, key, p, v, build)
+	local now = os.clock()
+	local M, L = ENT.mo, ENT.live
+	if not (M and M.key == key and L and L.part and L.part.Parent) then
+		-- something new (other edges / shape / part): one real result
+		local cap = build(v)
+		if not (cap and cap.tris and #cap.tris >= 4) then return false end
+		if not ENT.liveShow(cap, p) then return false end
+		ENT.mo = { kind = kind, key = key, v0 = v, shown = v, real = v, want = v, t = now, tryT = now, pend = false }
+		return true
+	end
+	if v ~= M.want then M.want, M.t = v, now end
+	if M.vel and ENT.MORPH then
+		ENT.moTick(v)   -- every frame: slide
+		if M.real ~= v and now - M.t >= ENT.MORPH_IDLE then
+			-- stopped moving: the exact result (and a better stretch learned from it)
+			local cap = build(v)
+			if cap and cap.tris and #cap.tris >= 4 and not ENT.moLearn(cap, v) then
+				if ENT.liveShow(cap, p) then M.vel, M.v0, M.shown = nil, v, v end
+			end
+			M.real = v
+		end
+	elseif M.real ~= v and now - (M.tryT or 0) >= 0.06 then
+		-- not learned yet: a real result, and learn the stretch from it + the one on screen
+		M.tryT = now
+		local cap = build(v)
+		if cap and cap.tris and #cap.tris >= 4 then
+			if not (ENT.MORPH and ENT.moLearn(cap, v)) then
+				ENT.liveShow(cap, p)
+				M.vel, M.v0 = nil, v
+			end
+			M.shown = v
+		end
+		M.real = v
+	end
+	M.pend = M.want ~= M.real
+	return true
+end
+-- ===== end v3.53 STRETCH =====
+
+-- ===== v2.94 EDIT SKETCH (Dylan: "double click Cut 1 opens up the sketch that made it, so I can change the cut") =====
+-- Double-click a cut in FEATURES: a sketch opens on the cut's own plane with its outline (and holes) as drawings -
+-- rectangles come back as rectangles, circles as circles, so the drag handles work. Change it, then FINISH EDIT
+-- (Enter / Accept): the cut's outline in the recipe is swapped for the new drawing and the part is rebuilt (one undo
+-- step). Its depth / where it starts stay the same. Esc twice = leave it as it was.
+function ENT.editCutSketch(p, ci)
+	if not (p and p.Parent) then return end
+	if ENT.rebuildBusy then setStatus("Still working on the last one - one moment.") return end
+	local list = ENT.cutsOf(p)
+	local c = list[ci]
+	if not (c and c.outer and c.f) then setStatus("That step has no drawing to edit.") return end
+	local base = ENT.paintBase(p)
+	if not base then setStatus("This part has no recipe - its cuts can't be edited.") return end
+	local F = base * CFrame.new(table.unpack(c.f))
+	if sk then exitSketch() end
+	if ENT.edgeTool then ENT.edgeStop() end
+	if ENT.shellTool then ENT.shellStop() end
+	if mode ~= "planes" then setMode("planes") end
+	setTarget(p)
+	startSketch(planeFrom(F.Position, F.XVector, F.YVector), p, "Edit Cut " .. ci)
+	-- the cut's points -> this sketch's own 2D (the sketch plane may have been turned upright)
+	local function load(q)
+		local o = {}
+		for _, xy in ipairs(q) do o[#o + 1] = to2D(sk.pl, F:PointToWorldSpace(Vector3.new(xy[1], xy[2], 0))) end
+		return o
+	end
+	local function shapeOf(q)
+		local n = #q
+		if n == 4 then
+			local lo, hi = V2(math.huge, math.huge), V2(-math.huge, -math.huge)
+			local square = true
+			for i = 1, 4 do
+				local a, b = q[i], q[i % 4 + 1]
+				if math.abs(a.X - b.X) > 1e-3 and math.abs(a.Y - b.Y) > 1e-3 then square = false end
+				lo, hi = V2(math.min(lo.X, a.X), math.min(lo.Y, a.Y)), V2(math.max(hi.X, a.X), math.max(hi.Y, a.Y))
+			end
+			if square then return { kind = "rect", c = (lo + hi) / 2, w = hi.X - lo.X, h = hi.Y - lo.Y } end
+		end
+		if n >= 16 then
+			local cen = ENT.centroid(q)
+			local r, dev = 0, 0
+			for _, p2 in ipairs(q) do r += (p2 - cen).Magnitude end
+			r /= n
+			for _, p2 in ipairs(q) do dev = math.max(dev, math.abs((p2 - cen).Magnitude - r)) end
+			if r > 0 and dev < r * 0.01 then return { kind = "circle", c = cen, r = r } end
+		end
+		return { kind = "poly", pts = q }
+	end
+	table.insert(sk.shapes, shapeOf(load(c.outer)))
+	for _, h in ipairs(c.holes or {}) do table.insert(sk.shapes, shapeOf(load(h))) end
+	ENT.editCut = { p = p, ci = ci, id = c.id, F = F }
+	pcall(function() p.LocalTransparencyModifier = 0.55 end)   -- (see the drawing through the part)
+	sk.sel = sk.shapes[1]
+	drawSketch() drawPreview() rebuildFields()
+	ENT.commitSketch("Edit sketch")
+	setStatus("EDIT SKETCH (Cut " .. ci .. "): drag the handles / redraw it, then Enter or ACCEPT = rebuild with it. Esc twice = leave it as it was.")
+end
+-- back to normal (the part shows solid again)
+function ENT.editCutEnd()
+	local E = ENT.editCut
+	ENT.editCut = nil
+	if E and E.p then pcall(function() E.p.LocalTransparencyModifier = 0 end) end
+end
+function ENT.editCutApply()
+	local E = ENT.editCut
+	if not (E and sk) then return end
+	if not (E.p and E.p.Parent) then ENT.editCutEnd() exitSketch() setStatus("The part isn't there any more.") return end
+	local function area(q) local A = 0 for i = 1, #q do local a, b = q[i], q[i % #q + 1] A += a.X * b.Y - b.X * a.Y end return math.abs(A / 2) end
+	local closed = {}
+	for _, sh in ipairs(sk.shapes) do
+		if not sh.open and not sh.guide and not sh.axis and sh.kind ~= "point" then closed[#closed + 1] = sh end
+	end
+	if #closed == 0 then setStatus("EDIT SKETCH: there's no closed drawing - draw the cut's outline (Esc twice = leave it as it was).") return end
+	table.sort(closed, function(a, b) return area(outline(a)) > area(outline(b)) end)
+	local oq = outline(closed[1])
+	local holes, skipped = {}, 0
+	for i = 2, #closed do
+		local q = outline(closed[i])
+		if pointInPoly(q[1], oq) then holes[#holes + 1] = q else skipped += 1 end
+	end
+	local F = E.F
+	local function back(q)
+		local o = {}
+		for _, p2 in ipairs(q) do local l = F:PointToObjectSpace(W(p2)) o[#o + 1] = { l.X, l.Y } end
+		return o
+	end
+	local newOuter, newHoles = back(oq), {}
+	for _, h in ipairs(holes) do newHoles[#newHoles + 1] = back(h) end
+	local p, id, ci = E.p, E.id, E.ci
+	ENT.editCutEnd()
+	exitSketch()
+	ENT.rebuildBusy = true
+	setStatus("EDIT SKETCH: rebuilding with the new drawing...")
+	local edgesReset = false   -- v3.41 (glitch sweep)
+	local ok, np, why = pcall(ENT.stepChange, p, function(q)
+		local list = ENT.cutsOf(q)
+		local k = ci
+		if id then for i, c in ipairs(list) do if c.id == id then k = i end end end
+		if list[k] then
+			-- v3.41 (glitch sweep): the cut's own edge rounds / chamfers are kept by side and corner number of the
+			-- outline - on a different outline they'd land on the wrong sides, so they're taken off
+			local old = list[k].outer or {}
+			local same = #old == #newOuter
+			if same then
+				for i, xy in ipairs(old) do
+					if math.abs(xy[1] - newOuter[i][1]) > 1e-3 or math.abs(xy[2] - newOuter[i][2]) > 1e-3 then same = false break end
+				end
+			end
+			if not same then
+				local had = (list[k].rim and next(list[k].rim) ~= nil) or (list[k].bot and next(list[k].bot) ~= nil) or (list[k].vc and next(list[k].vc) ~= nil)
+				list[k].rim, list[k].bot, list[k].vc = {}, {}, {}
+				edgesReset = had and true or false
+			end
+			list[k].outer, list[k].holes = newOuter, newHoles
+		end
+		q:SetAttribute("PROTO_Cuts", HttpService:JSONEncode(list))
+		-- (the old drawing's outline lines on the part go - they'd show the old shape)
+		if id then
+			for _, ch in ipairs(q:GetChildren()) do
+				local ids = ENT.isOutline(ch.Name) and ch:GetAttribute("PROTO_CutIds")
+				if type(ids) == "string" then
+					local keep = {}
+					for x in string.gmatch(ids, "[^,]+") do if x ~= id then keep[#keep + 1] = x end end
+					if #keep == 0 then ch.Parent = nil else ch:SetAttribute("PROTO_CutIds", table.concat(keep, ",")) end
+				end
+			end
+		end
+	end, "PROTO Edit sketch of Cut " .. ci)
+	ENT.rebuildBusy = false
+	if ok and np then
+		if typeof(np) == "Instance" then setTarget(np) end
+		setStatus("Cut " .. ci .. " rebuilt with the new drawing" .. (skipped > 0 and (" (" .. skipped .. " drawing(s) outside the outline were left out)") or "") .. "."
+			.. (edgesReset and " The cut's own edge rounds / chamfers were reset (the outline changed)." or "") .. " Ctrl+Z undoes it.")   -- v3.41 (glitch sweep)
+	else
+		setStatus("EDIT SKETCH: couldn't rebuild - " .. tostring(ok and why or np))
+		warn("PROTO edit sketch: " .. tostring(ok and why or np))
+	end
+	pcall(ENT.detailRefresh)
+end
+-- ===== end v2.94 EDIT SKETCH =====
+-- ===== v2.86 SHELL tool (Dylan: "shell is a good idea") =====
+-- FEATURES > Shell: click the faces of a PROTO part to leave OPEN (green), Enter / Hollow = the part becomes a wall that
+-- thick. It's a step in the part's recipe (STEPS: change the wall, or take it out). No faces picked = hollow inside.
+function ENT.shellWall() return tonumber(U.shellT and U.shellT.Text) end
+function ENT.shellStart()
+	if sk then exitSketch() end
+	if ENT.edgeTool then ENT.edgeStop() end
+	if mode ~= "planes" then setMode("planes") end
+	ENT.shellTool = { open = {} }
+	setStatus("SHELL: type the wall thickness in 'Wall', click the faces to leave OPEN (they go green - click again = unpick), then Enter or HOLLOW. No faces picked = hollow inside, closed all round. Esc = stop.")
+	if ENT.ribPaint then pcall(ENT.ribPaint) end
+end
+function ENT.shellStop()
+	ENT.shellTool = nil
+	ENT.shellHot = nil
+	pcall(ENT.drawTopoFaces, nil)
+	dimTag.Enabled = false
+	if ENT.ribPaint then pcall(ENT.ribPaint) end
+	refreshStatus()
+end
+-- outlines of the picked faces (green) + the one under the mouse (blue)
+function ENT.drawTopoFaces(T, picked, hot)
+	pBegin(topoPool)
+	if T then
+		local function outline(F, col, th)
+			for _, E in ipairs(T.edges) do
+				if E.a == F.id or E.b == F.id then
+					local m = #E.pts
+					for i = 1, (E.closed and m or m - 1) do pLine(topoPool, E.pts[i], E.pts[i % m + 1], col, th) end
+				end
+			end
+		end
+		for _, F in ipairs(picked or {}) do outline(F, Color3.fromRGB(80, 230, 120), 6) end
+		if hot then outline(hot, Color3.fromRGB(80, 170, 255), 4) end
+	end
+	pEnd(topoPool)
+end
+-- the PROTO part + real face under the mouse (+ the point hit)
+function ENT.shellPick()
+	local S = ENT.shellTool
+	local hit = ENT.directHit()
+	local cands = {}
+	if hit and hit.Instance then cands[#cands + 1] = hit.Instance end
+	if S and S.p and S.p.Parent and S.p ~= (hit and hit.Instance) then cands[#cands + 1] = S.p end
+	if target and target:IsA("BasePart") and target ~= (hit and hit.Instance) and target ~= (S and S.p) then cands[#cands + 1] = target end
+	local o, d = mouse.UnitRay.Origin, mouse.UnitRay.Direction.Unit
+	for _, cand in ipairs(cands) do
+		if cand:IsA("BasePart") and ENT.detailKind(cand) then
+			local T = ENT.partTopo(cand)
+			if T then
+				local ti, tt = ENT.rayTris(T.tris, o, d)
+				if ti then return cand, T, T.faces[T.faceOf[ti]], o + d * tt end
+			end
+		end
+	end
+	return nil
+end
+function ENT.shellHover()
+	local S = ENT.shellTool
+	if not S then return end
+	local p, T, F, at = ENT.shellPick()
+	ENT.shellHot = F and { p = p, T = T, F = F, at = at } or nil
+	if p and S.p and p ~= S.p then
+		ENT.drawTopoFaces(T, nil, F)
+	else
+		local T2 = S.T or T
+		local picked = {}
+		if T2 then for _, o in ipairs(S.open) do picked[#picked + 1] = T2.faces[o.id] end end
+		ENT.drawTopoFaces(T2, picked, (T2 == T) and F or nil)
+	end
+	if F then
+		local open = false
+		for _, o in ipairs(S.open) do if p == S.p and o.id == F.id then open = true end end
+		dimTag.StudsOffsetWorldSpace = at
+		dimTag.T.Text = "SHELL wall " .. fmt(ENT.shellWall() or 0) .. (not F.flat and "  (curved - only flat faces can be left open)" or (open and "  - OPEN (click = close it again)" or "  - click = leave this face open"))
+		dimTag.Enabled = true
+	else
+		dimTag.Enabled = false
+	end
+end
+function ENT.shellClick()
+	local S, H = ENT.shellTool, ENT.shellHot
+	if not (S and H and H.p and H.p.Parent) then return end
+	if not H.F.flat then setStatus("SHELL: only FLAT faces can be left open - pick a flat face (or none, for a closed hollow).") return end
+	-- (another part, or the part changed: the picks start again)
+	if S.p ~= H.p or S.T ~= H.T then S.p, S.T, S.open = H.p, H.T, {} end
+	for i, o in ipairs(S.open) do
+		if o.id == H.F.id then
+			table.remove(S.open, i)
+			ENT.shellHover()
+			setStatus(("SHELL: that face is closed again - %d open. Enter / HOLLOW when ready."):format(#S.open))
+			return
+		end
+	end
+	-- (the point clicked is ON the face - a face's middle can be off it, like a ring round a hole)
+	S.open[#S.open + 1] = { id = H.F.id, c = H.at, n = H.F.normal }
+	ENT.shellHover()
+	setStatus(("SHELL: %d face%s open on %s. Click more, then Enter / HOLLOW (wall %s)."):format(#S.open, #S.open == 1 and "" or "s", S.p.Name, fmt(ENT.shellWall() or 0)))
+end
+-- the shell as a step in the part's recipe -> the part is rebuilt with it (one undo step, saved)
+function ENT.shellStep(p, t, open)
+	local base = ENT.paintBase(p)
+	if not base then return nil, "this part has no recipe" end
+	local o2 = {}
+	for _, o in ipairs(open or {}) do
+		local c, n = base:PointToObjectSpace(o.c), base:VectorToObjectSpace(o.n)
+		o2[#o2 + 1] = { c = { c.X, c.Y, c.Z }, n = { n.X, n.Y, n.Z } }
+	end
+	return ENT.stepChange(p, function(q)
+		local list = ENT.cutsOf(q)
+		list[#list + 1] = { kind = "shell", id = ENT.newCutId(), t = t, open = o2 }
+		q:SetAttribute("PROTO_Cuts", HttpService:JSONEncode(list))
+	end, "PROTO Shell")
+end
+function ENT.shellApply()
+	local S = ENT.shellTool
+	if not S then ENT.shellStart() return end
+	if not ENT.meshGate() then return end
+	if ENT.rebuildBusy then setStatus("Still working on the last one - one moment.") return end
+	local p = (S.p and S.p.Parent) and S.p or nil
+	if not p and target and target:IsA("BasePart") and ENT.detailKind(target) then p = target end
+	if not p then setStatus("SHELL: click a face of a PROTO part first (or pick the part).") return end
+	local t = ENT.shellWall()
+	if not t or t ~= t or t <= 0.01 then setStatus("SHELL: type a wall thickness above 0 in the 'Wall' box.") return end
+	ENT.rebuildBusy = true
+	ENT.lastShellWhy = nil
+	setStatus("SHELL: hollowing " .. p.Name .. "...")
+	local ok, np, why = pcall(ENT.shellStep, p, t, S.open)
+	ENT.rebuildBusy = false
+	S.p, S.T, S.open = nil, nil, {}
+	pcall(ENT.drawTopoFaces, nil)
+	if ok and np and ENT.lastShellWhy then
+		setStatus("SHELL couldn't be made: " .. tostring(ENT.lastShellWhy) .. ". Ctrl+Z takes the step back out (or change the wall in STEPS).")
+	elseif ok and np then
+		setStatus("SHELL done (wall " .. fmt(t) .. ") - it's a step in the part's recipe (STEPS: change the wall or take it out). Ctrl+Z undoes it.")
+	else
+		setStatus("SHELL: " .. tostring(ok and why or np))
+		warn("PROTO SHELL: " .. tostring(ok and why or np))
+	end
+	pcall(ENT.shellHover)
+end
+-- ===== end v2.86 SHELL tool =====
+-- v2.82: when a rebuild leaves a step out or comes out broken, the part's whole recipe goes to the Output on one line,
+-- so the exact shape can be rebuilt and fixed outside Studio (it's only numbers: sizes, outlines, edge points).
+-- v3.67 (Dylan's log: 9 yellow lines + an 8-part recipe on EVERY rebuild after he took cut steps out): chamfer /
+-- round steps whose edge has gone (it was made by a step that's been taken out) are skipped as before, but it's said
+-- ONCE, in one plain line, and only again if the list changes. No recipe dump for it (that's for real faults).
+function ENT.leftOutNote(p)
+	if ENT.previewing then return end
+	local L = ENT.leftOutSteps or {}
+	if #L == 0 then ENT.leftOutKey = nil return end
+	local key = tostring(p and p.Name) .. ":" .. table.concat(L, ",")
+	if key == ENT.leftOutKey then return end
+	ENT.leftOutKey = key
+	local list = table.concat(L, ", ")
+	print(("PROTO: %d round / chamfer step(s) on %s have no edge any more (step %s) - the edge was made by a step that's been taken out. They're skipped; delete them in FEATURES, or Ctrl+Z to bring the step back."):format(#L, tostring(p and p.Name), list))
+	setStatus(("%d round / chamfer step(s) skipped - their edge is gone (step %s). Delete them in FEATURES or Ctrl+Z."):format(#L, list))
+end
+function ENT.recipeDump(p, rec)
+	if ENT.previewing then return end   -- v3.50: not for live previews
+	local ok, js = pcall(function() return HttpService:JSONEncode(rec) end)
+	if not ok then return end
+	-- v3.29: in numbered pieces - the Output / log cuts one long line short, so a big recipe used to come out half missing
+	local n = math.max(1, math.ceil(#js / 800))
+	for k = 1, n do
+		print(("PROTO recipe of %s (for fixing) [%d/%d]: %s"):format(tostring(p and p.Name), k, n, js:sub((k - 1) * 800 + 1, k * 800)))
+	end
+end
+-- v3.29: any part's whole recipe to the Output, on demand (the side bar's "Recipe -> Output" button)
+function ENT.recipeDumpPart(p)
+	if not p then return false end
+	local rec
+	local R = ENT.recipeOf(p)
+	if R then
+		rec = { kind = R.kind, data = R.data, cuts = ENT.cutsOf(p) }
+	else
+		local cf, size = ENT.blockOf(p)
+		if not size then return false end
+		local done = {}
+		pcall(function() done = HttpService:JSONDecode(p:GetAttribute("PROTO_EdgesDone") or "[]") end)
+		rec = { size = { size.X, size.Y, size.Z }, done = done, cuts = ENT.cutsOf(p) }
+	end
+	rec.level = ENT.partDetail(p)
+	ENT.recipeDump(p, rec)
+	return true
+end
+-- the block + edges + fills as ONE mesh, minus ALL its cuts as ONE cutter (one cut). Returns the new part or nil, why.
+function ENT.solidRebuild(p, cf, size, done, cuts, sides)
+	sides = sides or ENT.partDetail(p)   -- v2.66: the part's own detail
+	local core = ENT.convexFaces(ENT.edgePlanes(size, done), math.max(size.X, size.Y, size.Z) + 10)
+	if #core < 4 then return nil, "the shape came out empty" end
+	local coreT = ENT.orientTris(ENT.facesToTris(core, cf))
+	local sk = ENT.skirtTris(cf, size, done, cuts)
+	if not sk then return nil, "fills of different sizes on one level - not in Mesh mode yet" end
+	local np
+	local plist = ENT.paintOf(p)
+	local pbase = p:GetAttribute("PROTO_PaintBase")
+	pbase = typeof(pbase) == "Color3" and pbase or p.Color
+	local painted = false
+	if #cuts == 0 then
+		local tris = table.clone(coreT)
+		for _, t in ipairs(sk) do tris[#tris + 1] = t end
+		painted = ENT.applyPaint(tris, plist, cf, pbase)   -- v2.72
+		do   -- v3.02 brush paint
+			local okB, rb = pcall(ENT.applyBrush, tris, ENT.brushOf(p), cf, pbase)
+			if okB and rb then tris, painted = rb, true elseif not okB then warn("PROTO brush: " .. tostring(rb)) end
+		end
+		np = ENT.meshFromTris(tris, cf)
+		if not np then return nil, "couldn't make the mesh" end
+	else
+		local ctl = {}
+		for _, c in ipairs(cuts) do
+			if c.kind ~= "edge" and c.kind ~= "shell" then
+				local tt = ENT.cutTris(c, cf, sides)
+				if not tt then return nil, "couldn't shape one of the cuts" end
+				ctl[#ctl + 1] = tt
+			end
+		end
+		-- v2.62: PROTO works the cut out ITSELF -> ONE mesh it can save to Roblox (Roblox's own cut gave a part with
+		-- no mesh, which can't be saved). The block and its floor fills are cut separately, then go in the same mesh.
+		local t0 = os.clock()
+		ENT.leftOut = 0
+		ENT.leftOutSteps = {}
+		local okC, res = pcall(function()
+			-- v2.76: the steps IN ORDER (cuts and any-edge rounds / chamfers)
+			ENT.lastOpen = nil
+			local out = ENT.applyFeatures(coreT, cuts, cf, sides)
+			-- v2.82: never swap the part for a broken shape
+			local sound, whyS = ENT.soundSolid(out, nil, ENT.lastOpen)
+			if not sound then
+				ENT.recipeDump(p, { size = { size.X, size.Y, size.Z }, done = done, cuts = cuts })
+				error("the shape came out broken (" .. tostring(whyS) .. ") - your part is kept as it was", 0)
+			end
+			if (ENT.lastOpen or 0) > 0 then ENT.recipeDump(p, { size = { size.X, size.Y, size.Z }, done = done, cuts = cuts }) end   -- (v3.67: not for left-out steps)
+			pcall(ENT.leftOutNote, p)
+			if #sk > 0 then for _, t in ipairs(ENT.ownSubtract(sk, ctl, cf)) do out[#out + 1] = t end end
+			return out
+		end)
+		if okC and #res >= 4 then
+			local whyM
+			painted = ENT.applyPaint(res, plist, cf, pbase)   -- v2.72
+			do   -- v3.02 brush paint
+				local okB, rb = pcall(ENT.applyBrush, res, ENT.brushOf(p), cf, pbase)
+				if okB and rb then res, painted = rb, true elseif not okB then warn("PROTO brush: " .. tostring(rb)) end
+			end
+			np, whyM = ENT.meshFromTris(res, cf)
+			if not np and #res > ENT.MAX_TRIS then return nil, whyM .. " - try fewer / simpler cuts" end
+			if np then
+				print(("PROTO rebuild: block + edges + %d cut(s) worked out by PROTO -> ONE mesh, %d triangles (%.2fs)"):format(#cuts, #res, os.clock() - t0))
+			else
+				return nil, "PROTO worked the shape out but Roblox wouldn't make the mesh (" .. tostring(whyM) .. ")"
+			end
+		elseif okC then
+			-- v2.69: nothing sensible left (Dylan 17:58 - this used to fall through to Roblox's cut, which then said
+			-- "non-manifold (-33)"). Say what it really is instead.
+			return nil, ("the cuts would leave %s of the block - a round / chamfer that big doesn't fit there, or the cut covers the whole block"):format(#res == 0 and "nothing" or "almost nothing")
+		elseif tostring(res):find("came out broken", 1, true) then
+			return nil, tostring(res)
+		else
+			-- v3.41 (glitch sweep): Roblox's cut below only knows plain cuts - it would quietly drop rounds, chamfers
+			-- and shells. So with any of those, stop here instead.
+			for _, c in ipairs(cuts) do
+				if c.kind == "edge" or c.kind == "shell" then
+					return nil, "couldn't rebuild (" .. tostring(res) .. ") - your part is kept as it was"
+				end
+			end
+			warn("PROTO: its own cut failed (" .. tostring(res) .. ") - trying Roblox's cut instead")
+		end
+		if not np then
+			-- Roblox's cut (the old way): each cut its own cutter piece, all in ONE SubtractAsync call
+			local tris = table.clone(coreT)
+			for _, t in ipairs(sk) do tris[#tris + 1] = t end
+			local body, bem = ENT.meshFromTris(tris, cf)
+			if not body then return nil, "couldn't make the mesh" end
+			local cutters, cems = {}, {}
+			local function freeAll() for _, c in ipairs(cutters) do c.Parent = nil end for _, m in ipairs(cems) do pcall(function() m:Destroy() end) end end
+			for _, tt in ipairs(ctl) do
+				local cp, cm = ENT.meshFromTris(tt)
+				if not cp then freeAll() pcall(function() bem:Destroy() end) return nil, "couldn't shape one of the cuts" end
+				cp.Parent = workspace
+				cutters[#cutters + 1], cems[#cems + 1] = cp, cm
+			end
+			body.Parent = workspace
+			local opts = { CollisionFidelity = ENT.collEnum(), RenderFidelity = Enum.RenderFidelity.Precise, SplitApart = false }
+			local ok, r2 = pcall(function() return GeometryService:SubtractAsync(body, cutters, opts) end)
+			body.Parent = nil
+			freeAll()
+			if not (ok and type(r2) == "table" and r2[1]) then pcall(function() bem:Destroy() end) return nil, "the cut failed - " .. tostring(r2) end
+			np = r2[1]
+			print(("PROTO rebuild: %d cut(s) done by Roblox -> %s"):format(#cuts, np.ClassName))
+		end
+	end
+	pcall(function() np.CollisionFidelity = ENT.collEnum() end)
+	ENT.keepLook(np, p)
+	ENT.swapIn(p, np)
+	ENT.paintLook(np, painted)   -- v3.41 (glitch sweep): after swapIn, so the kept colour is there and isn't copied over again
+	if painted then pcall(function() np.Color = Color3.new(1, 1, 1) end) end
+	np:SetAttribute("PROTO_Core", true)
+	np:SetAttribute("PROTO_BlockRel", np.CFrame:ToObjectSpace(cf))
+	np:SetAttribute("PROTO_BlockSize", size)
+	np:SetAttribute("PROTO_EdgesDone", HttpService:JSONEncode(done))
+	np:SetAttribute("PROTO_Cuts", HttpService:JSONEncode(cuts))
+	np:SetAttribute("PROTO_Level", sides)
+	np:SetAttribute("PROTO_Detail", nil)
+	np:SetAttribute("PROTO_Finished", nil)
+	return np
+end
+-- v3.41 (glitch sweep): after OVERLAP the part is a new shape - forget its old extrude / revolve recipe, steps and
+-- paint lists, or the next rebuild brings the old untrimmed shape back (moved)
+function ENT.dropRecipe(np)
+	-- v3.44 (paint check): its face / brush colours are gone with the recipe - give it its own colour back (it was
+	-- white while painted, the real colour kept in PROTO_PaintBase)
+	pcall(function()
+		local b = np:GetAttribute("PROTO_PaintBase")
+		if typeof(b) == "Color3" then
+			np.Color = b
+			if np:IsA("MeshPart") or np:IsA("PartOperation") then pcall(function() np.UsePartColor = true end) end
+			np:SetAttribute("PROTO_PaintBase", nil)
+		end
+	end)
+	for _, k in ipairs({ "PROTO_Kind", "PROTO_Data", "PROTO_BaseRel", "PROTO_Cuts", "PROTO_Paint", "PROTO_Brush", "PROTO_Level" }) do
+		pcall(function() np:SetAttribute(k, nil) end)
+	end
+end
+-- can this part be rebuilt from its recipe? (a plain block, or one PROTO rebuilt before)
+function ENT.rebuildable(p)
+	if p:GetAttribute("PROTO_Core") then return true end
+	return p:IsA("Part") and p.Shape == Enum.PartType.Block and not p:GetAttribute("PROTO_EdgesDone")
+end
+-- v2.70 (Dylan 18:03, chamfering after cutting the end off a block failed): a cut that slices CLEAN ACROSS the block
+-- (square to one of its faces, its outline covering the block's whole cross-section, no islands) doesn't make a pocket -
+-- the block is just SHORTER. Returns the new block cf, size and the world shift; "all" = nothing left; nil = a real cut.
+function ENT.sliceBlock(cf, size, frame, R)
+	local n = frame.ZVector
+	local axes = { cf.XVector, cf.YVector, cf.ZVector }
+	local hs = { size.X / 2, size.Y / 2, size.Z / 2 }
+	local k
+	for i = 1, 3 do if math.abs(axes[i]:Dot(n)) > 0.9999 then k = i end end
+	if not k or (R.fullHoles and #R.fullHoles > 0) then return nil end
+	local i1, i2 = k % 3 + 1, (k + 1) % 3 + 1
+	local outer = R.fullOuter or R.outer
+	local e = 1e-3
+	-- every corner of the block's cross-section inside the outline, and no outline point inside the cross-section
+	for _, s1 in ipairs({ -1, 1 }) do
+		for _, s2 in ipairs({ -1, 1 }) do
+			local l = frame:PointToObjectSpace(cf.Position + axes[i1] * (hs[i1] * s1) + axes[i2] * (hs[i2] * s2))
+			if not pointInPoly(V2(l.X, l.Y), outer) then return nil end
+		end
+	end
+	for _, q in ipairs(outer) do
+		local w = frame:PointToWorldSpace(V3(q.X, q.Y, 0)) - cf.Position
+		if math.abs(w:Dot(axes[i1])) < hs[i1] - e and math.abs(w:Dot(axes[i2])) < hs[i2] - e then return nil end
+	end
+	local sgn = axes[k]:Dot(n) > 0 and 1 or -1
+	local c0 = (frame.Position - cf.Position):Dot(axes[k])
+	local a, b = c0 + sgn * R.z0, c0 + sgn * R.z1
+	if a > b then a, b = b, a end
+	local lo, hi = -hs[k], hs[k]
+	if a <= lo + e and b >= hi - e then return "all" end
+	if a <= lo + e and b > lo then lo = b
+	elseif b >= hi - e and a < hi then hi = a
+	else return nil end   -- (through the middle = two pieces: a real cut)
+	if hi - lo < 1e-3 then return "all" end
+	local L = { size.X, size.Y, size.Z }
+	L[k] = hi - lo
+	local shift = axes[k] * ((lo + hi) / 2)
+	return CFrame.new(shift) * cf, Vector3.new(L[1], L[2], L[3]), shift
+end
+-- MESH MODE CUT: every area as ONE cutter. PROTO blocks get the cut added to their recipe and are rebuilt (one cut);
+-- anything else is cut once with the one cutter. Returns handled, cutCount, fails, removed, newTarget.
+function ENT.meshCutFlow(e, items, z0, z1)
+	local pl = sk.pl
+	ENT.cutWhy = nil
+	if (pl.u:Cross(pl.v) - pl.n).Magnitude > 1e-3 then ENT.cutWhy = "the sketch plane is turned inside out - start the sketch again" return false end
+	local frame = CFrame.fromMatrix(pl.o, pl.u, pl.v)
+	local grow = ENT.cutGrow()
+	local regs = {}
+	for _, it in ipairs(items) do
+		local r = it.region
+		if r.inside and #r.inside > 1 then r.inside = ENT.innermost(r.inside) end   -- v2.90: nested drawings
+		if not (r.whole or (r.inside and #r.inside == 1)) then ENT.cutWhy = "this area is made of several shapes overlapping each other" return false end
+		local sh = r.whole or r.inside[1]
+		local g = (grow and grow > 0) and ENT.grown(sh, grow) or sh
+		local holes = ENT.meshHoles(r, outline(sh))
+		if not holes then ENT.cutWhy = ENT.cutWhy or "a drawing crosses the edge of the area you picked" return false end
+		-- v2.65 light curves for the cutter now; v2.66 the recipe keeps the drawing at full detail
+		local full = outline(g)
+		regs[#regs + 1] = { outer = ENT.lowPts(full), holes = ENT.lowList(holes), fullOuter = full, fullHoles = holes, z0 = it.mid - it.D / 2, z1 = it.mid + it.D / 2 }
+	end
+	if #regs == 0 then return false end
+	-- v2.58: one cutter piece per area (areas side by side share edges - one merged mesh was "non-manifold"), all of
+	-- them used together in ONE operation per part
+	if e.ov and #regs > 1 then error("OVERLAP works on one area at a time - pick one", 0) end
+	local cutters, cems = {}, {}
+	local function freeAll() for _, c in ipairs(cutters) do c.Parent = nil end for _, m in ipairs(cems) do pcall(function() m:Destroy() end) end end
+	local ctl = {}   -- v2.62: the cutters as triangles too, for PROTO's own cut
+	for _, R in ipairs(regs) do
+		local tt = ENT.recipeTris(R, frame)
+		local cp, cm = tt and ENT.meshFromTris(tt)
+		if not cp then freeAll() ENT.cutWhy = "couldn't make the cutter's shape from that outline (does a line cross itself?)" return false end
+		ctl[#ctl + 1] = tt
+		pcall(function() cp.CollisionFidelity = Enum.CollisionFidelity.PreciseConvexDecomposition end)
+		cp.Transparency = 1
+		cp.Parent = workspace
+		cutters[#cutters + 1], cems[#cems + 1] = cp, cm
+	end
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = cutters
+	local targets, seenT = {}, {}
+	for _, cp in ipairs(cutters) do
+		for _, p in ipairs(workspace:GetPartsInPart(cp, params)) do
+			if not seenT[p] and p ~= TERRAIN and not p.Locked and not ENT.isBox(p.Name) and not ENT.isPrev(p.Name) then
+				seenT[p] = true
+				targets[#targets + 1] = p
+			end
+		end
+	end
+	if (ENT.cutScope == "host" or e.ov) and sk.host then
+		local hw = ENT.wholeOf(sk.host)
+		local keep = {}
+		for _, p in ipairs(targets) do if (p == sk.host or p == hw or p:IsDescendantOf(hw)) and not ENT.isBox(p.Name) then keep[#keep + 1] = p end end
+		targets = keep
+	end
+	local count, fails, removed, newTarget = 0, 0, 0, nil
+	local results = {}
+	local function vlist(q) local o = {} for _, v in ipairs(q) do o[#o + 1] = { v.X, v.Y } end return o end
+	for _, p in ipairs(targets) do
+		local np, why
+		local cf, size = ENT.blockOf(p)
+		-- v2.62: PROTO's own cut first (a mesh it can save); Roblox's cut only for what PROTO can't read
+		local own, ownMsg
+		local sliced, gone = false, false   -- (v2.70)
+		local addedIds = {}                 -- (v2.73: the cuts this one adds, for the feature tree)
+		-- v2.66: a revolve / extrude / cylinder with a recipe is rebuilt from the ground up (further down)
+		local hasRec = not e.ov and not (cf and ENT.rebuildable(p)) and ENT.recipeOf(p) ~= nil
+		local readWhy
+		if e.ov or (not (cf and ENT.rebuildable(p)) and not hasRec) then
+			ENT.readWhy = nil
+			local pt = ENT.partTris(p)
+			if not pt then readWhy = ENT.readWhy or "PROTO can't read its shape" end
+			if pt then
+				local okC, r = pcall(function()
+					if e.ov then return ENT.ownIntersect(pt, ctl[1], p.CFrame) end
+					return ENT.ownSubtract(pt, ctl, p.CFrame)
+				end)
+				if okC then own = r else ownMsg = tostring(r) end
+			end
+		end
+		if ownMsg then warn("PROTO: its own cut failed on " .. p.Name .. " (" .. ownMsg .. ") - using Roblox's cut instead") end
+		local ownPart = own and #own >= 4 and #own <= ENT.MAX_TRIS and ENT.meshFromTris(own, p.CFrame) or nil
+		if own and #own > ENT.MAX_TRIS then
+			why = ("too many triangles (%d) - Roblox allows %d in one mesh"):format(#own, ENT.MAX_TRIS)
+		elseif own and #own == 0 and e.ov then
+			why = "the drawing and the part don't overlap"
+		elseif own and #own == 0 then
+			p.Parent = nil   -- cut away completely (never destroyed - Ctrl+Z brings it back)
+			removed += 1
+			count += 1
+			if p == target then newTarget = false end
+		elseif ownPart then
+			np = ownPart
+			pcall(function() np.CollisionFidelity = ENT.collEnum() end)
+			ENT.keepLook(np, p)
+			local rel = p:GetAttribute("PROTO_BlockRel")
+			local pcf = p.CFrame
+			ENT.swapIn(p, np)
+			if e.ov then np:SetAttribute("PROTO_Core", nil) ENT.dropRecipe(np)   -- v3.41 (glitch sweep): the old recipe goes too
+			elseif typeof(rel) == "CFrame" then np:SetAttribute("PROTO_BlockRel", np.CFrame:ToObjectSpace(pcf * rel)) end
+			print(("PROTO cut %s itself -> ONE mesh, %d triangles"):format(np.Name, #own))
+		elseif e.ov then
+			-- OVERLAP: keep only where the part and the drawing overlap - one operation with the one cutter
+			local ok, res = pcall(function()
+				return GeometryService:IntersectAsync(p, cutters, { CollisionFidelity = ENT.collEnum(), RenderFidelity = Enum.RenderFidelity.Automatic, SplitApart = false })
+			end)
+			if ok and type(res) == "table" and res[1] then
+				np = res[1]
+				ENT.keepLook(np, p)
+				ENT.swapIn(p, np)
+				np:SetAttribute("PROTO_Core", nil)
+				ENT.dropRecipe(np)   -- v3.41 (glitch sweep): the old recipe goes too
+			else
+				why = ok and "the drawing and the part don't overlap" or tostring(res)
+			end
+		elseif cf and ENT.rebuildable(p) then
+			local cuts = ENT.cutsOf(p)
+			-- v2.70: sliced clean across = the block just gets shorter (no pocket kept)
+			local sl, sz2, shift
+			local slicePaintOld   -- v3.41 (glitch sweep): the paint lists before the slice moved them
+			if #regs == 1 then sl, sz2, shift = ENT.sliceBlock(cf, size, frame, regs[1]) end
+			if sl == "all" then
+				gone = true
+			elseif sl then
+				local ls = cf:VectorToObjectSpace(shift)
+				for _, c in ipairs(cuts) do
+					if c.kind == "edge" then
+						for _, q in ipairs(c.pts or {}) do q[1], q[2], q[3] = q[1] - ls.X, q[2] - ls.Y, q[3] - ls.Z end
+					elseif c.kind == "shell" then
+						for _, o in ipairs(c.open or {}) do o.c[1], o.c[2], o.c[3] = o.c[1] - ls.X, o.c[2] - ls.Y, o.c[3] - ls.Z end
+					else
+						local nr = CFrame.new(-ls) * CFrame.new(table.unpack(c.f))
+						c.f = { nr:GetComponents() }
+					end
+				end
+				-- v3.41 (glitch sweep): painted faces and brush dabs move with the block too (they're kept in its frame).
+				-- Put back on the old part below if the rebuild fails.
+				local plist, blist = ENT.paintOf(p), ENT.brushOf(p)
+				if #plist > 0 or #blist > 0 then
+					slicePaintOld = { p:GetAttribute("PROTO_Paint"), p:GetAttribute("PROTO_Brush") }
+					for _, en in ipairs(plist) do
+						if type(en.p) == "table" then en.p[1], en.p[2], en.p[3] = en.p[1] - ls.X, en.p[2] - ls.Y, en.p[3] - ls.Z end
+					end
+					for _, d in ipairs(blist) do d[1], d[2], d[3] = d[1] - ls.X, d[2] - ls.Y, d[3] - ls.Z end
+					if #plist > 0 then p:SetAttribute("PROTO_Paint", HttpService:JSONEncode(plist)) end
+					if #blist > 0 then p:SetAttribute("PROTO_Brush", HttpService:JSONEncode(blist)) end
+				end
+				cf, size = sl, sz2
+				sliced = true
+				print(("PROTO cut: sliced clean across %s - the block is just shorter now (%.2f x %.2f x %.2f), no pocket kept"):format(p.Name, size.X, size.Y, size.Z))
+			end
+			local rel = cf:ToObjectSpace(frame)
+			for _, R in ipairs((sl or gone) and {} or regs) do
+				-- which end opens: the end whose middle is outside the block (the other is the pocket floor)
+				local c2 = V2(0, 0)
+				for _, q in ipairs(R.outer) do c2 += q end
+				c2 /= #R.outer
+				local function inBox(z)
+					local lp = rel:PointToWorldSpace(V3(c2.X, c2.Y, z))
+					return math.abs(lp.X) < size.X / 2 - 1e-3 and math.abs(lp.Y) < size.Y / 2 - 1e-3 and math.abs(lp.Z) < size.Z / 2 - 1e-3
+				end
+				local in0, in1 = inBox(R.z0), inBox(R.z1)
+				local open = nil
+				if in1 and not in0 then open = 0 elseif in0 and not in1 then open = 1 end
+				local hs = {}
+				for _, h in ipairs(R.fullHoles) do hs[#hs + 1] = vlist(h) end
+				local cid = ENT.newCutId()
+				addedIds[#addedIds + 1] = cid
+				cuts[#cuts + 1] = { id = cid, f = { rel:GetComponents() }, outer = vlist(R.fullOuter), holes = hs, z0 = R.z0, z1 = R.z1, open = open, rim = {}, bot = {}, vc = {} }
+			end
+			local done = {}
+			pcall(function() done = HttpService:JSONDecode(p:GetAttribute("PROTO_EdgesDone") or "[]") end)
+			if gone then
+				p.Parent = nil   -- the whole block was in the cut (never destroyed - Ctrl+Z brings it back)
+				removed += 1
+				count += 1
+				if p == target then newTarget = false end
+			else
+				np, why = ENT.solidRebuild(p, cf, size, done, cuts)
+				-- v3.41 (glitch sweep): rebuild failed -> the old part keeps its paint where it was
+				if not np and slicePaintOld then
+					p:SetAttribute("PROTO_Paint", slicePaintOld[1])
+					p:SetAttribute("PROTO_Brush", slicePaintOld[2])
+				end
+			end
+		elseif hasRec then
+			-- v2.66: the cut joins the part's recipe, and the whole part is rebuilt from scratch
+			local Rc = ENT.recipeOf(p)
+			local sides = ENT.partDetail(p)
+			local cuts = ENT.cutsOf(p)
+			local base = ENT.recipeBase(Rc, sides)
+			local rel = Rc.F:ToObjectSpace(frame)
+			for _, R in ipairs(regs) do
+				local c2 = V2(0, 0)
+				for _, q in ipairs(R.outer) do c2 += q end
+				c2 /= #R.outer
+				local open = base and ENT.cutOpen(base, frame:PointToWorldSpace(V3(c2.X, c2.Y, R.z0)), frame:PointToWorldSpace(V3(c2.X, c2.Y, R.z1))) or nil
+				local hs = {}
+				for _, h in ipairs(R.fullHoles) do hs[#hs + 1] = vlist(h) end
+				local cid = ENT.newCutId()
+				addedIds[#addedIds + 1] = cid
+				cuts[#cuts + 1] = { id = cid, f = { rel:GetComponents() }, outer = vlist(R.fullOuter), holes = hs, z0 = R.z0, z1 = R.z1, open = open, rim = {}, bot = {}, vc = {} }
+			end
+			local r2, w2 = ENT.recipeRebuild(p, Rc, cuts, sides)
+			if r2 == false then
+				p.Parent = nil   -- cut away completely (never destroyed - Ctrl+Z brings it back)
+				removed += 1
+				count += 1
+				if p == target then newTarget = false end
+			else
+				np, why = r2, w2
+			end
+		else
+			local ok, res = pcall(function()
+				return GeometryService:SubtractAsync(p, cutters, { CollisionFidelity = ENT.collEnum(), RenderFidelity = Enum.RenderFidelity.Automatic, SplitApart = false })
+			end)
+			if ok and type(res) == "table" then
+				if res[1] then
+					np = res[1]
+					ENT.keepLook(np, p)
+					local rel = p:GetAttribute("PROTO_BlockRel")
+					local pcf = p.CFrame
+					ENT.swapIn(p, np)
+					if typeof(rel) == "CFrame" then np:SetAttribute("PROTO_BlockRel", np.CFrame:ToObjectSpace(pcf * rel)) end
+				else
+					p.Parent = nil   -- swallowed whole (never destroyed - Ctrl+Z brings it back)
+					removed += 1
+					count += 1
+					if p == target then newTarget = false end
+				end
+			else
+				why = tostring(res)
+			end
+		end
+		if np then
+			count += 1
+			if not e.ov and not sliced then
+				local ov = ENT.attachOutline(np, ENT.cutOutline, "cut")
+				if ov and #addedIds > 0 then pcall(function() ov:SetAttribute("PROTO_CutIds", table.concat(addedIds, ",")) end) end
+			end
+			ENT.finishParts(np)
+			results[#results + 1] = np
+			if p == target then newTarget = np end
+		elseif why then
+			fails += 1
+			ENT.failList = ENT.failList or {}
+			table.insert(ENT.failList, { name = p.Name, why = why })
+			warn("PROTO cut: couldn't cut " .. p.Name .. " - " .. tostring(why))
+			-- v2.96: when PROTO couldn't do it itself, say why (Roblox's own cut was only the fallback)
+			if readWhy then
+				warn(("PROTO cut: %s had no recipe and PROTO couldn't read it (%s), so Roblox's cut was tried and refused it. [%s, recipe %s, block %s, mesh %s]"):format(
+					p.Name, readWhy, p.ClassName, tostring(ENT.recipeOf(p) ~= nil), tostring(p:GetAttribute("PROTO_Core") == true),
+					p:IsA("MeshPart") and tostring(p.MeshId ~= "" and p.MeshId or "(in Studio only)") or "-"))
+			end
+		end
+	end
+	freeAll()
+	ENT.usedMesh = true
+	ENT.cutResults = results
+	if #results > 1 then Selection:Set(results) end
+	print(("PROTO cut: %d area(s), ONE cut per part, %d part(s) cut, nothing joined"):format(#regs, count))
+	return true, count, fails, removed, newTarget
+end
+-- a pocket's inside / opening edge on a rebuilt block: the cut's recipe gets the round / chamfer, then one rebuild
+function ENT.pocketRecipeEdge(E, p, r, isF)
+	local cf, size = ENT.blockOf(p)
+	if not cf then return false end
+	local cuts = ENT.cutsOf(p)
+	if #cuts == 0 then return false end
+	local mid = (E.a + E.b) / 2
+	local dir = (E.b - E.a).Unit
+	local best, bd, bi, bkind, bkey
+	for ci, c in ipairs(cuts) do
+		if c.kind == "rev" or c.kind == "edge" or c.kind == "shell" then continue end   -- (v2.71 / v2.76: no flat outline to round)
+		local fw = cf * CFrame.new(table.unpack(c.f))
+		local lm = fw:PointToObjectSpace(mid)
+		local ld = fw:VectorToObjectSpace(dir)
+		local q = v2list(c.outer)
+		local n = #q
+		if math.abs(ld.Z) > 0.9 then
+			-- an upright inside corner of the pocket = one of the outline's corners
+			for i = 1, n do
+				local d = (q[i] - V2(lm.X, lm.Y)).Magnitude
+				if d < (bd or 0.6) then best, bd, bi, bkind, bkey = ci, d, i, "vc", tostring(i) end
+			end
+		else
+			-- along the floor or round the opening = one of the outline's sides
+			local zo = (c.open == 1) and c.z1 or c.z0
+			local zf = (c.open == 1) and c.z0 or c.z1
+			local kind = (math.abs(lm.Z - zf) < 0.3) and "bot" or ((math.abs(lm.Z - zo) < 0.3) and "rim" or nil)
+			if kind and (kind == "rim" or c.open ~= nil) then
+				for i = 1, n do
+					local a, b = q[i], q[i % n + 1]
+					local ab = b - a
+					local t = math.clamp((V2(lm.X, lm.Y) - a):Dot(ab) / ab:Dot(ab), 0, 1)
+					local d = (a + ab * t - V2(lm.X, lm.Y)).Magnitude
+					if d < (bd or 0.6) then best, bd, bi, bkind, bkey = ci, d, i, kind, tostring(i) end
+				end
+			end
+		end
+	end
+	if not best then return false end
+	local c = cuts[best]
+	c[bkind] = c[bkind] or {}
+	if c[bkind][bkey] then setStatus((isF and "FILLET" or "CHAMFER") .. ": that edge is already done. Ctrl+Z to change it.") return true end
+	c[bkind][bkey] = { r = r, f = isF }
+	local done = {}
+	pcall(function() done = HttpService:JSONDecode(p:GetAttribute("PROTO_EdgesDone") or "[]") end)
+	local out, why
+	ENT.rebuildBusy = true
+	local ok = record("PROTO " .. (isF and "Fillet" or "Chamfer") .. " pocket edge (rebuilt in one go)", function()
+		out, why = ENT.solidRebuild(p, cf, size, done, cuts)
+		if not out then error(why or "couldn't do it", 0) end
+	end)
+	ENT.rebuildBusy = false
+	if ok and out then
+		ENT.lastPocketPart = out
+		ENT.pocketPanelCache = nil
+		if ENT.msUnsaved(out) then task.defer(function() ENT.msAfterCut({ out }) end) end
+		setStatus((isF and "FILLET" or "CHAMFER") .. " done (" .. fmt(r) .. ") - the pocket's cutter has it built in; block rebuilt with one cut, nothing joined. Ctrl+Z undoes it.")
+	end
+	return true
+end
+-- v2.57: a plain rectangle / circle = ONE real part (a block / a cylinder) - exact, and the edge tools work on it
+function ENT.plainPart(sh, D, shift, into)
+	local pl, host = sk.pl, sk.host
+	local s = (sh.kind == "face" and sh.src) or sh
+	local p = Instance.new("Part")
+	ENT.styleFrom(p, host)
+	if s.kind == "rect" then
+		p.Size = V3(s.w, s.h, D)
+		p.CFrame = CFrame.fromMatrix(W(s.c) + shift, pl.u, pl.v)
+	elseif s.kind == "circle" then
+		p.Shape = Enum.PartType.Cylinder
+		p.Size = V3(D, s.r * 2, s.r * 2)
+		p.CFrame = CFrame.fromMatrix(W(s.c) + shift, pl.n, pl.u)
+	else
+		return false
+	end
+	p.Parent = into
+	return true
+end
+-- v3.46 (Dylan: "a circle and square pushed out together need to be one - I see a strange line"): areas picked
+-- together that TOUCH (share an edge) and go the same depth are joined into ONE outline first, then made as ONE mesh.
+-- Each used to be its own piece, side by side: a seam line where they met, and specks where their edges (each
+-- smoothed on its own) didn't quite line up. Areas with holes in them are left as they were.
+function ENT.mergeItems(items)
+	if ENT.cutting or not (ENT.SHOW_MESH and ENT.meshCut) then return items end   -- (only when it can build meshes)
+	items = ENT.mergeWholes(items)
+	local groups, order = {}, {}
+	for _, it in ipairs(items) do
+		local r = it.region
+		local f = r and not r.whole and r.inside and #r.inside == 1 and r.inside[1]
+		local ok = f and f.kind == "face" and f.pts and #f.pts >= 3
+		if ok then
+			local okH, hs = pcall(ENT.meshHoles, r, f.pts)
+			ok = okH and hs and #hs == 0
+		end
+		local key = ok and string.format("%.4f|%.4f", it.D, it.mid) or nil
+		if key then
+			if not groups[key] then groups[key] = { list = {} } table.insert(order, key) end
+			table.insert(groups[key].list, it)
+		else
+			table.insert(order, it)
+		end
+	end
+	local out = {}
+	local function K(p) return string.format("%.4f,%.4f", p.X, p.Y) end
+	for _, g in ipairs(order) do
+		if type(g) ~= "string" then
+			table.insert(out, g)
+		else
+			local list = groups[g].list
+			local merged = (#list >= 2) and ENT.mergeLoops(list, K) or nil
+			if not merged then
+				for _, it in ipairs(list) do table.insert(out, it) end
+			else
+				for _, M in ipairs(merged) do
+					local face = { kind = "face", open = false, pts = M.outer, merged = true }
+					table.insert(out, { region = { inside = { face }, mergedHoles = M.holes }, D = list[1].D, mid = list[1].mid })
+				end
+			end
+		end
+	end
+	return out
+end
+-- v3.46: WHOLE shapes picked together (clicked by their edge) that overlap or touch - a rectangle and a circle on its
+-- end - became a block and a cylinder sitting in each other (a line where their sides met, specks where their ends
+-- overlapped). They're swapped for the areas they cover, so mergeItems joins those into one outline.
+function ENT.mergeWholes(items)
+	if not (sk and sk.faces and #sk.faces > 0) then return items end
+	-- a point just inside each area (beside its first edge, on the inside)
+	local inner = {}
+	for _, f in ipairs(sk.faces) do
+		local q = f.pts
+		if q and #q >= 3 then
+			local A = 0
+			for i = 1, #q do local a, b = q[i], q[i % #q + 1] A += a.X * b.Y - b.X * a.Y end
+			for i = 1, #q do
+				local a, b = q[i], q[i % #q + 1]
+				local d = b - a
+				if d.Magnitude > 1e-4 then
+					local nrm = V2(-d.Y, d.X).Unit * ((A > 0) and 1 or -1)
+					inner[f] = (a + b) / 2 + nrm * math.min(1e-3, d.Magnitude * 0.01)
+					break
+				end
+			end
+		end
+	end
+	-- each whole item: the areas it covers
+	local wholes = {}
+	for idx, it in ipairs(items) do
+		local sh = it.region and it.region.whole
+		if sh and not sh.open then
+			local o = outline(sh)
+			local cover = {}
+			for f, ip in pairs(inner) do if pointInPoly(ip, o) then cover[f] = true end end
+			if next(cover) then wholes[#wholes + 1] = { idx = idx, it = it, cover = cover, key = string.format("%.4f|%.4f", it.D, it.mid) } end
+		end
+	end
+	if #wholes < 2 then return items end
+	-- joined if they share an area (overlap) or an area of one shares an edge with an area of the other (touch)
+	local function K(p) return string.format("%.4f,%.4f", p.X, p.Y) end
+	local function edgeSet(cover)
+		local es = {}
+		for f in pairs(cover) do
+			local q = f.pts
+			for i = 1, #q do
+				local ka, kb = K(q[i]), K(q[i % #q + 1])
+				es[ka < kb and (ka .. "|" .. kb) or (kb .. "|" .. ka)] = true
+			end
+		end
+		return es
+	end
+	for _, w in ipairs(wholes) do w.edges = edgeSet(w.cover) end
+	local function linked(a, b)
+		if a.key ~= b.key then return false end
+		for f in pairs(a.cover) do if b.cover[f] then return true end end
+		for e in pairs(a.edges) do if b.edges[e] then return true end end
+		return false
+	end
+	-- groups of joined wholes
+	local comp = {}
+	for i = 1, #wholes do comp[i] = i end
+	local function root(i) while comp[i] ~= i do i = comp[i] end return i end
+	for i = 1, #wholes do for j = i + 1, #wholes do if linked(wholes[i], wholes[j]) then comp[root(i)] = root(j) end end end
+	local members = {}
+	for i = 1, #wholes do local r = root(i) members[r] = members[r] or {} table.insert(members[r], wholes[i]) end
+	local drop, add = {}, {}
+	for _, list in pairs(members) do
+		if #list >= 2 then
+			local cover = {}
+			for _, w in ipairs(list) do for f in pairs(w.cover) do cover[f] = true end drop[w.idx] = true end
+			for f in pairs(cover) do
+				table.insert(add, { region = { inside = { f } }, D = list[1].it.D, mid = list[1].it.mid, fromWhole = true })
+			end
+		end
+	end
+	if not next(drop) then return items end
+	local out = {}
+	for idx, it in ipairs(items) do if not drop[idx] then out[#out + 1] = it end end
+	for _, it in ipairs(add) do out[#out + 1] = it end
+	return out
+end
+-- the joined outline(s) of several areas: { { outer = pts, holes = { pts... } }, ... } or nil (nothing shared / unsure)
+function ENT.mergeLoops(list, K)
+	-- every area's edges (anticlockwise); an edge shared by two picked areas runs both ways -> both go
+	local edges, count = {}, {}
+	for _, it in ipairs(list) do
+		local q = it.region.inside[1].pts
+		local A = 0
+		for i = 1, #q do local a, b = q[i], q[i % #q + 1] A += a.X * b.Y - b.X * a.Y end
+		local n = #q
+		for i = 1, n do
+			local a, b = q[i], q[i % n + 1]
+			if A < 0 then a, b = q[i % n + 1], q[i] end
+			if (b - a).Magnitude > 1e-6 then
+				local e = { a = a, b = b, ka = K(a), kb = K(b) }
+				table.insert(edges, e)
+				count[e.ka .. ">" .. e.kb] = (count[e.ka .. ">" .. e.kb] or 0) + 1
+			end
+		end
+	end
+	local shared = false
+	local from = {}
+	for _, e in ipairs(edges) do
+		if count[e.kb .. ">" .. e.ka] then shared = true
+		else
+			from[e.ka] = from[e.ka] or {}
+			table.insert(from[e.ka], e)
+		end
+	end
+	if not shared then return nil end
+	-- walk the edges that are left into loops: anticlockwise = an outline, clockwise = a hole
+	local used, outers, holes = {}, {}, {}
+	for _, e0 in ipairs(edges) do
+		if not used[e0] and not count[e0.kb .. ">" .. e0.ka] then
+			local loop, e, guard = {}, e0, 0
+			local closed = false
+			while e and guard < 20000 do
+				used[e] = true
+				table.insert(loop, e.a)
+				guard += 1
+				if e.kb == e0.ka then closed = true break end
+				local nx
+				for _, c in ipairs(from[e.kb] or {}) do if not used[c] then nx = c break end end
+				e = nx
+			end
+			if not closed then return nil end   -- (didn't close up: leave the areas as they were)
+			-- (drop points on a straight line - they made needle-thin triangles = dark specks)
+			local clean = {}
+			local m = #loop
+			for i = 1, m do
+				local pa, pb, pc = loop[(i - 2) % m + 1], loop[i], loop[i % m + 1]
+				local d1, d2 = pb - pa, pc - pb
+				local cr = d1.X * d2.Y - d1.Y * d2.X
+				local straight = d1.Magnitude > 1e-6 and d2.Magnitude > 1e-6 and math.abs(cr) < 1e-7 * d1.Magnitude * d2.Magnitude
+					and (d1.X * d2.X + d1.Y * d2.Y) > 0
+				if not straight then table.insert(clean, pb) end
+			end
+			if #clean >= 3 then
+				local A = 0
+				for i = 1, #clean do local a, b = clean[i], clean[i % #clean + 1] A += a.X * b.Y - b.X * a.Y end
+				if A > 0 then table.insert(outers, clean) else table.insert(holes, clean) end
+			end
+		end
+	end
+	if #outers == 0 then return nil end
+	local res = {}
+	for _, o in ipairs(outers) do
+		local hs = {}
+		for _, h in ipairs(holes) do if pointInPoly(h[1], o) then table.insert(hs, h) end end
+		table.insert(res, { outer = o, holes = hs })
+	end
+	return res
 end
 function ENT.makeParts(items, grow)
 	local pl, host = sk.pl, sk.host
@@ -9923,76 +17220,28 @@ function ENT.makeParts(items, grow)
 	local made
 	local bad = 0
 	local model = Instance.new("Model")
-	model.Name = "DIM_Extrude"
+	model.Name = "PROTO_Extrude"
 	model.Parent = parent
+	do   -- v3.46: touching areas picked together = one outline, one mesh
+		local okM, merged = pcall(ENT.mergeItems, items)
+		if okM and merged then items = merged elseif not okM then warn("PROTO: joining the areas failed (" .. tostring(merged) .. ") - made them one by one") end
+	end
 	for _, it in ipairs(items) do
 		local r, D = it.region, it.D
 		local shift = pl.n * it.mid
-		if ENT.cutting and ENT.SHOW_MESH and ENT.meshCut and ENT.wantMesh(r) and ENT.meshRegion(r, it, grow, model) then
-			ENT.usedMesh = true   -- one sealed mesh cutter for this area (beta)
-		elseif r.whole and ENT.primRegion(r.whole, D, shift, model, grow) then
-			-- built exactly from the real rectangles / circles / ellipses
-		elseif r.whole then
-			if not buildShape(grow and ENT.grown(r.whole, grow) or r.whole, D, shift, model) then bad += 1 end
-		elseif #r.inside == 1 and ENT.primRegion(r.inside[1], D, shift, model, grow) then
-			-- built exactly from the real rectangles / circles / ellipses
-		elseif (not grow or grow == 0) and #r.inside == 1 and ENT.wallFaceSolid(r.inside[1], D, shift, model) then
-			-- v2.43 (Dylan): a double line all round = just the WALL (no solid with a hole cut out of it)
+		-- v2.57 MESH-ONLY: every area is ONE mesh; a plain rectangle / circle is one exact part. Nothing else.
+		if ENT.meshExtrudeRegion(r, it, model) then
+			ENT.usedMesh = true
+		elseif r.whole and ENT.plainPart(r.whole, D, shift, model) then
+			-- one real rectangle / circle part
 		else
-			-- the area inside all of r.inside and outside every other shape that overlaps it
-			local base = ENT.solidOf(grow and ENT.grown(r.inside[1], grow) or r.inside[1], D, shift, model)
-			if not base then bad += 1 end
-			for i = 2, #r.inside do
-				if not base then break end
-				local tool = ENT.solidOf(grow and ENT.grown(r.inside[i], grow) or r.inside[i], D + 0.1, shift, model)
-				if tool then
-					local ok, res = pcall(function() return GeometryService:IntersectAsync(base, { tool }, ENT.cutting and ENT.FAST or CSG_OPTS) end)
-					tool.Parent = nil
-					if ok and type(res) == "table" and res[1] then
-						ENT.keepLook(res[1], base)
-						res[1].Parent = model
-						base.Parent = nil
-						base = res[1]
-					else
-						warn("PROTO: couldn't make the overlap area - " .. tostring(res))
-					end
-				end
-			end
-			if base then
-				local lo, hi = ENT.regionBounds(r)
-				local tools = {}
-				local outer = outline(r.inside[1])
-				for _, s in ipairs(closedShapes()) do
-					if not table.find(r.inside, s) then
-						local sl, shh = ENT.regionBounds({ whole = s })
-						if sl.X < hi.X and shh.X > lo.X and sl.Y < hi.Y and shh.Y > lo.Y then
-							-- a point that is surely inside s
-							local sp = outline(s)
-							local tris = ENT.triangulate(sp)
-							local ip = tris and tris[1] and (tris[1][1] + tris[1][2] + tris[1][3]) / 3 or ENT.centroid(sp)
-							if pointInPoly(ip, outer) then
-								local t = ENT.solidOf(s, D + 0.1, shift, model)
-								if t then table.insert(tools, t) end
-							end
-						end
-					end
-				end
-				if #tools > 0 then
-					local ok, res = pcall(function() return GeometryService:SubtractAsync(base, tools, ENT.cutting and ENT.FAST or CSG_OPTS) end)
-					for _, t in ipairs(tools) do t.Parent = nil end
-					if ok and type(res) == "table" then
-						for _, np in ipairs(res) do ENT.keepLook(np, base) np.Parent = model end
-						base.Parent = nil
-					else
-						warn("PROTO: couldn't cut the other shapes out of the area - " .. tostring(res))
-					end
-				end
-			end
+			bad += 1
+			warn("PROTO: an area couldn't be made as one mesh (several shapes overlapping, or a shape crossing the outline) - draw it as one closed shape")
 		end
 	end
 	local kids = model:GetChildren()
 	if #kids == 1 then
-		kids[1].Name = "DIM_Extrude"
+		kids[1].Name = "PROTO_Extrude"
 		kids[1].Parent = parent
 		model.Parent = nil
 		made = kids[1]
@@ -10024,6 +17273,7 @@ local function showExtrudeButtons(on)
 	if U.scopeBtn then U.scopeBtn.Visible = (on and ex and ex.cut and not ex.ov) and true or false end
 end
 function exRefresh(dragging)
+	ENT.cutLiveDirty = true   -- v3.51
 	if not ex or not sk then return end
 	local pl = sk.pl
 	local z0, z1 = extentZ(ex.D)
@@ -10065,6 +17315,7 @@ function ENT.mvPlaneIndex(i) return ({ 1, 3, 2 })[i] end   -- Front = planes[1],
 function ENT.mvStop(msg, hidePlanes)
 	ENT.mv = nil
 	if ENT.mvGui then ENT.mvGui.Enabled = false end
+	ENT.overHud = false   -- v3.41 (glitch sweep): the bar can hide under the mouse (no MouseLeave) - 3D clicks were ignored
 	if mvPool then pBegin(mvPool) pEnd(mvPool) end
 	if hidePlanes then
 		-- v2.46 (Dylan): the planes go away once the views are built (they were left standing)
@@ -10122,6 +17373,7 @@ end
 function ENT.mvContinue()
 	local M = ENT.mv
 	if not M then return end
+	if M.stage == "building" then return end   -- v3.41 (glitch sweep): BUILD pressed again while it's still building
 	if M.stage == "pick" then
 		M.order = {}
 		for i = 1, 3 do if M.pick[i] then table.insert(M.order, i) end end
@@ -10135,14 +17387,22 @@ function ENT.mvContinue()
 	if #shapes == 0 then ENT.err("Draw a CLOSED shape on this view first (Rect, Circle, or lines that join up).") return end
 	local raw = {}
 	for _, sh in ipairs(sk.shapes) do table.insert(raw, copyShape(sh)) end   -- (the drawing as drawn, for Back)
+	-- v3.41 (glitch sweep): BUILD with mesh not ready: stop here with the drawing still open (it was thrown away)
+	if M.at >= #M.order and not ENT.meshGate() then return end
 	M.views[M.at] = { pl = sk.pl, shapes = shapes, raw = raw, name = ENT.mvName(M.order[M.at]) }
 	exitSketch()
-	if M.at < #M.order then ENT.mvOpenView(M.at + 1)
-	elseif M.how == "overlap" then ENT.mvBuild()
+	if M.at < #M.order then ENT.mvOpenView(M.at + 1) return end
+	-- v3.41 (glitch sweep): a "building" stage while it builds, so a 2nd BUILD click is ignored
+	M.stage = "building"
+	ENT.mvUI()
+	if M.how == "overlap" then ENT.mvBuild()
 	else ENT.mvBuildNet() end
+	-- (it stopped early without an answer: back on the last view, its drawing restored)
+	if ENT.mv == M and M.stage == "building" then ENT.mvOpenView(#M.order) end
 end
 function ENT.mvFinish(how)
 	if not ENT.mv then return end
+	if ENT.mv.stage == "building" then return end   -- v3.41 (glitch sweep): still building
 	ENT.mv.how = how
 	ENT.mvContinue()
 end
@@ -10172,6 +17432,7 @@ function ENT.mvPlaneAt(ray)
 	end
 	return best
 end
+function ENT.mvHide() if mvPool then pBegin(mvPool) pEnd(mvPool) end end   -- (v2.71: on close)
 -- the views already drawn, as purple lines in 3D (so the next one can be lined up with them);
 -- the planes you picked stay showing as YELLOW frames
 function ENT.mvDraw()
@@ -10207,6 +17468,7 @@ function ENT.mvDraw()
 	pEnd(mvPool)
 end
 function ENT.mvBuild()
+	if not ENT.meshGate() then return end
 	local M = ENT.mv
 	if not M then return end
 	local views = {}
@@ -10236,30 +17498,31 @@ function ENT.mvBuild()
 			local D, mid = hi - lo, (lo + hi) / 2
 			ENT.plOv, ENT.hostOv = v.pl, M.host
 			local parts = {}
-			for _, sh in ipairs(v.shapes) do
-				-- v2.46 (Dylan: "build it from the ground up"): every curved shape is built straight from its outline
-				-- (triangle pieces glued into one solid) - no stretched unions, which came out the wrong way round
-				local use = sh
-				if sh.kind ~= "rect" and sh.kind ~= "circle" then
-					local okO, pts = pcall(outline, sh)
-					if okO and pts and #pts >= 3 then use = { kind = "poly", open = false, pts = pts } end
+			-- v2.53 MESH MODE: the view's shapes pulled through = ONE mesh (no triangle pieces glued)
+			do
+				local okM, mp = pcall(function()
+					local fr = CFrame.fromMatrix(o, v.pl.u, v.pl.v)
+					if (v.pl.u:Cross(v.pl.v) - n).Magnitude > 1e-3 then return nil end
+					local tt = {}
+					for _, sh in ipairs(v.shapes) do
+						local q = outline(sh)
+						local t1 = q and #q >= 3 and ENT.recipeTris({ outer = q, holes = {}, z0 = lo, z1 = hi }, fr)
+						if not t1 then return nil end
+						for _, t in ipairs(t1) do tt[#tt + 1] = t end
+					end
+					return ENT.meshFromTris(tt)
+				end)
+				if okM and mp then
+					ENT.styleFrom(mp, M.host)
+					mp.Parent = folder
+					parts = { mp }
+				elseif ENT.MESH_ONLY then
+					error("the " .. v.name .. " view couldn't be built as one mesh", 0)
 				end
-				local okS, sol = pcall(ENT.solidOf, use, D, n * mid, folder)
-				if okS and sol then table.insert(parts, sol)
-				else warn("PROTO views: a " .. tostring(sh.kind) .. " on " .. v.name .. " couldn't be built: " .. tostring(sol)) end
 			end
 			ENT.plOv, ENT.hostOv = nil, nil
 			if #parts == 0 then error("the " .. v.name .. " view couldn't be built") end
 			local one = parts[1]
-			if #parts > 1 then
-				local rest = {}
-				for i = 2, #parts do rest[i - 1] = parts[i] end
-				local okU, res = pcall(function() return GeometryService:UnionAsync(parts[1], rest, CSG_OPTS) end)
-				if not (okU and res and res[1]) then error("couldn't join the " .. v.name .. " shapes: " .. tostring(res)) end
-				for _, q in ipairs(parts) do q.Parent = nil end
-				one = res[1]
-				one.Parent = folder
-			end
 			table.insert(solids, one)
 			print(("PROTO views: %s view -> %s, size %s, plane normal %s, depth %.2f (from %.2f to %.2f)"):format(
 				v.name, one.ClassName, tostring(one.Size), tostring(n), D, lo, hi))
@@ -10280,7 +17543,7 @@ function ENT.mvBuild()
 		base.Parent = ENT.buildParent(M.host)
 		folder.Parent = nil
 		ENT.finishParts(base)
-		made = ENT.wrapBuild(base, "DIM_Extrude")
+		made = ENT.wrapBuild(base, "PROTO_Extrude")
 	end)
 	ENT.plOv, ENT.hostOv = nil, nil
 	if not ok then err = e2 end
@@ -10293,7 +17556,7 @@ function ENT.mvBuild()
 	else
 		warn("PROTO views: " .. tostring(err))
 		ENT.err("Views: " .. (tostring(err):gsub("^.-:%d+: ", "")))
-		ENT.mvOpenView(#M.order)   -- back on the last view, its drawing restored
+		if ENT.mv == M then ENT.mvOpenView(#M.order) end   -- back on the last view, its drawing restored (v3.41 glitch sweep: only if the session wasn't closed meanwhile)
 	end
 end
 -- the little bar (under the top ribbon): planes to tick + Continue, then Back / Next / Build / Cancel
@@ -10368,6 +17631,8 @@ function ENT.mvUI()
 		end
 		btn("CONTINUE", GRN, ENT.mvContinue, 96)
 		btn("Cancel", RED, function() ENT.mvStop("Views cancelled.") end, 70)
+	elseif M.stage == "building" then
+		lab("VIEWS: building...")   -- v3.41 (glitch sweep): no BUILD button while it builds
 	else
 		local vi = M.order[M.at]
 		lab(("VIEW %d/%d: %s"):format(M.at, #M.order, ENT.mvName(vi)))
@@ -10386,6 +17651,7 @@ end
 -- along the length the section is scaled to fit both -> rings of points -> joined into triangles -> thin wedge plates,
 -- glued into ONE part. The ends close where the outlines meet. (No intersect step: nothing gets turned the wrong way.)
 function ENT.mvBuildNet()
+	if not ENT.meshGate() then return end
 	local M = ENT.mv
 	if not M then return end
 	local O = M.planes[1].o
@@ -10569,52 +17835,25 @@ function ENT.mvBuildNet()
 	local made
 	local ok, err = pcall(function()
 		local folder = Instance.new("Model")
-		folder.Name = "DIM_Extrude"
+		folder.Name = "PROTO_Extrude"
 		folder.Parent = ENT.buildParent(M.host)
 		local host = M.host
-		local function tri(a, b, c)
-			if ((b - a):Cross(c - a)).Magnitude > 1e-6 then ENT.triWedges(a, b, c, T, Vector3.zero, host, folder, { true, true, true }) end
-		end
-		for i = 1, #rows - 1 do
-			local A, B = rows[i], rows[i + 1]
-			for k = 1, K do
-				local k2 = k % K + 1
-				tri(A[k], A[k2], B[k2])
-				tri(A[k], B[k2], B[k])
+		-- v2.50 MESH MODE: the whole net is built straight as ONE sealed mesh - no plates, no gluing in batches
+		local meshDone = false
+		ENT.viewsSave = nil
+		do
+			local okM, mp = pcall(ENT.meshViews, rows, K)
+			if okM and mp then
+				ENT.styleFrom(mp, host)
+				pcall(function() mp.CollisionFidelity = ENT.collEnum() end)
+				mp.Name = "PROTO_Extrude"
+				mp.Parent = folder
+				meshDone = true
+				ENT.viewsSave = { mp }
+				print(("PROTO views net: %d station(s) x %d points -> ONE mesh"):format(#rows, K))
+			elseif ENT.MESH_ONLY then
+				error("couldn't build the views as one mesh - " .. tostring(mp), 0)
 			end
-		end
-		-- blunt ends get a lid (a pointed end has already closed itself)
-		for _, R in ipairs({ rows[1], rows[#rows] }) do
-			if R.size > T * 2 then
-				for k = 1, K do tri(R.c, R[k], R[k % K + 1]) end
-			end
-		end
-		-- glue the plates into one part, a batch at a time
-		local level = {}
-		for _, c in ipairs(folder:GetChildren()) do if c:IsA("BasePart") then table.insert(level, c) end end
-		print(("PROTO views net: %d station(s) x %d points -> %d plates, %.2f thick"):format(#rows, K, #level, T))
-		local glued = true
-		while #level > 1 and glued do
-			local nxt = {}
-			for i = 1, #level, 150 do
-				local first, rest = level[i], {}
-				for j = i + 1, math.min(i + 149, #level) do rest[#rest + 1] = level[j] end
-				if #rest == 0 then nxt[#nxt + 1] = first else
-					local okU, res = pcall(function() return GeometryService:UnionAsync(first, rest, CSG_OPTS) end)
-					if okU and type(res) == "table" and res[1] then
-						res[1].Parent = folder
-						first.Parent = nil
-						for _, r in ipairs(rest) do r.Parent = nil end
-						nxt[#nxt + 1] = res[1]
-					else
-						warn("PROTO views net: couldn't glue some plates (" .. tostring(res) .. ") - kept as separate pieces")
-						glued = false
-						for _, q in ipairs(level) do nxt[#nxt + 1] = q end
-						break
-					end
-				end
-			end
-			level = nxt
 		end
 		-- v2.46 (Dylan: "make the box wrap the last thing"): the glued part's own frame is turned like its first plate,
 		-- so a box round THAT is too big and off to one side. Save the net's real points on the part (DIM_Bounds, in its
@@ -10632,7 +17871,7 @@ function ENT.mvBuildNet()
 				end
 			end
 			local bv = Instance.new("StringValue")
-			bv.Name = "DIM_Bounds"
+			bv.Name = "PROTO_Bounds"
 			bv.Value = game:GetService("HttpService"):JSONEncode(pts)
 			bv.Parent = part
 		end
@@ -10644,16 +17883,59 @@ function ENT.mvBuildNet()
 	if ok and made then
 		ENT.mvStop(nil, true)
 		Selection:Set({ made })
-		setStatus("VIEWS: built a smooth shape through your " .. nV .. " views (" .. #rows .. " stations). Ctrl+Z undoes it.")
+		setStatus("VIEWS: built a smooth shape through your " .. nV .. " views (" .. #rows .. " stations)" .. (ENT.viewsSave and " as ONE mesh - saving to Roblox" or "") .. ". Ctrl+Z undoes it.")
+		if ENT.viewsSave then
+			local l = ENT.viewsSave
+			task.defer(function() ENT.msAfterCut(l) end)
+		end
+		ENT.viewsSave = nil
 	else
 		warn("PROTO views net: " .. tostring(err))
 		ENT.err("Views: " .. (tostring(err):gsub("^.-:%d+: ", "")))
-		ENT.mvOpenView(#M.order)
+		if ENT.mv == M then ENT.mvOpenView(#M.order) end   -- v3.41 (glitch sweep): only if the session wasn't closed meanwhile
 	end
+end
+-- v3.41 (glitch sweep): pressing Extrude / Cut / Overlap while a preview is open. Same kind = keep it (accept),
+-- other kind = the open preview turns into the kind you pressed (nothing is built yet)
+function ENT.exSwitch(kind)
+	if not ex then return end
+	local cur = ex.ov and "overlap" or (ex.cut and "cut" or "extrude")
+	if kind == cur then acceptExtrude() return end
+	if not sk then setStatus("Finish or cancel the extrude first (ACCEPT / Enter or CANCEL / Esc).") return end
+	if kind == "overlap" then
+		local okZ, za, zb = false, nil, nil
+		if sk.host then okZ, za, zb = pcall(ENT.hostSpan) end
+		if not (okZ and za) then setStatus("Finish or cancel the extrude first (Overlap needs the part you sketched on).") return end
+		ex.preOv = { D = ex.D, S = ex.S, kind = cur }   -- remembered, so switching back gives the old depth
+		ex.cut, ex.ov = true, true
+		if bothWays then ex.S, ex.D = (za + zb) / 2, (zb - za) + 1
+		else ex.S, ex.D = za - 0.5, (zb - za) + 1 end
+		U.startBox.Text = fmt(ex.S)
+	elseif cur == "overlap" then
+		local back = ex.preOv
+		ex.ov, ex.preOv = nil, nil
+		ex.cut = (kind == "cut")
+		if back then
+			ex.S = back.S
+			ex.D = (back.kind == kind) and back.D or -back.D
+		else
+			ex.S = 0
+			ex.D = (kind == "cut") and -4 or 4
+			if ENT.flip then ex.D = -ex.D end
+		end
+		U.startBox.Text = fmt(ex.S)
+	else
+		-- extrude <-> cut: same depth, the other direction (cuts go into the part)
+		ex.cut = (kind == "cut")
+		ex.D = -ex.D
+	end
+	showExtrudeButtons(true)
+	exRefresh()
+	refreshStatus()
 end
 -- v2.46: OVERLAP button
 function ENT.overlap()
-	if ex then acceptExtrude() return end
+	if ex then ENT.exSwitch("overlap") return end   -- v3.41 (glitch sweep): was: always built the open preview
 	-- v2.46 (Dylan: "don't block me"): no part to overlap or nothing drawn yet -> the multi-view tool
 	local hasArea = false
 	if sk then pcall(ENT.computeFaces) hasArea = #closedShapes() > 0 end
@@ -10678,7 +17960,8 @@ function ENT.hostSpan()
 	return lo, hi
 end
 function extrude(isCut)
-	if ex then acceptExtrude() return end
+	-- v3.41 (glitch sweep): Cut pressed during an Extrude preview (or the other way) switches the preview, not builds it
+	if ex then ENT.exSwitch(ENT.ovCall and "overlap" or (isCut and "cut" or "extrude")) return end
 	if isCut == nil and (ENT.picking == "revolve" or ENT.picking == "revcut") then return ENT.revolve(ENT.picking == "revcut") end
 	if not sk then setStatus("Start a sketch first (click a part, then a plane or face).") return end
 	-- leave the drawing tool: anything on the mouse is dropped, back to Select
@@ -10752,7 +18035,7 @@ function extrude(isCut)
 	end
 	local rec = "at ACCEPT"
 	local carrier = Instance.new("Part")
-	carrier.Name = "DIM_Preview"
+	carrier.Name = "PROTO_Preview"
 	carrier.Anchored = true
 	carrier.CanCollide = false
 	carrier.CanTouch = false
@@ -10799,30 +18082,6 @@ local function endPreview(e)
 	if e.carrier then pcall(function() e.carrier:Destroy() end) end
 	showExtrudeButtons(false)
 end
--- the parts inside the drawn cut area itself (its outline box shrunk by the cutter's extra margin), z0..z1 deep
-function ENT.cutCoreParts(e, z0, z1, params)
-	if not (sk and e and e.list) then return nil end
-	local pl = sk.pl
-	local lo, hi = V2(math.huge, math.huge), V2(-math.huge, -math.huge)
-	for _, sh in ipairs(e.list) do
-		local okO, pts = pcall(outline, sh)
-		if okO and pts then
-			for _, q in ipairs(pts) do
-				lo = V2(math.min(lo.X, q.X), math.min(lo.Y, q.Y))
-				hi = V2(math.max(hi.X, q.X), math.max(hi.Y, q.Y))
-			end
-		end
-	end
-	if lo.X > hi.X then return nil end
-	local gg = (ENT.cutGrow and ENT.cutGrow() or 0.05) + 0.02
-	local w, h, d = hi.X - lo.X - 2 * gg, hi.Y - lo.Y - 2 * gg, math.abs(z1 - z0)
-	if w <= 0.01 or h <= 0.01 or d <= 0.01 then return nil end
-	local cf = CFrame.fromMatrix(W((lo + hi) / 2) + pl.n * ((z0 + z1) / 2), pl.u, pl.v)
-	local list = workspace:GetPartBoundsInBox(cf, V3(w, h, d), params)
-	local set = {}
-	for _, p in ipairs(list) do set[p] = true end
-	return set
-end
 -- how far small things stuck onto the sketched face (edge fills, skirting) stand out in front of it, inside the
 -- cut's area (0 = nothing). Only bits that touch the face and stand out less than 6 studs count (not the floor etc.)
 function ENT.cutFrontExtra(e)
@@ -10863,7 +18122,7 @@ function ENT.cutFrontExtra(e)
 	local best = 0
 	for i, p in ipairs(parts) do
 		if i > 200 then break end
-		if p ~= (ex and ex.carrier) and p.Name ~= "DIM_Box" and p.Name ~= "DIM_Preview" and p.Transparency < 0.99 then
+		if p ~= (ex and ex.carrier) and not ENT.isBox(p.Name) and not ENT.isPrev(p.Name) and p.Transparency < 0.99 then
 			local pc, ps = p.CFrame, p.Size / 2
 			local mn, mx = math.huge, -math.huge
 			for _, sx in ipairs({ -1, 1 }) do for _, sy in ipairs({ -1, 1 }) do for _, sz in ipairs({ -1, 1 }) do
@@ -10879,6 +18138,8 @@ function ENT.cutFrontExtra(e)
 end
 function acceptExtrude()
 	if not ex then return end
+	if not ENT.meshGate() then return end
+	if ENT.cutLiveShown then ENT.cutLiveShown = nil pcall(ENT.liveHide) end   -- v3.51: the live cut goes, the real one is made
 	local e = ex
 	ex = nil
 	endPreview(e)
@@ -10905,220 +18166,40 @@ function acceptExtrude()
 	local ok, err = pcall(function()
 		ENT.cutting = e.cut and true or nil
 		ENT.usedMesh = nil
-		made, bad = ENT.makeParts(items, e.cut and ENT.cutGrow() or nil)
+		ENT.cutResults = nil
+		-- v2.53 MESH MODE CUT: all the areas = ONE cutter; PROTO blocks rebuilt from their recipe (one cut), others cut
+		-- once with it. Nothing glued. (Areas made of several overlapping shapes still go the old way.)
+		local meshFlow = false
+		if e.cut and ENT.SHOW_MESH and ENT.meshCut then
+			ENT.cutOutline = ENT.featureSegs(e.list, z0, z1)
+			local handled, a1, a2, a3, a4 = ENT.meshCutFlow(e, items, z0, z1)
+			if handled then
+				meshFlow = true
+				cutCount, cutFails, removedCount, newTarget, crumbs = a1, a2, a3, a4, 0
+			elseif ENT.MESH_ONLY then
+				-- v2.91: the real reason (it used to always say "overlapping shapes")
+				local nIn = {}
+				for _, it in ipairs(items) do nIn[#nIn + 1] = it.region.whole and "whole" or tostring(#(it.region.inside or {})) end
+				print("PROTO cut refused: " .. tostring(ENT.cutWhy) .. " | areas: " .. #items .. " (" .. table.concat(nIn, ",") .. ") | closed areas in the sketch: " .. #closedShapes())
+				error((ENT.cutWhy or "this area is made of several shapes overlapping each other") .. " - nothing was cut", 0)
+			end
+		end
+		if not e.cut then made, bad = ENT.makeParts(items, nil) end   -- (v2.57: cuts are always meshCutFlow)
 		local outl = ENT.featureSegs(e.list, z0, z1)
 		ENT.triAcc = { tris = 0, parts = 0 }
 		if made and not e.cut then
 			ENT.finishParts(made)   -- (sets the group's pivot - BEFORE the outline is saved against it)
 			ENT.attachOutline(made, outl, "extrude")
-			made = ENT.wrapBuild(made, "DIM_Extrude")   -- v2.37: every build = its own group, wrapped in its own cube
+			made = ENT.wrapBuild(made, "PROTO_Extrude")   -- v2.37: every build = its own group, wrapped in its own cube
+			if ENT.usedMesh and made then
+				-- v2.48: the one-piece mesh(es) this extrude made -> saved to Roblox straight after
+				local l = {}
+				if made:IsA("BasePart") then l = { made } end
+				for _, d in ipairs(made:GetDescendants()) do if d:IsA("MeshPart") then table.insert(l, d) end end
+				ENT.cutResults = l
+			end
 		end
 		ENT.cutOutline = outl
-		if e.cut and made then
-			-- the shapes become cutters: subtract them from every part they touch, then remove them
-			local cutters = {}
-			if made:IsA("BasePart") then cutters = { made } else
-				for _, d in ipairs(made:GetDescendants()) do if d:IsA("BasePart") then table.insert(cutters, d) end end
-			end
-			-- v2.40: the REAL cutter's corners (world) - the pocket box is built from these, exact to the cut
-			ENT.cutToolWorld = nil
-			if #cutters <= 8 then
-				local pts = {}
-				for _, c in ipairs(cutters) do
-					local h = c.Size / 2
-					for _, sx in ipairs({ -1, 1 }) do for _, sy in ipairs({ -1, 1 }) do for _, sz in ipairs({ -1, 1 }) do
-						pts[#pts + 1] = (c.CFrame * CFrame.new(h.X * sx, h.Y * sy, h.Z * sz)).Position
-					end end end
-				end
-				ENT.cutToolWorld = pts
-			end
-			-- glue all the cutter pieces into one solid first: one clean cut, no seams between pieces
-			if #cutters > 1 and not ENT.usedMesh then
-				local rest = {}
-				for i = 2, #cutters do rest[i - 1] = cutters[i] end
-				local okU, res = pcall(function() return GeometryService:UnionAsync(cutters[1], rest, ENT.cutting and ENT.FAST or CSG_OPTS) end)
-				if okU and type(res) == "table" and res[1] then
-					res[1].Parent = made:IsA("BasePart") and made.Parent or made
-					cutters = { res[1] }
-				else
-					warn("PROTO: couldn't glue the " .. #cutters .. " cutter pieces together - " .. tostring(res))
-				end
-			end
-			local params = OverlapParams.new()
-			params.FilterType = Enum.RaycastFilterType.Exclude
-			params.FilterDescendantsInstances = { made }
-			local targets, seen = {}, {}
-			for _, c in ipairs(cutters) do
-				for _, p in ipairs(workspace:GetPartsInPart(c, params)) do
-					if not seen[p] and p ~= TERRAIN and not p.Locked then
-						seen[p] = true
-						table.insert(targets, p)
-					end
-				end
-			end
-			-- v2.27: a shape built from many pieces (spline / curved extrude) is glued into ONE solid first, so the
-			-- cut goes through it cleanly - cutting each little piece on its own left notches and lost bits
-			-- v2.44 (Dylan): a part only touched by the cutter's little extra margin (the floor the wall stands on, under a
-			-- door) is NOT cut - only parts inside the area you actually drew (shrunk by that margin) get cut
-			if e.ov then
-				-- OVERLAP: only the build you sketched on gets trimmed
-				local hw = sk.host and ENT.wholeOf(sk.host)
-				local keep = {}
-				for _, p in ipairs(targets) do
-					if hw and (p == sk.host or p == hw or p:IsDescendantOf(hw)) and p.Name ~= "DIM_Box" then table.insert(keep, p) end
-				end
-				targets = keep
-			else
-				local okC, core = pcall(ENT.cutCoreParts, e, z0, z1, params)
-				if okC and core then
-					local keep = {}
-					for _, p in ipairs(targets) do
-						if core[p] or p == sk.host then table.insert(keep, p) end
-					end
-					targets = keep
-				end
-			end
-			if ENT.cutScope == "host" and sk.host and not e.ov then
-				local hw = ENT.wholeOf(sk.host)
-				local keep = {}
-				for _, p in ipairs(targets) do
-					if p == sk.host or p:IsDescendantOf(hw) or p == hw then table.insert(keep, p) end
-				end
-				targets = keep
-			end
-			-- v2.31: no gluing first - gluing many wedge pieces left tiny inner overlaps and the cut threw out long
-			-- spikes. Each piece is cut on its own (the notch bug that made gluing look needed is fixed separately).
-			if ENT.GLUE_BEFORE_CUT then targets = ENT.mergeTargets(targets, made) end
-			local results = {}
-			cutCount, cutFails, removedCount, crumbs = 0, 0, 0, 0
-			ENT.failList = {}
-			newTarget = nil
-			for _, p in ipairs(targets) do
-				local newParts, why
-				local okg, res = pcall(function()
-					-- v2.25: cut with BOX collision first (never fails); the crumbs are thrown away, then only the kept
-					-- pieces get the real collision (Hull failed on paper-thin crumbs: "Could not generate convex hull")
-					if e.ov then
-						if #cutters ~= 1 then error("the overlap shape came out in " .. #cutters .. " pieces") end
-						return GeometryService:IntersectAsync(p, cutters, {
-							CollisionFidelity = Enum.CollisionFidelity.Box,
-							RenderFidelity = Enum.RenderFidelity.Automatic,
-							SplitApart = not p:GetAttribute("PROTO_EdgesDone"),
-						})
-					end
-					return GeometryService:SubtractAsync(p, cutters, {
-						CollisionFidelity = Enum.CollisionFidelity.Box,
-						RenderFidelity = Enum.RenderFidelity.Automatic,
-						-- (v2.40: NOT on a block with fillets / chamfers - its skirting pieces came back as loose bits and
-						-- were thrown away as crumbs = the corner wraps vanished)
-						SplitApart = not p:GetAttribute("PROTO_EdgesDone"),
-					})
-				end)
-				if okg and type(res) == "table" then print(("PROTO: cutting %s gave %d piece(s)"):format(p.Name, #res)) end
-				if okg and type(res) == "table" and res[1] then
-					-- area clean-up: any loose bit still sitting inside the cut area = debris -> deleted
-					do
-						local bigV = 0
-						for _, np in ipairs(res) do local z = np.Size bigV = math.max(bigV, z.X * z.Y * z.Z) end
-						local keep = {}
-						for _, np in ipairs(res) do
-							local z = np.Size
-							local v = z.X * z.Y * z.Z
-							if #res > 1 and ((v < bigV * 1e-5) or (not e.ov and ENT.debris(np, e.regions, z0, z1, v < bigV * 0.25))) then   -- v2.36: was 2% - real small end pieces got deleted
-								np.Parent = nil
-								crumbs += 1
-							else
-								table.insert(keep, np)
-							end
-						end
-						res = keep
-					end
-				end
-				if okg and type(res) == "table" and res[1] then
-					-- crumb clean-up: tiny loose slivers next to a much bigger piece are CSG leftovers -> removed
-					local big = 0
-					for _, np in ipairs(res) do local z = np.Size big = math.max(big, z.X * z.Y * z.Z) end
-					newParts = {}
-					for _, np in ipairs(res) do
-						local z = np.Size
-						local v = z.X * z.Y * z.Z
-						if #res > 1 and v < big * 0.01 and math.min(z.X, z.Y, z.Z) < 0.3 then
-							np.Parent = nil
-							crumbs += 1
-						else
-							table.insert(newParts, np)
-						end
-					end
-				elseif okg and type(res) == "table" and #res == 0 then
-					newParts = {}   -- empty result = the cut swallowed this whole part: it's simply removed
-				else
-					why = "GeometryService: " .. tostring(res)
-					local okc, u = false, "skipped"
-					if not tostring(res):find("manifold") then okc, u = pcall(function() if e.ov then return p:IntersectAsync(cutters) end return p:SubtractAsync(cutters) end) end
-					if okc and u then newParts = { u } else why = why .. " | SubtractAsync: " .. tostring(u) end
-				end
-				if newParts then
-					for _, np in ipairs(newParts) do
-						if np:IsA("PartOperation") then
-							local z = np.Size
-							local fid = ENT.collEnum()
-							-- very thin pieces can't get a hull: keep them on Box collision instead of failing
-							if math.min(z.X, z.Y, z.Z) < 0.05 and fid ~= Enum.CollisionFidelity.Box then fid = Enum.CollisionFidelity.Box end
-							pcall(function() np.CollisionFidelity = fid end)
-						end
-						np.Name = p.Name
-						np.Anchored = p.Anchored
-						np.CanCollide = p.CanCollide
-						pcall(function()
-							np.UsePartColor = true
-							np.Color = p.Color
-							np.Material = p.Material
-							np.MaterialVariant = p.MaterialVariant
-						end)
-						np.Parent = p.Parent
-						-- v2.08: keep the outlines of earlier cuts on this part, plus this cut's
-						for _, ch in ipairs(p:GetChildren()) do
-							if ch:IsA("StringValue") and ch.Name == "DIM_Outline" then ENT.moveDimValue(ch, p.CFrame, np.CFrame, np) end
-						end
-						-- v2.40: it keeps what it knows about its edges (fillets / chamfers / fills) - the block it was made
-						-- from stays where it was in the world
-						do
-							local rel = p:GetAttribute("PROTO_BlockRel")
-							local bsz = p:GetAttribute("PROTO_BlockSize")
-							if typeof(rel) == "CFrame" and typeof(bsz) == "Vector3" then
-								pcall(function()
-									np:SetAttribute("PROTO_BlockRel", np.CFrame:ToObjectSpace(p.CFrame * rel))
-									np:SetAttribute("PROTO_BlockSize", bsz)
-									local ed = p:GetAttribute("PROTO_EdgesDone")
-									if ed then np:SetAttribute("PROTO_EdgesDone", ed) end
-								end)
-							elseif p:IsA("Part") and p.Shape == Enum.PartType.Block then
-								-- (a plain block that's been cut: remember the block, so its outside edges can still be filleted)
-								pcall(function()
-									np:SetAttribute("PROTO_BlockRel", np.CFrame:ToObjectSpace(p.CFrame))
-									np:SetAttribute("PROTO_BlockSize", p.Size)
-								end)
-							end
-						end
-						if not e.ov then ENT.attachOutline(np, ENT.cutOutline, "cut") end   -- (an overlap is not a pocket)
-						ENT.finishParts(np)
-						table.insert(results, np)
-					end
-					if p == target then newTarget = newParts[1] or false end   -- false = the target was cut away completely
-					if #newParts == 0 then removedCount += 1 end
-					p.Parent = nil
-					cutCount += 1
-				else
-					cutFails += 1
-					ENT.failList = ENT.failList or {}
-					table.insert(ENT.failList, { name = p.Name, why = tostring(why) })
-				end
-			end
-			made.Parent = nil
-			made = (#results == 1) and results[1] or nil
-			if #results > 1 then Selection:Set(results) end
-			ENT.reportFails()
-		end
 	end)
 	ENT.cutting = nil
 	ENT.freeMeshes()
@@ -11150,17 +18231,23 @@ function acceptExtrude()
 		if (cutCount or 0) == 0 then
 			setStatus("The cut didn't touch any part (locked parts and the baseplate are skipped)." .. ((cutFails or 0) > 0 and ("  " .. cutFails .. " part(s) couldn't be cut - see Output.") or ""))
 		else
-			if ENT.usedMesh then warn("PROTO: this cut used the MESH CUTTER (beta) - the cut part is a MeshPart and will NOT be saved by Roblox yet.") end
-			setStatus((ENT.usedMesh and "[MESH - won't save yet]  " or "") .. "Cut " .. cutCount .. " part(s)" .. (((removedCount or 0) > 0) and (" (" .. removedCount .. " were completely inside the cut, so they were removed)") or "") .. (((crumbs or 0) > 0) and (", cleaned up " .. crumbs .. " leftover crumb(s)") or "") .. ". Ctrl+Z undoes it. (Cutting turns a part into a Union - decals / textures on it are lost.)" .. ((cutFails or 0) > 0 and ("  " .. cutFails .. " part(s) couldn't be cut - see Output.") or ""))
+			setStatus((ENT.msPending(ENT.usedMesh and ENT.cutResults) and "[MESH cut - saving to Roblox...]  " or "") .. "Cut " .. cutCount .. " part(s)" .. (((removedCount or 0) > 0) and (" (" .. removedCount .. " were completely inside the cut, so they were removed)") or "") .. (((crumbs or 0) > 0) and (", cleaned up " .. crumbs .. " leftover crumb(s)") or "") .. ". Ctrl+Z undoes it. (Cutting turns a part into a Union - decals / textures on it are lost.)" .. ((cutFails or 0) > 0 and ("  " .. cutFails .. " part(s) couldn't be cut - see Output.") or ""))
 		end
 	elseif made then
 		Selection:Set({ made })
-		setStatus("Extruded " .. #items .. " shape(s), depth " .. fmt(z1 - z0) .. ". Ctrl+Z undoes it." .. ((bad or 0) > 0 and ("  " .. bad .. " line shape(s) cross over themselves - skipped.") or ""))
+		setStatus((ENT.msPending(ENT.usedMesh and ENT.cutResults) and "[ONE-PIECE MESH - saving to Roblox...]  " or "") .. "Extruded " .. #items .. " shape(s), depth " .. fmt(z1 - z0) .. ". Ctrl+Z undoes it." .. ((bad or 0) > 0 and ("  " .. bad .. " line shape(s) cross over themselves - skipped.") or ""))
 	else
 		setStatus("Nothing was made - a line shape that crosses itself can't be filled.")
 	end
+	-- v2.48: the mesh cutter's cut parts are uploaded to Roblox now (once, right after the cut)
+	if ok and ENT.usedMesh and ENT.cutResults then
+		local res = ENT.cutResults
+		task.defer(function() ENT.msAfterCut(res) end)
+	end
+	ENT.cutResults = nil
 end
 function cancelExtrude()
+	if ENT.cutLiveShown then ENT.cutLiveShown = nil pcall(ENT.liveHide) end   -- v3.51
 	if not ex then return end
 	local e = ex
 	ex = nil
@@ -11414,125 +18501,15 @@ end
 function ENT.smoothOn(part)
 	pcall(function() part.SmoothingAngle = 45 end)   -- unions shade smoothly across the slice joins
 end
-function ENT.revBuild(pieces, A, d, isCut, into)
-	local host = sk.host
-	local pl = sk.pl
-	local Aw = W(A)
-	local dw = pl.u * d.X + pl.v * d.Y
-	local nw = pl.u * (-d.Y) + pl.v * d.X
-	local function disc(r, t0, t1)
-		local o = Instance.new("Part")
-		ENT.styleFrom(o, host)
-		o.Shape = Enum.PartType.Cylinder
-		o.Size = V3(t1 - t0, r * 2, r * 2)
-		o.CFrame = CFrame.fromMatrix(Aw + dw * ((t0 + t1) / 2), dw, nw)
-		o.Parent = into
-		return o
-	end
-	-- the solid inside surface 'surf' between t0 and t1
-	local function filled(surf, t0, t1, rBig)
-		if surf.kind == "cyl" then return disc(surf.r, t0, t1) end
-		local ball = Instance.new("Part")
-		ENT.styleFrom(ball, host)
-		ball.Shape = Enum.PartType.Ball
-		ball.Size = V3(surf.R * 2, surf.R * 2, surf.R * 2)
-		ball.CFrame = CFrame.fromMatrix(Aw + dw * surf.c, dw, nw)
-		ball.Parent = into
-		local slab = disc(rBig + 1, t0, t1)
-		local ok, res = pcall(function() return GeometryService:IntersectAsync(ball, { slab }, ENT.FAST) end)
-		ball.Parent = nil
-		slab.Parent = nil
-		if not (ok and type(res) == "table" and res[1]) then return nil, tostring(res) end
-		ENT.keepLook(res[1], ball)
-		res[1].Parent = into
-		return res[1]
-	end
-	local parts = {}
-	for _, pc in ipairs(pieces) do
-		local o, why = filled(pc.outer, pc.t0, pc.t1, pc.rOut)
-		if not o then return nil, "couldn't make a ball slice - " .. tostring(why) end
-		if pc.inner then
-			local h, why2 = filled(pc.inner, pc.t0 - 0.01, pc.t1 + 0.01, pc.rOut)
-			if not h then return nil, "couldn't make the hole - " .. tostring(why2) end
-			local ok, res = pcall(function() return GeometryService:SubtractAsync(o, { h }, ENT.FAST) end)
-			h.Parent = nil
-			o.Parent = nil
-			if not (ok and type(res) == "table" and res[1]) then return nil, "couldn't hollow out a ring - " .. tostring(res) end
-			ENT.keepLook(res[1], o)
-			res[1].Parent = into
-			o = res[1]
-		end
-		table.insert(parts, o)
-	end
-	if #parts == 1 then ENT.smoothOn(parts[1]) return parts[1] end
-	local rest = {}
-	for i = 2, #parts do rest[i - 1] = parts[i] end
-	local ok, res = pcall(function() return GeometryService:UnionAsync(parts[1], rest, ENT.revOpts(isCut)) end)
-	if not (ok and type(res) == "table" and res[1]) then return nil, "couldn't join the " .. #parts .. " slices - " .. tostring(res) end
-	for _, p in ipairs(parts) do p.Parent = nil end
-	ENT.keepLook(res[1], parts[1])
-	ENT.smoothOn(res[1])
-	res[1].Parent = into
-	return res[1]
-end
--- less than 360: keep only the slice from the sketch round to 'angle' (right-hand turn about the axis)
-function ENT.revTrim(solid, angle, side, A, d, tmin, tmax, rMax, isCut, into)
-	local pl = sk.pl
-	local dw = pl.u * d.X + pl.v * d.Y
-	local e1 = (pl.u * (-d.Y) + pl.v * d.X) * side   -- from the axis towards the outline
-	local e2 = dw:Cross(e1)
-	local big = math.min(rMax * 2 + 4, 1020)   -- v2.36: parts max out at 2048 (size.Z = big * 2) - bigger was silently clamped
-	local L = math.min((tmax - tmin) + 4, 2040)
-	local base = W(A) + dw * ((tmin + tmax) / 2)
-	local function block(deg)
-		-- a half-space: everything on the 'deg' side of the plane through the axis
-		local a = math.rad(deg)
-		local dir = e1 * math.cos(a) + e2 * math.sin(a)
-		local b = Instance.new("Part")
-		b.Anchored = true
-		b.Transparency = 1
-		b.Size = V3(L, big, big * 2)
-		b.CFrame = CFrame.fromMatrix(base + dir * (big / 2), dw, dir)
-		b.Parent = into
-		return b
-	end
-	local function pie(a0, a1)   -- the wedge of directions a0..a1 (at most 180 wide)
-		local b1 = block(a0 + 90)
-		if a1 - a0 >= 179.999 then return b1 end
-		local b2 = block(a1 - 90)
-		local ok, res = pcall(function() return GeometryService:IntersectAsync(b1, { b2 }, ENT.FAST) end)
-		b1.Parent = nil
-		b2.Parent = nil
-		if ok and type(res) == "table" and res[1] then res[1].Parent = into return res[1] end
-		return nil
-	end
-	local ok, res
-	if angle <= 180 then
-		local p = pie(0, angle)
-		if not p then return nil, "couldn't make the angle cutter." end
-		ok, res = pcall(function() return GeometryService:IntersectAsync(solid, { p }, ENT.revOpts(isCut)) end)
-		p.Parent = nil
-	else
-		local p = pie(angle, 360)
-		if not p then return nil, "couldn't make the angle cutter." end
-		ok, res = pcall(function() return GeometryService:SubtractAsync(solid, { p }, ENT.revOpts(isCut)) end)
-		p.Parent = nil
-	end
-	if not (ok and type(res) == "table" and res[1]) then return nil, "couldn't trim to " .. fmt(angle) .. " degrees - " .. tostring(res) end
-	solid.Parent = nil
-	ENT.keepLook(res[1], solid)
-	ENT.smoothOn(res[1])
-	res[1].Parent = into
-	return res[1]
-end
 -- cut one cutter out of every unlocked part it touches (parts swallowed whole are removed)
 function ENT.cutWith(cutter, exclude)
 	local params = OverlapParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = { exclude or cutter }
 	local count, removed, fails = 0, 0, 0
+	ENT.cutWithMade = {}
 	for _, p in ipairs(workspace:GetPartsInPart(cutter, params)) do
-		if p ~= TERRAIN and not p.Locked and p.Name ~= "DIM_Preview" then
+		if p ~= TERRAIN and not p.Locked and not ENT.isPrev(p.Name) then
 			local ok, res = pcall(function()
 				return GeometryService:SubtractAsync(p, { cutter }, {
 					CollisionFidelity = ENT.collEnum(),
@@ -11549,6 +18526,7 @@ function ENT.cutWith(cutter, exclude)
 					np.CanCollide = p.CanCollide
 					np.Parent = p.Parent
 					ENT.finishParts(np)
+					table.insert(ENT.cutWithMade, np)
 				end
 				if #res == 0 then removed += 1 end
 				p.Parent = nil   -- never :Destroy() user parts (Ctrl+Z couldn't bring them back)
@@ -11561,344 +18539,84 @@ function ENT.cutWith(cutter, exclude)
 	end
 	return count, removed, fails
 end
--- ===== LATHE PANELS (v1.85) =====
--- The outline in axis terms is a list of straight runs per slab: t0..t1 along the axis, radii inner i0->i1, outer o0->o1.
--- Runs that carry straight on (same line within 0.003 studs) are merged. Each run, inside ONE wedge of the turn, is the
--- overlap of 5 flat-sided blocks: the slab (t0..t1), the wedge, under the OUTER panel, over the INNER panel.
--- That's one convex piece with flat panels; neighbours meet on the very same corner points, so nothing steps or gaps.
--- Then the wedge is copied round (all copies identical) and joined.
-function ENT.revMergeRaw(raw)
-	local function onLine(ta, ra, tm, rm, tb, rb)
-		if tb - ta < 1e-9 then return false end
-		return math.abs(ra + (rb - ra) * (tm - ta) / (tb - ta) - rm) < 0.003
-	end
-	local runs = {}
-	for _, q in ipairs(raw) do
-		local i0, i1 = (q.i0 < 0.01) and 0 or q.i0, (q.i1 < 0.01) and 0 or q.i1
-		local hit = nil
-		for _, r in ipairs(runs) do
-			if r.open and math.abs(r.tb - q.ta) < 1e-6 and math.abs(r.o1 - q.o0) < 1e-4 and math.abs(r.i1 - i0) < 1e-4 then hit = r break end
-		end
-		if hit and onLine(hit.ta, hit.o0, hit.tb, hit.o1, q.tb, q.o1) and onLine(hit.ta, hit.i0, hit.tb, hit.i1, q.tb, i1) then
-			hit.tb, hit.o1, hit.i1 = q.tb, q.o1, i1   -- same straight line: one longer panel
-		else
-			if hit then hit.open = false end
-			table.insert(runs, { ta = q.ta, tb = q.tb, o0 = q.o0, o1 = q.o1, i0 = i0, i1 = i1, open = true })
-		end
-	end
-	local out = {}
-	for _, r in ipairs(runs) do
-		if r.tb - r.ta > 1e-5 and math.max(r.o0, r.o1) > 1e-3 then table.insert(out, r) end
-	end
-	return out
-end
-function ENT.revPanels(raw, A, d, angle, side, rMax, isCut, into)
-	if not raw or #raw == 0 then return nil, "no outline" end
-	local pl = sk.pl
-	local Aw = W(A)
-	local dw = pl.u * d.X + pl.v * d.Y
-	local e1 = (pl.u * (-d.Y) + pl.v * d.X) * (side or 1)   -- from the axis towards the outline
-	local e2 = dw:Cross(e1)
-	local sidesFull = math.clamp(math.floor(tonumber(U.revSides and U.revSides.Text) or 48), 8, 128)
-	local n = math.max(1, math.floor(sidesFull * angle / 360 + 0.5))
-	local dphi = math.rad(angle) / n
-	if dphi > math.rad(60) then return nil, "too few sides for that angle" end
-	local a = dphi / 2
-	local ca = math.cos(a)
-	local runs = ENT.revMergeRaw(raw)
-	if #runs == 0 then return nil, "nothing to spin" end
-	local BIG = math.min(rMax * 2 + 8, 2040)
-	local tLo, tHi = math.huge, -math.huge
-	for _, r in ipairs(runs) do tLo, tHi = math.min(tLo, r.ta), math.max(tHi, r.tb) end
-	local LEN = math.min((tHi - tLo) + 8, 2040)
-	local mid = Aw + dw * ((tLo + tHi) / 2)
-	local function blk(cf, size)
-		local b = Instance.new("Part")
-		b.Anchored = true
-		b.Transparency = 1
-		b.CanCollide = false
-		b.Size = size
-		b.CFrame = cf
-		b.Parent = into
-		return b
-	end
-	local function rotAbout(cf, ang) return CFrame.new(Aw) * CFrame.fromAxisAngle(dw, ang) * CFrame.new(-Aw) * cf end
-	-- the wedge (+-a, wider so the copies overlap): two half-space blocks overlapped
-	local function half(rad)
-		local dir = e1 * math.cos(rad) + e2 * math.sin(rad)
-		return blk(CFrame.fromMatrix(mid + dir * (BIG / 2), dw, dir), V3(LEN, BIG, math.min(BIG * 2, 2040)))
-	end
-	-- v1.92: copies overlap a solid 0.5 degrees (full turns), and the overlap is trimmed by the NEXT copy's own
-	-- outside face (see below) - so it's solid where they join but never pokes out as a step / sliver
-	local FULL = angle >= 359.999
-	local ae = a + math.rad(FULL and 0.5 or 0.05)
-	local h1, h2 = half(PI / 2 - ae), half(ae - PI / 2)
-	local okP, resP = pcall(function() return GeometryService:IntersectAsync(h1, { h2 }, ENT.FAST) end)
-	h1.Parent = nil
-	h2.Parent = nil
-	if not (okP and type(resP) == "table" and resP[1]) then return nil, "couldn't make the wedge - " .. tostring(resP) end
-	local pie = resP[1]
-	pie.Parent = into
-	-- half-space under (keep = -1) or over (keep = +1) the panel through (ta, ra) -> (tb, rb), measured at the wedge edge
-	local function panel(ta, ra, tb, rb, keep)
-		local nrm = (dw * (-(rb - ra) * ca) + e1 * (tb - ta)).Unit   -- points away from the axis
-		local q0 = Aw + dw * ta + e1 * (ra * ca)
-		local c = q0 + nrm * (keep * BIG / 2)
-		return blk(CFrame.fromMatrix(c, e2, nrm), V3(BIG, BIG, math.min(BIG * 3 + LEN, 2040)))
-	end
-	-- v1.89: ONE shape per CSG step (several at once made gear teeth in Studio - v1.86 / v1.88 tests)
-	local function cut1(main, other, what)
-		local ok, res = pcall(function() return GeometryService:IntersectAsync(main, { other }, ENT.FAST) end)
-		main.Parent = nil
-		other.Parent = nil
-		if not (ok and type(res) == "table" and res[1]) then return nil, "couldn't make " .. what .. " - " .. tostring(res) end
-		res[1].Parent = into
-		return res[1]
-	end
-	local pieces, outs, hollow = {}, {}, false
-	local GROW = 0.004   -- slabs overlap a hair along the axis, so the join between panels is solid
-	-- sideways: wide enough to cover this wedge AND both neighbours (the neighbour trim below needs that)
-	local THICK = (rMax + 0.5) * math.tan(math.min(ae * 3, math.rad(80))) * 1.2 + 0.1
-	for _, r in ipairs(runs) do
-		local ta, tb = r.ta - GROW, r.tb + GROW
-		local box = blk(CFrame.fromMatrix(Aw + dw * ((ta + tb) / 2), dw, e1), V3(tb - ta, BIG, math.min(THICK * 2, 2040)))
-		local piece, why = cut1(box, panel(r.ta, r.o0, r.tb, r.o1, -1), "a panel")
-		if piece then table.insert(outs, piece) end
-		if piece and math.max(r.i0, r.i1) > 0.01 then
-			hollow = true
-			local cl = piece:Clone()
-			cl.Parent = into
-			piece, why = cut1(cl, panel(r.ta, r.i0, r.tb, r.i1, 1), "a hollow panel")
-		end
-		if not piece then
-			for _, p in ipairs(pieces) do p.Parent = nil end
-			for _, p in ipairs(outs) do p.Parent = nil end
-			pie.Parent = nil
-			return nil, why
-		end
-		table.insert(pieces, piece)
-	end
-	local function join(list, what)
-		if #list == 1 then return list[1] end
-		local rest = {}
-		for i = 2, #list do rest[i - 1] = list[i] end
-		local ok, res = pcall(function() return GeometryService:UnionAsync(list[1], rest, ENT.FAST) end)
-		for _, p in ipairs(list) do p.Parent = nil end
-		if not (ok and type(res) == "table" and res[1]) then return nil, "couldn't join the " .. what .. " - " .. tostring(res) end
-		res[1].Parent = into
-		return res[1]
-	end
-	local slabOut
-	if hollow then
-		-- the outside-only slab (to trim the overlap against the neighbours' outside faces)
-		slabOut = join(outs, "outside panels")
-	end
-	local slab, whyJ = join(pieces, "panels")
-	if not slab then pie.Parent = nil if slabOut then slabOut.Parent = nil end return nil, whyJ end
-	if not hollow then
-		slabOut = slab:Clone()
-		slabOut.Parent = into
-	end
-	local sector, whyS = cut1(slab, pie, "the wedge")
-	if not sector then if slabOut then slabOut.Parent = nil end return nil, whyS end
-	-- trim: keep only what is also inside the next / previous copy's outside surface
-	if slabOut and n > 1 then
-		for _, sg in ipairs({ 1, -1 }) do
-			local nb = slabOut:Clone()
-			nb.CFrame = rotAbout(slabOut.CFrame, sg * dphi)
-			nb.Parent = into
-			local ok, res = pcall(function() return GeometryService:IntersectAsync(sector, { nb }, ENT.FAST) end)
-			nb.Parent = nil
-			if ok and type(res) == "table" and res[1] then
-				sector.Parent = nil
-				sector = res[1]
-				sector.Parent = into
-			else
-				warn("PROTO revolve: neighbour trim skipped - " .. tostring(res))
-			end
-		end
-	end
-	if slabOut then slabOut.Parent = nil end
-	sector.Transparency = 0
-	sector.CanCollide = true
-	ENT.styleFrom(sector, sk.host)
-	pcall(function() sector.UsePartColor = true end)
-	sector.Parent = into
-	-- copies round the axis (identical, so every edge lines up), then one join
-	local cf0 = sector.CFrame
-	local copies = {}
-	for k = 0, n - 1 do
-		local c = (k == 0) and sector or sector:Clone()
-		c.CFrame = rotAbout(cf0, (k + 0.5) * dphi)
-		c.Parent = into
-		table.insert(copies, c)
-	end
-	-- full turns: a thin solid core along the axis, so the copies don't just meet on one line there (the star / cracks)
-	if FULL then
-		for _, r in ipairs(runs) do
-			local omin = math.min(r.o0, r.o1)
-			if omin > 0.05 and math.max(r.i0, r.i1) <= 0.01 then
-				local rc = math.min(0.3, omin * ca * 0.5)
-				local core = Instance.new("Part")
-				core.Shape = Enum.PartType.Cylinder
-				core.Anchored = true
-				core.Size = V3(r.tb - r.ta + 0.008, rc * 2, rc * 2)
-				core.CFrame = CFrame.fromMatrix(Aw + dw * ((r.ta + r.tb) / 2), dw, e1)
-				ENT.styleFrom(core, sk.host)
-				core.Parent = into
-				table.insert(copies, core)
-			end
-		end
-	end
-	local result = copies[1]
-	if #copies > 1 then
-		local rest = {}
-		for i = 2, #copies do rest[i - 1] = copies[i] end
-		local ok, res = pcall(function() return GeometryService:UnionAsync(copies[1], rest, ENT.revOpts(isCut)) end)
-		for _, c in ipairs(copies) do c.Parent = nil end
-		if not (ok and type(res) == "table" and res[1]) then return nil, "couldn't join the " .. #copies .. " wedges - " .. tostring(res) end
-		result = res[1]
-	end
-	ENT.keepLook(result, sector)
-	ENT.smoothOn(result)
-	result.Parent = into
-	print("PROTO revolve: " .. #runs .. " panel(s) x " .. n .. " wedges")
-	return result, n
-end
--- ===== SMOOTH REVOLVE (v1.82): the profile as a thin slab, trimmed to ONE wedge, then copied round =====
--- every copy is identical, so all the edges line up exactly (a proper lathe shape, no lumps); ~4 CSG steps in all
-function ENT.revSectors(regions, A, d, angle, crossed, side, rMax, tmin, tmax, isCut, into, mixed)
-	local pl = sk.pl
-	local Aw = W(A)
-	local dw = pl.u * d.X + pl.v * d.Y
-	local sidesFull = math.clamp(math.floor(tonumber(U.revSides and U.revSides.Text) or 48), 8, 128)
-	local n = math.max(1, math.floor(sidesFull * angle / 360 + 0.5))
-	local dphi = math.rad(angle) / n
-	if dphi > math.rad(60) then return nil, "too few sides for that angle" end
-	-- 1) the profile, extruded thin both ways from the sketch (thick enough to fill the wedge out to the rim)
-	local half = (rMax + 0.5) * math.tan(dphi / 2) * 1.3 + 0.1
-	local build = {}
-	for _, r in ipairs(regions) do
-		if r.all then
-			-- whole drawing: every area that is inside an odd number of areas (holes stay holes)
-			for _, f in ipairs(closedShapes()) do
-				local tris = ENT.triangulate(f.pts or outline(f))
-				if tris and tris[1] then
-					local bt, ba = tris[1], -1
-					for _, t in ipairs(tris) do local a2 = cross2(t[1], t[2], t[3]) if a2 > ba then bt, ba = t, a2 end end
-					local P = (bt[1] + bt[2] + bt[3]) / 3
-					local c = 0
-					for _, g in ipairs(closedShapes()) do if pointInPoly(P, outline(g)) then c += 1 end end
-					if c % 2 == 1 then table.insert(build, { inside = { f } }) end
+-- v2.71 REVOLVED CUT the PROTO way: the revolve's own recipe joins each block's / recipe part's recipe (rebuilt from
+-- the ground up, one mesh, saved); other meshes PROTO can read get its own cut; only what it can't read uses Roblox's.
+function ENT.revCut(cutter, exclude)
+	local R0 = ENT.recipeOf(cutter)
+	if not (R0 and R0.kind == "rev") then return ENT.cutWith(cutter, exclude) end
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { exclude or cutter }
+	local count, removed, fails = 0, 0, 0
+	ENT.cutWithMade = {}
+	local cutterTris
+	for _, p in ipairs(workspace:GetPartsInPart(cutter, params)) do
+		if p ~= TERRAIN and not p.Locked and not ENT.isPrev(p.Name) and not ENT.isBox(p.Name) then
+			local np, why, gone
+			local ok, err = pcall(function()
+				local cf, size = ENT.blockOf(p)
+				if cf and ENT.rebuildable(p) then
+					local cuts = ENT.cutsOf(p)
+					cuts[#cuts + 1] = { id = ENT.newCutId(), kind = "rev", f = { cf:ToObjectSpace(R0.F):GetComponents() }, data = R0.data }
+					local done = {}
+					pcall(function() done = HttpService:JSONDecode(p:GetAttribute("PROTO_EdgesDone") or "[]") end)
+					np, why = ENT.solidRebuild(p, cf, size, done, cuts)
+				elseif ENT.recipeOf(p) then
+					local Rp = ENT.recipeOf(p)
+					local cuts = ENT.cutsOf(p)
+					cuts[#cuts + 1] = { id = ENT.newCutId(), kind = "rev", f = { Rp.F:ToObjectSpace(R0.F):GetComponents() }, data = R0.data }
+					local r2, w2 = ENT.recipeRebuild(p, Rp, cuts, ENT.partDetail(p))
+					if r2 == false then gone = true elseif r2 then np = r2 else why = w2 end
+				else
+					local pt = ENT.partTris(p)
+					if pt then
+						cutterTris = cutterTris or ENT.revTris(R0.data, R0.F, ENT.curveLevel())
+						local r = ENT.ownSubtract(pt, { cutterTris }, p.CFrame)
+						if #r == 0 then gone = true
+						elseif #r > ENT.MAX_TRIS then why = ("too many triangles (%d)"):format(#r)
+						else
+							np = ENT.meshFromTris(r, p.CFrame)
+							if np then
+								pcall(function() np.CollisionFidelity = ENT.collEnum() end)
+								ENT.keepLook(np, p)
+								ENT.swapIn(p, np)
+							else why = "couldn't make the mesh" end
+						end
+					else
+						-- (PROTO can't read this one - Roblox's cut, the old way)
+						local okR, res = pcall(function()
+							return GeometryService:SubtractAsync(p, { cutter }, { CollisionFidelity = ENT.collEnum(), RenderFidelity = Enum.RenderFidelity.Automatic, SplitApart = false })
+						end)
+						if okR and type(res) == "table" then
+							if res[1] then
+								np = res[1]
+								ENT.keepLook(np, p)
+								ENT.swapIn(p, np)
+							else gone = true end
+						else why = tostring(res) end
+					end
 				end
-			end
-		else
-			table.insert(build, r)
-		end
-	end
-	if #build == 0 then return nil, "no area to build" end
-	local items = {}
-	for _, r in ipairs(build) do table.insert(items, { region = r, D = half * 2, mid = 0 }) end
-	local made = ENT.makeParts(items, nil)
-	if not made then return nil, "couldn't build the profile slab" end
-	local prism = made
-	if made:IsA("Model") then
-		local ps = {}
-		for _, x in ipairs(made:GetDescendants()) do if x:IsA("BasePart") then table.insert(ps, x) end end
-		if #ps == 0 then made.Parent = nil return nil, "empty profile" end
-		local rest = {}
-		for i = 2, #ps do rest[i - 1] = ps[i] end
-		if #ps > 1 then
-			local ok, res = pcall(function() return GeometryService:UnionAsync(ps[1], rest, ENT.FAST) end)
-			if not (ok and type(res) == "table" and res[1]) then made.Parent = nil return nil, "couldn't join the profile - " .. tostring(res) end
-			ENT.keepLook(res[1], ps[1])
-			prism = res[1]
-		else
-			prism = ps[1]
-		end
-		prism.Parent = into
-		made.Parent = nil
-	else
-		prism.Parent = into
-	end
-	-- 2) the wedge: everything within dphi/2 either side of the sketch, on the outline's side of the axis
-	local e1 = (pl.u * (-d.Y) + pl.v * d.X) * (side or 1)
-	local e2 = dw:Cross(e1)
-	local big = rMax * 2 + 4
-	local L = (tmax - tmin) + 4
-	local base = Aw + dw * ((tmin + tmax) / 2)
-	local function block(rad)
-		local dir = e1 * math.cos(rad) + e2 * math.sin(rad)
-		local b = Instance.new("Part")
-		b.Anchored = true
-		b.Transparency = 1
-		b.Size = V3(L, big, big * 2)
-		b.CFrame = CFrame.fromMatrix(base + dir * (big / 2), dw, dir)
-		b.Parent = into
-		return b
-	end
-	local a = dphi / 2 + math.rad(0.02)   -- a hair wider: neighbours overlap, so the join is solid
-	local b1, b2 = block(PI / 2 - a), block(a - PI / 2)
-	local ok, res = pcall(function() return GeometryService:IntersectAsync(b1, { b2 }, ENT.FAST) end)
-	b1.Parent = nil
-	b2.Parent = nil
-	if not (ok and type(res) == "table" and res[1]) then prism.Parent = nil return nil, "couldn't make the wedge - " .. tostring(res) end
-	local pie = res[1]
-	pie.Parent = into
-	local function rotAbout(cf, ang) return CFrame.new(Aw) * CFrame.fromAxisAngle(dw, ang) * CFrame.new(-Aw) * cf end
-	-- 3) ONE wedge of the solid
-	local okS, resS = pcall(function() return GeometryService:IntersectAsync(prism, { pie }, ENT.FAST) end)
-	if not (okS and type(resS) == "table" and resS[1]) then prism.Parent = nil pie.Parent = nil return nil, "couldn't cut the wedge - " .. tostring(resS) end
-	local sector = resS[1]
-	ENT.keepLook(sector, prism)
-	sector.Parent = into
-	if crossed or mixed then
-		-- the other half of the outline (across the axis) spins round too: turn the slab half a turn and add its wedge
-		local flip = prism:Clone()
-		flip.CFrame = rotAbout(prism.CFrame, PI)
-		flip.Parent = into
-		local okF, resF = pcall(function() return GeometryService:IntersectAsync(flip, { pie }, ENT.FAST) end)
-		flip.Parent = nil
-		if okF and type(resF) == "table" and resF[1] then
-			resF[1].Parent = into
-			local okU, resU = pcall(function() return GeometryService:UnionAsync(sector, { resF[1] }, ENT.FAST) end)
-			resF[1].Parent = nil
-			if okU and type(resU) == "table" and resU[1] then
-				ENT.keepLook(resU[1], prism)
-				resU[1].Parent = into
-				sector.Parent = nil
-				sector = resU[1]
+			end)
+			if not ok then why = tostring(err) end
+			if gone then
+				p.Parent = nil   -- never :Destroy() user parts
+				removed += 1
+				count += 1
+			elseif np then
+				count += 1
+				ENT.finishParts(np)
+				table.insert(ENT.cutWithMade, np)
+			elseif why then
+				fails += 1
+				warn("PROTO revolved cut failed on " .. p:GetFullName() .. " - " .. tostring(why))
 			end
 		end
 	end
-	prism.Parent = nil
-	pie.Parent = nil
-	-- 4) copies round the axis, then one join
-	local copies = {}
-	local cf0 = sector.CFrame   -- (sector itself becomes copy 1, so remember where it started)
-	for k = 0, n - 1 do
-		local c = (k == 0) and sector or sector:Clone()
-		c.CFrame = rotAbout(cf0, (k + 0.5) * dphi)
-		c.Parent = into
-		table.insert(copies, c)
-	end
-	local result = copies[1]
-	if #copies > 1 then
-		local rest = {}
-		for i = 2, #copies do rest[i - 1] = copies[i] end
-		local okJ, resJ = pcall(function() return GeometryService:UnionAsync(copies[1], rest, ENT.revOpts(isCut)) end)
-		if not (okJ and type(resJ) == "table" and resJ[1]) then
-			for _, c in ipairs(copies) do c.Parent = nil end
-			return nil, "couldn't join the " .. #copies .. " slices - " .. tostring(resJ)
-		end
-		for _, c in ipairs(copies) do c.Parent = nil end
-		ENT.keepLook(resJ[1], sector)
-		result = resJ[1]
-	end
-	ENT.smoothOn(result)
-	result.Parent = into
-	return result, n
+	print(("PROTO revolved cut: %d part(s) cut the PROTO way, nothing joined"):format(count))
+	return count, removed, fails
 end
+-- ===== LATHE PANELS (v1.85) =====
+-- ===== SMOOTH REVOLVE (v1.82): the profile as a thin slab, trimmed to ONE wedge, then copied round =====
 function ENT.revolve(isCut)
 	if not sk then setStatus("Start a sketch first (click a part, then a plane or face).") return end
 	if ex then setStatus("Finish (ACCEPT) or CANCEL the extrude preview first.") return end
@@ -12048,6 +18766,7 @@ function ENT.revAxisHover()
 	return "PICK A LINE to spin round"
 end
 function ENT.revolveGo(A, d, axisName)
+	if not ENT.meshGate() then return end
 	local P = ENT.revAsk
 	ENT.revAsk = nil
 	ENT.revUI()
@@ -12075,39 +18794,32 @@ function ENT.revolveGo(A, d, axisName)
 		local host = sk.host
 		local parent = ENT.buildParent(host)
 		local into = Instance.new("Folder")
-		into.Name = "DIM_RevolveWork"
+		into.Name = "PROTO_RevolveWork"
 		into.Parent = workspace
-		-- smooth way: one wedge of the profile, copied round (every edge lines up)
-		-- v1.87: outline made only of straight steps along the axis (square, rectangle, stepped shaft, tube)
-		-- = real Roblox cylinders - perfectly round, no wedges at all
-		local allFlat = raw and #raw > 0
-		for _, q in ipairs(raw or {}) do
-			if math.abs(q.o1 - q.o0) > 1e-3 or math.abs(q.i1 - q.i0) > 1e-3 then allFlat = false break end
-		end
 		local res, e
-		if allFlat then
-			res, e = ENT.revBuild(pieces, A, d, isCut, into)
-			if res and angle < 359.999 then res, e = ENT.revTrim(res, angle, side, A, d, tmin, tmax, rMax, isCut, into) end
-			if res then print("PROTO revolve: straight steps only - built from " .. #pieces .. " real cylinder(s)") usedSides = "round" end
-		end
-		-- v1.85: panels straight from the outline (every panel shares exact edges with its neighbours)
-		if not res then res, e = ENT.revPanels(raw, A, d, angle, side, rMax, isCut, into) end
-		if res then usedSides = usedSides or e else
-			warn("PROTO revolve: the panel way failed (" .. tostring(e) .. ") - trying the v1.82 way")
-			res, e = ENT.revSectors(regions, A, d, angle, crossed, side, rMax, tmin, tmax, isCut, into, mixed)
-			if res then usedSides = e end
-		end
-		if not res then
-			warn("PROTO revolve: the wedge way failed (" .. tostring(e) .. ") - using ball slices instead")
-			res, e = ENT.revBuild(pieces, A, d, isCut, into)
-			if res and angle < 359.999 then res, e = ENT.revTrim(res, angle, side, A, d, tmin, tmax, rMax, isCut, into) end
+		-- v2.57 MESH-ONLY: the outline spun round into ONE smooth mesh - the only way (no cylinders, panels or slices)
+		ENT.revMeshEM = nil
+		do
+			local okM, mp, em = pcall(ENT.meshRevolve, regions, A, d, angle, side)
+			if okM and mp then
+				ENT.styleFrom(mp, sk.host)
+				pcall(function() mp.CollisionFidelity = ENT.collEnum() end)
+				mp.Parent = into
+				res, usedSides = mp, "mesh"
+				ENT.revMeshEM = em
+				print("PROTO revolve: built as ONE mesh")
+			else
+				e = "couldn't spin it as one mesh - " .. tostring(okM and em or mp)
+			end
 		end
 		if not res then into.Parent = nil error(e or "revolve failed", 0) end
 		if isCut then
-			cutCount, removed, fails = ENT.cutWith(res, into)
+			cutCount, removed, fails = ENT.revCut(res, into)   -- v2.71
 			res.Parent = nil
+			if ENT.revMeshEM then pcall(function() ENT.revMeshEM:Destroy() end) ENT.revMeshEM = nil end   -- (the cutter's mesh is done with)
+			if usedSides == "mesh" then ENT.revSave = ENT.cutWithMade end
 		else
-			res.Name = "DIM_Revolve"
+			res.Name = "PROTO_Revolve"
 			res.Anchored = true
 			res.Parent = parent
 			made = res
@@ -12152,19 +18864,26 @@ function ENT.revolveGo(A, d, axisName)
 					rel[#rel + 1] = { math.floor(o.X * 1000) / 1000, math.floor(o.Y * 1000) / 1000, math.floor(o.Z * 1000) / 1000 }
 				end
 				local bv = Instance.new("StringValue")
-				bv.Name = "DIM_Bounds"
+				bv.Name = "PROTO_Bounds"
 				bv.Value = HttpService:JSONEncode(rel)
 				bv.Parent = res
 			end)
 			ENT.triAcc = { tris = 0, parts = 0 }
 			ENT.finishParts(res)
-			made = ENT.wrapBuild(res, "DIM_Revolve")
+			made = ENT.wrapBuild(res, "PROTO_Revolve")
+			if usedSides == "mesh" then ENT.revSave = { res } end
 			ENT.showCost()
 		end
 		into.Parent = nil
 	end)
-	if not ok then drawSketch() return end
+	if not ok then ENT.revSave = nil drawSketch() return end
 	exitSketch()
+	-- v2.50: a mesh revolve (or what a mesh rev-cut made) is saved to Roblox now
+	if ENT.revSave then
+		local l = ENT.revSave
+		ENT.revSave = nil
+		task.defer(function() ENT.msAfterCut(l) end)
+	end
 	local what = fmt(angle) .. " degrees round " .. axisName
 	if isCut then
 		if (cutCount or 0) == 0 then
@@ -12174,7 +18893,7 @@ function ENT.revolveGo(A, d, axisName)
 		end
 	else
 		if made then Selection:Set({ made }) end
-		setStatus("Revolved " .. which .. ", " .. what .. (usedSides == "round" and " (real cylinders)" or usedSides and (" (" .. usedSides .. " matching slices)") or (" (" .. #pieces .. " ball slices)")) .. "." .. (crossed and " It crossed the axis, so each side spun round (solid in the middle)." or "") .. " Ctrl+Z undoes it.")
+		setStatus("Revolved " .. which .. ", " .. what .. (usedSides == "mesh" and " (ONE smooth mesh - saving to Roblox)" or usedSides == "round" and " (real cylinders)" or usedSides and (" (" .. usedSides .. " matching slices)") or (" (" .. #pieces .. " ball slices)")) .. "." .. (crossed and " It crossed the axis, so each side spun round (solid in the middle)." or "") .. " Ctrl+Z undoes it.")
 	end
 	print("PROTO: " .. (isCut and "revolved cut" or "revolve") .. " - " .. #pieces .. " ring(s), " .. what)
 end
@@ -12202,6 +18921,357 @@ exHandles.MouseButton1Up:Connect(function()
 	if ex then exRefresh() end
 end)
 
+-- ===== v3.49 LINEAR PATTERN, LIVE - ALL DIRECTIONS (Dylan: "pull out to add more, change its height or scale, a
+-- hologram of where it will be, the space in between and count" + "it needs to go all directions, not just one way") =====
+-- Pick the part(s) (or click a build), press Linear. See-through copies show where everything will go.
+--   BLUE arrows (all 6 sides of the part) = pull one out for copies that way: left / right, front / back, up / down
+--     (pull two ways = a grid: a row of rows, or a stack)
+--   GREEN arrow  = each copy along the X row sits higher than the last (stairs)
+--   RED handle   = each copy along the X row bigger / smaller than the last
+-- PROPERTIES: X+ X- Z+ Z- Y+ Y- (copies each way), Gap (space between), Rise, Scale %, Turn. Enter = place, Esc = cancel.
+ENT.ARR_GHOSTS = 150   -- see-through copies shown at most (more still get made)
+ENT.ARR_KEYS = { "xp", "xn", "zp", "zn", "yp", "yn" }
+function ENT.arrStart()
+	if ENT.arr then ENT.arrGo() return end   -- (pressed again = place them)
+	if ex then setStatus("Finish (ACCEPT) or CANCEL the extrude preview first.") return end
+	local list, own = ENT.selectionList()
+	if #list == 0 then
+		if own then list = { own } elseif target and target.Parent then list = { ENT.featureModel(target) or target } end
+	end
+	if #list == 0 then setStatus("LINEAR: click the part to copy first (or select some parts), then Linear.") return end
+	local R = ENT.patRef(list)
+	local first = math.max(1, math.floor(tonumber(U.count and U.count.Text) or 4) - 1)
+	if first ~= first then first = 3 end
+	local A = {
+		items = list, ref = R,
+		n = { xp = first, xn = 0, zp = 0, zn = 0, yp = 0, yn = 0 },
+		gap = ENT.arrGapLast or 0, rise = 0, scale = 1, turn = 0,
+		ghosts = {},
+	}
+	ENT.arr = A
+	local ok, err = pcall(function()
+		local folder = Instance.new("Folder")
+		folder.Name = "PROTO_PatternPreview"
+		folder.Archivable = false
+		folder.Parent = workspace
+		A.folder = folder
+		-- the see-through copy everything is cloned from (a hologram: glowing, see-through, can't be clicked)
+		local tm = Instance.new("Model")
+		tm.Name = "PROTO_Ghost"
+		for _, o in ipairs(list) do
+			local unarch = {}
+			if not o.Archivable then o.Archivable = true table.insert(unarch, o) end
+			for _, d in ipairs(o:GetDescendants()) do if not d.Archivable then d.Archivable = true table.insert(unarch, d) end end
+			local c = o:Clone()
+			for _, d in ipairs(unarch) do d.Archivable = false end
+			if c then c.Parent = tm end
+		end
+		local boxes = {}
+		for _, d in ipairs(tm:GetDescendants()) do
+			if d:IsA("BasePart") then
+				d.Anchored = true
+				d.CanCollide, d.CanTouch, d.CanQuery = false, false, false
+				d.CastShadow = false
+				d.Locked = true
+				d.Archivable = false
+				d.Transparency = math.max(d.Transparency, 0.45)
+				d.Material = Enum.Material.ForceField
+				d.Color = Color3.fromRGB(255, 90, 90)
+				-- (a mesh PROTO made a moment ago may not copy its shape yet - a see-through box stands in too)
+				if d:IsA("MeshPart") and d:GetAttribute("PROTO_MeshUnsaved") then table.insert(boxes, d) end
+			elseif d:IsA("LuaSourceContainer") or d:IsA("Sound") or d:IsA("JointInstance") or d:IsA("WeldConstraint") or d:IsA("Constraint") then
+				d.Parent = nil
+			end
+		end
+		for _, m in ipairs(boxes) do
+			local b = Instance.new("Part")
+			b.Anchored, b.CanCollide, b.CanTouch, b.CanQuery, b.CastShadow, b.Locked = true, false, false, false, false, true
+			b.Archivable = false
+			b.Size, b.CFrame = m.Size, m.CFrame
+			b.Material = Enum.Material.ForceField
+			b.Color = Color3.fromRGB(255, 90, 90)
+			b.Transparency = 0.6
+			b.Parent = tm
+		end
+		tm.WorldPivot = R.CFrame
+		A.template = tm
+		-- invisible boxes the arrows sit on: one round the original (blue, all 6 ways), one on the last X copy (green / red)
+		local function anchor(nm)
+			local a = Instance.new("Part")
+			a.Name = nm
+			a.Anchored, a.CanCollide, a.CanTouch, a.CanQuery, a.CastShadow = true, false, false, false, false
+			a.Transparency = 1
+			a.Locked = true
+			a.Archivable = false
+			a.Parent = folder
+			return a
+		end
+		A.anchor = anchor("PROTO_PatternHandle")
+		A.anchor2 = anchor("PROTO_PatternHandle2")
+		A.anchor.CFrame = R.CFrame
+		A.anchor.Size = Vector3.new(math.max(R.Size.X, 0.4), math.max(R.Size.Y, 0.4), math.max(R.Size.Z, 0.4))
+		ENT.arrHandles()
+		ENT.arrDraw()
+	end)
+	if not ok then
+		warn("PROTO linear pattern: " .. tostring(err))
+		ENT.arrStop()
+		setStatus("LINEAR: couldn't start (" .. tostring(err) .. ")")
+		return
+	end
+	pcall(ENT.featRefresh, true)
+	print(("PROTO linear pattern: %d thing(s), %d copies to start with - drag the arrows, Enter = place."):format(#list, first))
+	setStatus("LINEAR: pull a BLUE arrow for copies that way (all 6 sides), GREEN = each one higher, RED = bigger / smaller. Counts, Gap, Turn in PROPERTIES. Enter = place, Esc = cancel.")
+end
+-- the part's own 3 directions and how big it is along each
+function ENT.arrAxes(A)
+	local cf, sz = A.ref.CFrame, A.ref.Size
+	return { x = cf.RightVector, y = cf.UpVector, z = cf.LookVector }, { x = sz.X, y = sz.Y, z = sz.Z }
+end
+function ENT.arrTotal(A)
+	local n = A.n
+	return (n.xp + n.xn + 1) * (n.zp + n.zn + 1) * (n.yp + n.yn + 1) - 1
+end
+-- where every copy goes: { { cf = CFrame (of the group's middle), s = scale, i = step along X }, ... }
+function ENT.arrLayout(A)
+	local ax, ext = ENT.arrAxes(A)
+	local c0 = A.ref.CFrame
+	local rot0 = c0 - c0.Position
+	local up = ax.y
+	-- along X: each step's length grows / shrinks with the scale (copies stay end to end)
+	local function alongX(i)
+		local d = 0
+		for k = 1, math.abs(i) do d += ext.x * (A.scale ^ (k - 1) + A.scale ^ k) / 2 + A.gap end
+		return (i < 0) and -d or d
+	end
+	local out = {}
+	local n = A.n
+	for k = -n.yn, n.yp do
+		for j = -n.zn, n.zp do
+			for i = -n.xn, n.xp do
+				if not (i == 0 and j == 0 and k == 0) then
+					local s = A.scale ^ math.abs(i)
+					local pos = c0.Position + ax.x * alongX(i) + ax.z * (j * (ext.z + A.gap)) + ax.y * (k * (ext.y + A.gap))
+						+ up * (A.rise * math.abs(i))
+					local rot = CFrame.fromAxisAngle(up, math.rad(A.turn * i)) * rot0
+					out[#out + 1] = { cf = CFrame.new(pos) * rot, s = s, i = i, j = j, k = k }
+				end
+			end
+		end
+	end
+	return out
+end
+function ENT.arrDraw()
+	local A = ENT.arr
+	if not A then return end
+	local L = ENT.arrLayout(A)
+	local show = math.min(#L, ENT.ARR_GHOSTS)
+	for i = #A.ghosts + 1, show do
+		local g = A.template:Clone()
+		g.Parent = A.folder
+		A.ghosts[i] = g
+	end
+	for i = #A.ghosts, show + 1, -1 do
+		pcall(function() A.ghosts[i]:Destroy() end)   -- (PROTO's own preview copies)
+		A.ghosts[i] = nil
+	end
+	for i = 1, show do
+		local g = A.ghosts[i]
+		pcall(function() g:ScaleTo(math.max(L[i].s, 0.01)) end)
+		pcall(function() g:PivotTo(L[i].cf) end)
+	end
+	-- green / red sit on the far end of the X row (or on the original when there's no row)
+	local ax, ext = ENT.arrAxes(A)
+	local far = nil
+	for _, l in ipairs(L) do
+		if l.j == 0 and l.k == 0 and (not far or math.abs(l.i) > math.abs(far.i) or (math.abs(l.i) == math.abs(far.i) and l.i > far.i)) then far = l end
+	end
+	local pos = far and far.cf.Position or A.ref.CFrame.Position
+	local s = far and far.s or 1
+	A.anchor2.Size = Vector3.new(math.max(ext.x * s, 0.3), math.max(ext.y * s, 0.3), math.max(ext.z * s, 0.3))
+	A.anchor2.CFrame = CFrame.fromMatrix(pos, ax.x, ax.y)
+	if ENT.arrUI then pcall(ENT.arrUI) end
+	if #L > show then setStatus(("LINEAR: %d copies - showing the first %d. Enter = place them all."):format(#L, show)) end
+end
+function ENT.arrHandles()
+	local A = ENT.arr
+	if not ENT.arrH then
+		local function mk(style, col)
+			local h = Instance.new("Handles")
+			h.Style = style
+			h.Color3 = col
+			h.Parent = adornRoot
+			return h
+		end
+		ENT.arrH = {
+			count = mk(Enum.HandlesStyle.Movement, Color3.fromRGB(40, 110, 255)),
+			rise = mk(Enum.HandlesStyle.Movement, Color3.fromRGB(40, 220, 80)),
+			scale = mk(Enum.HandlesStyle.Resize, Color3.fromRGB(230, 50, 50)),
+		}
+		ENT.arrH.count.Faces = Faces.new(Enum.NormalId.Right, Enum.NormalId.Left, Enum.NormalId.Top, Enum.NormalId.Bottom, Enum.NormalId.Front, Enum.NormalId.Back)
+		ENT.arrH.rise.Faces = Faces.new(Enum.NormalId.Top)
+		ENT.arrH.scale.Faces = Faces.new(Enum.NormalId.Back)
+		-- which count each blue arrow changes (Front = the part's LookVector = Z+)
+		local FACEKEY = {
+			[Enum.NormalId.Right] = "xp", [Enum.NormalId.Left] = "xn",
+			[Enum.NormalId.Top] = "yp", [Enum.NormalId.Bottom] = "yn",
+			[Enum.NormalId.Front] = "zp", [Enum.NormalId.Back] = "zn",
+		}
+		local AXIS = { xp = "x", xn = "x", yp = "y", yn = "y", zp = "z", zn = "z" }
+		local st = {}
+		local function snap(v)
+			local g = ctrlDown() and 0 or gridSize()
+			if g > 0 then v = math.floor(v / g + 0.5) * g end
+			return v
+		end
+		ENT.arrH.count.MouseButton1Down:Connect(function()
+			local B = ENT.arr
+			if B then st.n = table.clone(B.n) end
+		end)
+		ENT.arrH.count.MouseDrag:Connect(function(face, d)
+			local B = ENT.arr
+			if not (B and st.n) then return end
+			local key = FACEKEY[face]
+			if not key then return end
+			local _, ext = ENT.arrAxes(B)
+			local step = math.max(ext[AXIS[key]] + B.gap, 0.1)
+			local v = math.max(0, st.n[key] + math.floor(d / step + 0.5))
+			local old = B.n[key]
+			B.n[key] = v
+			-- (not past the limit: copies x picked things)
+			while v > 0 and (ENT.arrTotal(B) > ENT.MAX_COPIES or ENT.arrTotal(B) * #B.items > ENT.MAX_CLONES) do v -= 1 B.n[key] = v end
+			if B.n[key] ~= old then ENT.arrDraw() end
+		end)
+		ENT.arrH.rise.MouseButton1Down:Connect(function()
+			local B = ENT.arr
+			if B then st.rise = B.rise * math.max(B.n.xp, B.n.xn, 1) end
+		end)
+		ENT.arrH.rise.MouseDrag:Connect(function(_, d)
+			local B = ENT.arr
+			if not (B and st.rise) then return end
+			B.rise = snap(st.rise + d) / math.max(B.n.xp, B.n.xn, 1)
+			ENT.arrDraw()
+		end)
+		ENT.arrH.scale.MouseButton1Down:Connect(function()
+			local B = ENT.arr
+			if B then st.scale = B.scale ^ math.max(B.n.xp, B.n.xn, 1) end
+		end)
+		ENT.arrH.scale.MouseDrag:Connect(function(_, d)
+			local B = ENT.arr
+			if not (B and st.scale) then return end
+			local _, ext = ENT.arrAxes(B)
+			local tot = math.clamp(st.scale + d / math.max(ext.z, 0.1), 0.05, 20)
+			B.scale = tot ^ (1 / math.max(B.n.xp, B.n.xn, 1))
+			ENT.arrDraw()
+		end)
+		for _, h in pairs(ENT.arrH) do h.MouseButton1Up:Connect(function() st = {} if ENT.arr then ENT.arrDraw() end end) end
+	end
+	ENT.arrH.count.Adornee = A and A.anchor or nil
+	ENT.arrH.rise.Adornee = A and A.anchor2 or nil
+	ENT.arrH.scale.Adornee = A and A.anchor2 or nil
+end
+-- the boxes in PROPERTIES follow the arrows
+function ENT.arrUI()
+	local A, F = ENT.arr, ENT.arrFields
+	if not (A and F) then return end
+	local function put(b, v) if b and not b:IsFocused() then b.Text = v end end
+	for _, k in ipairs(ENT.ARR_KEYS) do put(F[k], tostring(A.n[k])) end
+	put(F.gap, string.format("%g", math.floor(A.gap * 1000 + 0.5) / 1000))
+	put(F.rise, string.format("%g", math.floor(A.rise * 1000 + 0.5) / 1000))
+	put(F.scale, string.format("%g", math.floor(A.scale * 1000 + 0.5) / 10))
+	put(F.turn, string.format("%g", math.floor(A.turn * 100 + 0.5) / 100))
+	if F.total then F.total.Text = ("%d copies"):format(ENT.arrTotal(A)) end
+end
+-- a typed value (from PROPERTIES)
+function ENT.arrSet(key, text)
+	local A = ENT.arr
+	if not A then return end
+	local v = tonumber(text)
+	if not v or v ~= v or math.abs(v) == math.huge then ENT.arrUI() return end
+	if A.n[key] ~= nil then
+		A.n[key] = math.max(0, math.floor(v))
+		while A.n[key] > 0 and (ENT.arrTotal(A) > ENT.MAX_COPIES or ENT.arrTotal(A) * #A.items > ENT.MAX_CLONES) do A.n[key] -= 1 end
+	elseif key == "gap" then A.gap = v ENT.arrGapLast = v
+	elseif key == "rise" then A.rise = v
+	elseif key == "scale" then A.scale = math.clamp(v / 100, 0.05, 5)
+	elseif key == "turn" then A.turn = v
+	end
+	ENT.arrDraw()
+end
+-- a copy that was made bigger / smaller can't be rebuilt from its old sizes - it keeps its shape as it is
+function ENT.arrFreeze(root)
+	local list = root:IsA("BasePart") and { root } or {}
+	for _, d in ipairs(root:GetDescendants()) do if d:IsA("BasePart") then list[#list + 1] = d end end
+	for _, p in ipairs(list) do
+		pcall(ENT.dropRecipe, p)
+		for _, k in ipairs({ "PROTO_Core", "PROTO_BlockSize", "PROTO_BlockRel", "PROTO_EdgesDone", "PROTO_CutIds", "PROTO_PocketEdges" }) do
+			pcall(function() p:SetAttribute(k, nil) end)
+		end
+	end
+end
+function ENT.arrGo()
+	local A = ENT.arr
+	if not A then return end
+	local L = ENT.arrLayout(A)
+	if #L == 0 then setStatus("LINEAR: no copies yet - pull a blue arrow out.") return end
+	if #L * #A.items > ENT.MAX_CLONES then setStatus(("LINEAR: that's %d copies - %d max."):format(#L * #A.items, ENT.MAX_CLONES)) return end
+	local made = {}
+	local scaled = false
+	local ok = record("PROTO Linear pattern", function()
+		for _, lay in ipairs(L) do
+			-- all the picked things, moved (and sized) together round their shared middle
+			local tm = Instance.new("Model")
+			tm.Name = "PROTO_PatternTemp"
+			local pairsList, welds = {}, {}
+			for _, o in ipairs(A.items) do
+				local c = o:Clone()
+				if c then
+					for _, j in ipairs(c:GetDescendants()) do
+						if j:IsA("WeldConstraint") and j.Enabled then j.Enabled = false table.insert(welds, j) end
+					end
+					c.Parent = tm
+					table.insert(pairsList, { c = c, home = o.Parent })
+				end
+			end
+			tm.WorldPivot = A.ref.CFrame
+			if math.abs(lay.s - 1) > 1e-6 then tm:ScaleTo(lay.s) scaled = true end
+			tm:PivotTo(lay.cf)
+			for _, pr in ipairs(pairsList) do
+				pr.c.Parent = pr.home
+				if math.abs(lay.s - 1) > 1e-6 then ENT.arrFreeze(pr.c) end
+				table.insert(made, pr.c)
+			end
+			for _, j in ipairs(welds) do j.Enabled = true end
+			tm:Destroy()   -- (PROTO's own empty helper group - the copies were moved out of it)
+		end
+	end)
+	ENT.arrStop()
+	if ok then
+		Selection:Set(made)
+		setStatus("Linear pattern: made " .. #made .. " copies." .. (scaled and " (Bigger / smaller copies keep their shape as it is - their FEATURES steps start fresh.)" or "") .. " Ctrl+Z undoes it.")
+		-- (new PROTO meshes among the copies get saved like any other)
+		pcall(function()
+			local ms = {}
+			for _, c in ipairs(made) do
+				if c:IsA("MeshPart") then ms[#ms + 1] = c end
+				for _, d in ipairs(c:GetDescendants()) do if d:IsA("MeshPart") then ms[#ms + 1] = d end end
+			end
+			if #ms > 0 and ENT.msAfterCut then ENT.msAfterCut(ms) end
+		end)
+	end
+end
+function ENT.arrStop()
+	local A = ENT.arr
+	ENT.arr = nil
+	if ENT.arrH then for _, h in pairs(ENT.arrH) do h.Adornee = nil end end
+	if A then
+		pcall(function() A.folder:Destroy() end)   -- (PROTO's own preview folder)
+		pcall(function() A.template:Destroy() end)
+	end
+	ENT.arrFields = nil
+	pcall(ENT.featRefresh, true)
+end
+-- ===== end v3.49 LINEAR PATTERN, LIVE =====
 -- ===== mirror =====
 function ENT.reflectPoint(p, o, n) return p - n * (2 * (p - o):Dot(n)) end
 function ENT.reflectVec(x, n) return x - n * (2 * x:Dot(n)) end
@@ -12216,10 +19286,15 @@ function ENT.partsOf(x)
 end
 function ENT.selectionList()
 	local list = {}
+	local own = nil
 	for _, o in ipairs(Selection:Get()) do
-		if o ~= target and (o:IsA("BasePart") or o:IsA("Model")) then table.insert(list, o) end
+		-- v3.41 (glitch sweep): the clicked part's own group (its Model, or any Model it sits in) is skipped too -
+		-- it was moved / copied / mirrored onto itself. The skipped group is handed back as a 2nd value.
+		local isOwn = target and o ~= target and (o == ENT.featureModel(target) or target:IsDescendantOf(o))
+		if isOwn then own = own or o
+		elseif o ~= target and (o:IsA("BasePart") or o:IsA("Model")) then table.insert(list, o) end
 	end
-	return list
+	return list, own
 end
 function mirrorSel(which, plIn, listIn)
 	local pl = plIn
@@ -12290,9 +19365,10 @@ function pattern(kind)
 	local count = math.floor(tonumber(U.count.Text) or 0)
 	if count ~= count or count < 2 then setStatus("Count must be 2 or more (it includes the original).") return end
 	if count > ENT.MAX_COPIES then setStatus("Count is too big - " .. ENT.MAX_COPIES .. " copies max.") return end
-	local list = ENT.selectionList()
+	local list, ownGroup = ENT.selectionList()
 	if #list == 0 then
-		if kind == "linear" and target then list = { target } else
+		-- v3.41 (glitch sweep): only the clicked part's own group was selected -> a linear row copies that group (as before)
+		if kind == "linear" and target then list = { ownGroup or target } else
 			setStatus("Select what to copy: Ctrl-click parts (the clicked part is the centre).")
 			return
 		end
@@ -12306,6 +19382,11 @@ function pattern(kind)
 	if kind == "circular" and (total == 0 or total ~= total or math.abs(total) == math.huge) then setStatus("Angle must be a number that isn't 0.") return end
 	local step = (math.abs(total) >= 359.999) and (total / count) or (total / (count - 1))
 	local c = cf.Position
+	-- v3.43 (pattern check): copies x picked things - 500 copies of 40 things froze Studio
+	if (count - 1) * #list > ENT.MAX_CLONES then
+		setStatus(("That's %d copies (%d x %d things) - %d max. Pick fewer things or lower the count."):format((count - 1) * #list, count - 1, #list, ENT.MAX_CLONES))
+		return
+	end
 	local made = {}
 	local ok = record("PROTO Pattern", function()
 		for i = 1, count - 1 do
@@ -12316,12 +19397,8 @@ function pattern(kind)
 				T = CFrame.new(c) * CFrame.fromAxisAngle(axis, math.rad(step * i)) * CFrame.new(-c)
 			end
 			for _, o in ipairs(list) do
-				local cl = o:Clone()
-				if cl then
-					cl.Parent = o.Parent
-					cl:PivotTo(T * o:GetPivot())
-					table.insert(made, cl)
-				end
+				local cl = ENT.cloneAt(o, T)   -- v3.43: welds kept from dragging other parts along
+				if cl then table.insert(made, cl) end
 			end
 		end
 	end)
@@ -12346,7 +19423,7 @@ end
 
 -- ===== camera views =====
 local function ref()
-	if target and target.Parent then return target.CFrame, target.Size.Magnitude end
+	if target and target:IsDescendantOf(workspace) then return target.CFrame, target.Size.Magnitude end   -- v3.41 (glitch sweep): not a deleted group's part
 	local s = Selection:Get()[1]
 	if s and s:IsA("BasePart") then return s.CFrame, s.Size.Magnitude end
 	if s and s:IsA("Model") then
@@ -12382,45 +19459,64 @@ function view(name)
 	if v then flyTo(o, v[1], v[2], size) end
 end
 
--- ===== mesh save test (EditableMesh -> MeshPart) =====
+-- ===== v2.48 mesh test: the whole mesh pipeline, step by step (makes a block, cuts it with a mesh cutter, saves the
+-- cut part to Roblox). Every step prints to Output, so a failed step shows exactly where it broke.
 function meshTest()
-	setStatus("Mesh test: building a hexagon from raw triangles...")
+	print("PROTO mesh test ---------------------------")
+	setStatus("Mesh test: checking...")
+	local M = ENT.msCheck(true)
+	print(ENT.msReport())
+	if U.meshInfo then U.meshInfo.Text = ENT.msReport() end
+	if not M.mesh then setStatus("Mesh test stopped: " .. ENT.MS_API) return end
+	if not M.solid then setStatus("Mesh test stopped: Studio couldn't cut with a mesh (see Output).") return end
+	local testP, testCutter   -- v3.41 (glitch sweep): kept, so a failed test can clear away what it made
 	local ok, err = pcall(function()
-		local em = AssetService:CreateEditableMesh()
-		local rad, h = 4, 2
-		local top, bot = {}, {}
-		for i = 0, 5 do
-			local a = i * PI / 3
-			top[i + 1] = em:AddVertex(V3(rad * math.cos(a), h / 2, rad * math.sin(a)))
-			bot[i + 1] = em:AddVertex(V3(rad * math.cos(a), -h / 2, rad * math.sin(a)))
+		local base = workspace.CurrentCamera.Focus.Position + V3(0, 4, 0)
+		local P = Instance.new("Part")
+		testP = P
+		P.Anchored = true
+		P.Size = V3(6, 4, 4)
+		P.CFrame = CFrame.new(base)
+		P.Material = Enum.Material.Marble
+		P.Name = "PROTO_MeshTest"
+		P.Parent = workspace
+		print("1. made a 6 x 4 x 4 block")
+		-- an off-centre triangle cutter, so the cut part's mesh is lopsided (tests that the saved mesh lands in the right place)
+		local cutter = ENT.prismRaw({ V2(-1, -3), V2(3, -3), V2(1, 3) }, -3, 3, CFrame.new(base + V3(1.5, 0, 0)), ENT.meshFlip)
+		if not cutter then error("couldn't build the mesh cutter") end
+		testCutter = cutter
+		print("2. built the mesh cutter")
+		local res = GeometryService:SubtractAsync(P, { cutter }, { SplitApart = false, CollisionFidelity = Enum.CollisionFidelity.Box })
+		cutter:Destroy()
+		ENT.freeMeshes()
+		local r = res and res[1]
+		if not r then error("the test cut gave nothing back") end
+		r.Name = "PROTO_MeshTest"
+		r.Color = P.Color
+		r.Material = P.Material
+		r.Parent = workspace
+		P:Destroy()
+		print("3. cut it: the result is a " .. r.ClassName .. (ENT.msUnsaved(r) and " that ISN'T saved yet" or " (Roblox saves this kind by itself)"))
+		if ENT.msUnsaved(r) then
+			if not M.api then error("can't save it: " .. ENT.MS_BETA) end
+			local okS, np, id = ENT.msSavePart(r)
+			if not okS then error("saving failed: " .. tostring(np)) end
+			r = np
+			print("4. saved to Roblox as mesh " .. tostring(id) .. " and swapped in")
+			if not ENT.MS.upOK then ENT.MS.upOK = true pcall(function() plugin:SetSetting("PROTO_meshUpOK", true) end) end
 		end
-		local ct, cb = em:AddVertex(V3(0, h / 2, 0)), em:AddVertex(V3(0, -h / 2, 0))
-		local function tri(a, b, c)
-			em:AddTriangle(a, b, c)
-			em:AddTriangle(a, c, b)   -- both sides, so it can't show up inside out
-		end
-		for i = 1, 6 do
-			local j = i % 6 + 1
-			tri(ct, top[i], top[j])
-			tri(cb, bot[j], bot[i])
-			tri(top[i], bot[i], bot[j])
-			tri(top[i], bot[j], top[j])
-		end
-		local mp = AssetService:CreateMeshPartAsync(Content.fromObject(em))
-		mp.Name = "DIM_MeshTest"
-		mp.Anchored = true
-		mp.Material = Enum.Material.Marble
-		mp.Position = workspace.CurrentCamera.Focus.Position + V3(0, 3, 0)
-		mp.Parent = workspace
-		Selection:Set({ mp })
+		Selection:Set({ r })
 	end)
+	pcall(function() CHS:SetWaypoint("PROTO mesh test") end)
 	if ok then
-		setStatus("Mesh test WORKED: DIM_MeshTest is in Workspace. Now save, close and reopen the place - if it's still there, raw-triangle shapes can be saved.")
-		print("PROTO mesh test: made DIM_MeshTest. Save, close, reopen the place and check it is still there.")
+		setStatus("Mesh test WORKED: PROTO_MeshTest is in Workspace (a block with a slanted notch). Check it looks right, then publish and play - it should NOT be a checkered cube.")
+		print("PROTO mesh test WORKED. Look at PROTO_MeshTest: a block with a slanted notch on one end. Then publish + play to check it shows in game.")
 	else
+		-- v3.41 (glitch sweep): the test's own block and cutter were left in Workspace when the cut threw
+		if testCutter then pcall(function() testCutter:Destroy() end) end
+		if testP then pcall(function() testP:Destroy() end) end
 		setStatus("Mesh test FAILED: " .. tostring(err))
 		warn("PROTO mesh test failed: " .. tostring(err))
-		warn("If it says permission / not allowed: Game Settings > Security > allow Mesh / Image APIs, and the account needs ID verification (13+).")
 	end
 end
 
@@ -12478,7 +19574,7 @@ function ENT.exAlignZs()
 	if okP and parts then
 		for i, p in ipairs(parts) do
 			if i > 500 then break end
-			if p ~= ex.carrier and p.Transparency < 0.99 and p.Name ~= "DIM_Box" and p.Name ~= "DIM_Preview" then
+			if p ~= ex.carrier and p.Transparency < 0.99 and not ENT.isBox(p.Name) and not ENT.isPrev(p.Name) then
 				local cf, sz = p.CFrame, p.Size
 				for _, ax in ipairs({ { cf.RightVector, sz.X }, { cf.UpVector, sz.Y }, { cf.LookVector, sz.Z } }) do
 					if math.abs(ax[1]:Dot(n)) > 0.9995 then
@@ -12694,7 +19790,8 @@ function ENT.moveDrag()
 	m.d = d
 	drawSketch()
 end
-mouse.Move:Connect(function()
+-- v3.50 (smoother): Studio can send several mouse moves in one frame - the work runs once a frame (below)
+ENT.onMouseMove = (function()
 	if not active then return end
 	if ENT.trimHeld and sk and tool == "trim" then
 		local _, hit = rayPlane(sk.pl, mouse.UnitRay)
@@ -12712,6 +19809,7 @@ mouse.Move:Connect(function()
 			ENT.paintHover.Parent = adornRoot
 		end
 		ENT.paintHover.Adornee = (t and t:IsA("BasePart") and t ~= TERRAIN and not t.Locked) and t or nil
+		if ENT.paintBrush then pcall(ENT.brushMove) end   -- v3.02
 		return
 	end
 	if mode == "face" then
@@ -12741,6 +19839,7 @@ mouse.Move:Connect(function()
 		drawPreview()
 		return
 	end
+	if ENT.shellTool then ENT.shellHover() return end   -- v2.86 shell
 	if ENT.edgeTool then ENT.edgeHover() return end   -- v2.39 3D edge fillet / chamfer
 	if mode == "planes" and shiftDown() and not ctrlDown() then
 		-- v2.38: Shift held = show the exact face a Shift-click will sketch on
@@ -12748,6 +19847,24 @@ mouse.Move:Connect(function()
 		if hoverPlane or ENT.hoverFace then hoverPlane, ENT.hoverFace = nil, nil drawPlanes() end
 		ENT.shiftPocketHover(hit)
 		return
+	end
+	-- v2.76 REAL FACES: on the picked PROTO part, the face under the mouse lights up (its real outline)
+	do
+		local F, T
+		if mode == "planes" and target and target:IsA("BasePart") and ENT.detailKind(target) then
+			T = ENT.partTopo(target)
+			if T then
+				local ti = ENT.rayTris(T.tris, mouse.UnitRay.Origin, mouse.UnitRay.Direction)
+				F = ti and T.faces[T.faceOf[ti]] or nil
+			end
+		end
+		ENT.topoFaceHot = F and { p = target, F = F, T = T } or nil
+		ENT.drawTopoFace(F and T, F)
+		if F then
+			faceHover.Adornee = nil
+			if hoverPlane or ENT.hoverFace then hoverPlane, ENT.hoverFace = nil, nil drawPlanes() end
+			return
+		end
 	end
 	ENT.showFaceHover(nil, true)
 	local res, pl = pick()
@@ -12775,6 +19892,8 @@ mouse.Move:Connect(function()
 	end
 end)
 mouse.Button1Up:Connect(function()
+	if ENT.moveDirty then ENT.moveDirty = false pcall(ENT.onMouseMove) end   -- v3.50: the last bit of the drag first
+	if ENT.brushStroke then pcall(ENT.brushCommit) end   -- v3.02
 	ENT.trimHeld = nil
 	if exDrag then
 		exDrag = nil
@@ -12798,7 +19917,14 @@ mouse.Button1Up:Connect(function()
 	if sk and sk.moving then
 		local moved = sk.moving.moved
 		local pk = sk.moving.pickOnClick
+		local plainClick = sk.moving.plainClick
 		sk.moving = nil
+		if plainClick and not moved then
+			-- v2.92: the centre handle clicked, not dragged = a normal Select click
+			ENT.noHandle = true
+			pcall(ENT.sketchClick)
+			ENT.noHandle = false
+		end
 		if pk and not moved then
 			-- Shift-click in the middle without dragging = pick the whole drawing (add / take away)
 			local edgeHit = ENT.pickEdge(pk.q)
@@ -12810,18 +19936,62 @@ mouse.Button1Up:Connect(function()
 end)
 mouse.Button1Down:Connect(function()
 	if not active then return end
+	if ENT.moveDirty then ENT.moveDirty = false pcall(ENT.onMouseMove) end   -- v3.50: catch up the hover first
 	if ENT.overHud then return end   -- v2.37: a click on the ribbon isn't a click in the world
+	if ENT.arr then return end   -- v3.47: the live linear pattern - only its arrows take clicks (Enter / Esc to finish)
 	if mode == "paint" then
 		local t = mouse.Target
 		if t and t:IsA("BasePart") and t ~= TERRAIN and not t.Locked then
-			if ENT.paintPicking then
+			if not ENT.paintPicking then ENT.paintLast = t end   -- v3.44: Clear brush / decals act on this one
+			if ENT.paintBrush and not ENT.paintPicking then
+				-- v3.02 BRUSH: start a stroke (it's painted when you let go)
+				pcall(ENT.brushDown, t)
+			elseif ENT.paintPicking then
 				ENT.paintCol, ENT.paintMat, ENT.paintPicking = t.Color, t.Material, false
-				local fg = t:FindFirstChild("DIM_Face_" .. mouse.TargetSurface.Name)
+				ENT.paintVariant = t.MaterialVariant   -- v3.44: the custom material look comes along too
+				local fg = (t:FindFirstChild("PROTO_Face_" .. mouse.TargetSurface.Name) or t:FindFirstChild("DIM_Face_" .. mouse.TargetSurface.Name))
 				if fg and fg:FindFirstChild("Colour") then ENT.paintCol = fg.Colour.BackgroundColor3 end
+				-- v3.44 (paint check): a PROTO part with colour in its mesh is white on the outside - pick the face's real
+				-- colour (a painted face), else the part's own colour
+				pcall(function()
+					local pc = ENT.pickMeshColour(t, mouse.UnitRay)
+					if pc then ENT.paintCol = pc end
+				end)
 				ENT.paintRefresh()
 				refreshStatus()
+			elseif ENT.paintFace and ENT.paintDoMat then
+				-- v3.65: material on ONE face = a thin skin over that face (Shift-click = take it off)
+				local ray, clear = mouse.UnitRay, shiftDown()
+				setStatus(clear and "Taking the material off that face..." or "Putting the material on that face...")
+				task.spawn(function()
+					local ok, why = ENT.faceSkin(t, ray, clear)
+					if ok then setStatus(clear and "Material taken off that face. Ctrl+Z undoes it." or ("Material on that face (" .. (((ENT.paintVariant or "") ~= "" and ENT.paintVariant) or ENT.paintMat.Name) .. "). Shift-click the face = take it off. Ctrl+Z undoes it."))
+					else setStatus("MATERIAL ON FACE: " .. tostring(why)) end
+				end)
+			elseif ENT.paintFace and not ENT.paintDoCol then
+				-- v3.44 (paint check): one face can only change colour (Roblox can't give one face its own material)
+				setStatus("PAINT ONE FACE: one face can only change colour - switch the paint button to COLOUR (Material works with WHOLE PART).")
+			elseif ENT.paintFace and ENT.detailKind(t) and ENT.protoMade(t) then
+				-- v2.72: a PROTO part = the real face, coloured in the mesh (Shift = back to the part's colour)
+				if not ENT.meshGate() then return end
+				local ray = mouse.UnitRay
+				local col, clear = ENT.paintCol, shiftDown()
+				setStatus("Painting the face...")
+				task.spawn(function()
+					local np, why = ENT.paintMeshFace(t, ray, col, clear)
+					if np then setStatus((clear and "Cleared" or "Painted") .. " that face - it's in the mesh now (and stays through cuts / detail). Ctrl+Z undoes it.")
+					else setStatus("PAINT: " .. tostring(why)) end
+				end)
 			elseif ENT.paintFace then
 				ENT.paintFaceOf(t, mouse.TargetSurface, shiftDown())
+			elseif ENT.paintDoCol and ENT.hasMeshPaint(t) then   -- v3.44: brush paint counts too
+				-- v2.72: whole part on a painted PROTO part = the unpainted faces change; painted faces stay
+				local col = ENT.paintCol
+				task.spawn(function()
+					local np, why = ENT.paintBaseColour(t, col)
+					if ENT.paintDoMat and np then pcall(function() np.Material = ENT.paintMat np.MaterialVariant = ENT.paintVariant or "" end) end
+					if not np then setStatus("PAINT: " .. tostring(why)) end
+				end)
 			else
 				ENT.paintParts({ t })
 			end
@@ -12867,6 +20037,7 @@ mouse.Button1Down:Connect(function()
 	end
 	-- v2.38 SHIFT-CLICK = DIRECT FACE SKETCH: straight onto the exact face under the mouse (any piece, even inside
 	-- a build group) - the centre planes, side panels and DIM_Box are ignored. (Add-to-selection is Ctrl-click.)
+	if ENT.shellTool then ENT.shellClick() return end   -- v2.86 shell
 	if ENT.edgeTool then ENT.edgeClick() return end   -- v2.39 3D edge fillet / chamfer
 	-- v2.46 (Dylan): VIEWS - while picking, clicking a plane picks it (goes yellow, stays showing) / unpicks it
 	if ENT.mv and ENT.mv.stage == "pick" and not sk then
@@ -12895,6 +20066,20 @@ mouse.Button1Down:Connect(function()
 			startSketch(ENT.facePlane(p, hit.Position, hit.Normal), p, p.Name .. " face")
 			return
 		end
+	end
+	-- v2.76: a REAL face of the picked PROTO part (lit up blue) = sketch right on it
+	-- v3.41 (glitch sweep): the part must still be in the world (not only have a parent - its group may be deleted)
+	if mode == "planes" and not ctrlDown() and ENT.topoFaceHot and ENT.topoFaceHot.p == target and target and target:IsDescendantOf(workspace) then
+		local H = ENT.topoFaceHot
+		ENT.topoFaceHot = nil
+		ENT.drawTopoFace(nil)
+		if H.F.flat then
+			local fp = ENT.facePlaneOf(H.T, H.F)
+			startSketch(planeFrom(fp.o, fp.u, fp.v), target, target.Name .. " face")
+		else
+			setStatus("That face is curved - sketch on a flat face (they light up blue), or on one of the centre planes.")
+		end
+		return
 	end
 	local res, pl = pick()
 	local multi = ctrlDown()   -- v2.38: Ctrl-click adds / takes away (Shift-click = direct face sketch)
@@ -13004,8 +20189,21 @@ UIS.InputBegan:Connect(function(input, gp)
 	-- Studio flags Esc as "used" when it clears the part selection; only typing in a box should block DIM's keys
 	if gp and ((input.KeyCode ~= Enum.KeyCode.Escape and input.KeyCode ~= Enum.KeyCode.Delete and input.KeyCode ~= Enum.KeyCode.Backspace) or UIS:GetFocusedTextBox()) then return end
 	local k = input.KeyCode
+	-- v3.41 (glitch sweep): typing in a box never triggers PROTO's keys (the box deals with its own Enter)
+	if UIS:GetFocusedTextBox() then return end
+	-- v3.41 (glitch sweep): PROTO paused (another Studio tool has the mouse): only Esc still counts - Delete deleted the
+	-- picked drawing as well as Studio's selection, Space swung the camera, Enter extruded
+	if not active and k ~= Enum.KeyCode.Escape then return end
 	if k == Enum.KeyCode.Escape then
-		if ex then cancelExtrude()
+		if ENT.arr then
+			ENT.arrStop()   -- v3.47
+			setStatus("Linear pattern cancelled.")
+		elseif mode == "paint" and ENT.paintPicking then
+			-- v3.44 (paint check): Esc stops Pick (it stayed on till a part was clicked)
+			ENT.paintPicking = false
+			pcall(ENT.paintRefresh)
+			setStatus("Pick cancelled.")
+		elseif ex then cancelExtrude()
 		elseif sk and ENT.patAsk then
 			ENT.patStop()
 			drawSketch() drawPreview() setStatus("Pattern cancelled.")
@@ -13034,7 +20232,9 @@ UIS.InputBegan:Connect(function(input, gp)
 			drawSketch() refreshStatus()
 		elseif sk then exitSketch()   -- 2nd Esc (already on Select): leave the plane
 		elseif mode == "face" and facePart then faceUnlock() refreshStatus()
+		elseif ENT.edgeTool and ENT.eSel and #ENT.eSel.list > 0 then ENT.eSelClear() setStatus("Picks dropped. Click edges to pick again, Esc = stop.")   -- v3.50
 		elseif ENT.edgeTool then ENT.edgeStop()
+		elseif ENT.shellTool then ENT.shellStop()
 		elseif not ENT.sleeping then   -- (Studio may have just paused PROTO for this Esc - still counts)
 			-- v2.38 SLEEP: nothing left to cancel - Esc twice quickly = PROTO sleeps
 			if os.clock() - (ENT.idleEsc or 0) < 1.2 then
@@ -13052,7 +20252,9 @@ UIS.InputBegan:Connect(function(input, gp)
 		sk.flip = not sk.flip
 		view("Normal")
 	elseif k == Enum.KeyCode.Return or k == Enum.KeyCode.KeypadEnter then
-		if ex then acceptExtrude()
+		if ENT.arr then ENT.arrGo()   -- v3.47
+		elseif ENT.edgeTool and ENT.eSel and #ENT.eSel.list > 0 then ENT.eSelApply()   -- v3.50
+		elseif ex then acceptExtrude()
 		elseif sk and ENT.patAsk then ENT.patGo()
 		elseif sk and ENT.revAsk then ENT.revolve(ENT.revAsk.cut)
 		elseif sk and (tool == "line" or tool == "tarc") and #pend > 0 then
@@ -13061,7 +20263,10 @@ UIS.InputBegan:Connect(function(input, gp)
 		elseif sk and (tool == "line" or tool == "spline" or tool == "wall") and #pend >= 2 then
 			finishLine()
 			if not shiftDown() then setTool("select") end
-		elseif sk then extrude() end
+		elseif sk and ENT.editCut then ENT.editCutApply()   -- v2.94: FINISH EDIT
+		elseif sk and ENT.mv and ENT.mv.stage == "draw" then ENT.mvContinue()   -- v3.41 (glitch sweep): Views = NEXT / BUILD, not extrude
+		elseif sk then extrude()
+		elseif ENT.shellTool then ENT.shellApply() end
 	elseif k == Enum.KeyCode.A and sk and not ex and (tool == "line" or tool == "tarc") and #pend > 0 and not ctrlDown() then
 		-- v2.40 SolidWorks autotransition: A = the next piece is a tangent arc (or back to a straight line)
 		ENT.arcMode = not ENT.arcMode
@@ -13093,6 +20298,11 @@ function ENT.icons()
 	local C, A = ENT.RC, ENT.icArc
 	return {
 		line = { { "l", 5, 23, 23, 5 }, { "d", 5, 23, C.B }, { "d", 23, 5, C.B } },
+		-- v3.42 HELP tab icons: lessons (play), every tool (list), keys (key), fixes (wrench)
+		hlpTut = { { "c", 14, 14, 10 }, { "p", { 11, 9, 19, 14, 11, 19, 11, 9 }, C.G } },
+		hlpTools = { { "d", 6, 8, C.B }, { "l", 10, 8, 24, 8 }, { "d", 6, 14, C.B }, { "l", 10, 14, 24, 14 }, { "d", 6, 20, C.B }, { "l", 10, 20, 24, 20 } },
+		hlpKeys = { { "c", 9, 14, 5 }, { "l", 14, 14, 25, 14 }, { "l", 21, 14, 21, 19 }, { "l", 25, 14, 25, 18 } },
+		hlpFix = { { "l", 6, 22, 16, 12, C.O }, { "c", 19, 9, 5 }, { "l", 19, 9, 23, 5, C.D } },
 		tarc = { { "l", 3, 22, 12, 22 }, { "p", A(12, 14, 8, 8, -90, 90, 10), C.O }, { "d", 12, 22, C.B }, { "d", 12, 6, C.B } },
 		extend = { { "l", 3, 20, 13, 20 }, { "l", 13, 20, 21, 20, C.O }, { "p", { 17, 16, 21, 20, 17, 24 }, C.O }, { "l", 24, 5, 24, 26, C.D } },
 		midline = { { "l", 3, 14, 25, 14 }, { "d", 14, 14, C.O }, { "d", 3, 14, C.B }, { "d", 25, 14, C.B } },
@@ -13141,6 +20351,7 @@ function ENT.icons()
 		ejoin = { { "f", 3, 15, 10, 10, C.W }, { "f", 15, 3, 10, 22, C.B }, { "p", A(15, 15, 5, 5, 180, 270, 6), C.G } },
 		efillet = { { "p", { 5, 25, 5, 14 } }, { "p", A(15, 14, 10, 10, 180, 90, 8), C.O }, { "p", { 15, 4, 25, 4 } }, { "l", 5, 25, 25, 25, C.D }, { "l", 25, 4, 25, 25, C.D } },
 		echamfer = { { "p", { 5, 25, 5, 12 } }, { "l", 5, 12, 13, 4, C.O }, { "p", { 13, 4, 25, 4 } }, { "l", 5, 25, 25, 25, C.D }, { "l", 25, 4, 25, 25, C.D } },
+		shell = { { "b", 3, 3, 22, 22 }, { "b", 8, 8, 12, 12, C.O }, { "l", 8, 3, 20, 3, C.G } },
 		facemir = { { "b", 2, 8, 11, 12 }, { "l", 14, 3, 14, 25, C.O }, { "b", 15, 8, 11, 12, C.B } },
 		linear = { { "f", 3, 11, 6, 6, C.W }, { "f", 11, 11, 6, 6, C.B }, { "f", 19, 11, 6, 6, C.B } },
 		circular = { { "c", 14, 14, 9, C.D }, { "f", 11, 2, 6, 6, C.W }, { "f", 20, 15, 6, 6, C.B }, { "f", 2, 15, 6, 6, C.B } },
@@ -13226,75 +20437,65 @@ function ENT.ribDef()
 	return {
 		{ "SKETCH", {
 			{ "Sketch", {
-				{ "start", "Start", "Planes appear where you're looking - click one to sketch on it", function() ENT.startPlanes() end },
-				{ "exit", "Exit sketch", "Leave the sketch (Esc twice does the same)", function() exitSketch() end },
-				{ "planes", "Planes", "Show / hide the planes", function() togglePlanes() end },
-			} },
-			{ "Draw", {
-				{ "line", "Line", "Click point after point - a chain of lines (A = tangent arc next)", T("line"), "line" },
-				{ "tarc", "Tangent arc", "Starts on the end of a line / arc and carries on smoothly", T("tarc"), "tarc" },
-				{ "midline", "Centre line", "Click the middle, then an end - goes the same way both sides", T("midline"), "midline" },
-				{ "rect", "Rect", "Click the centre, then a corner", T("rect"), "rect" },
-				{ "rectc", "Rect 2pt", "Click one corner, then the opposite one", T("rectc"), "rectc" },
-				{ "rect3", "Rect 3pt", "Any angle: one edge, then how wide", T("rect3"), "rect3" },
-				{ "circle", "Circle", "Click the centre, then the edge", T("circle"), "circle" },
-				{ "circle3", "Circle 3pt", "Click 3 points it goes through", T("circle3"), "circle3" },
-				{ "arc", "Arc", "Centre, start, end (Alt = long way round)", T("arc"), "arc" },
-				{ "ellipse", "Ellipse", "Centre, end of the long axis, then how wide", T("ellipse"), "ellipse" },
-				{ "slot", "Slot", "Centre of each end, then how wide", T("slot"), "slot" },
-				{ "ngon", "Polygon", "Centre, then a corner", T("ngon"), "ngon" },
-				{ box = "sides", "Sides", "How many sides a new polygon gets" },
-				{ "spline", "Spline", "Click points for a smooth curve", T("spline"), "spline" },
-				{ "wall", "Double line", "A wall 'thick' wide round the path", T("wall"), "wall" },
-				{ box = "wallT", "Thick", "How thick the double line is (studs)" },
-				{ proxy = "wallMidBtn", "Double line: ON = centred on the path you click" },
-				{ proxy = "wallFlipBtn", "Double line: beside the path - Inside / Outside (click to swap)" },
-				{ "point", "Point", "Drop a snap point", T("point"), "point" },
+				-- v3.09 (Dylan): ONE button - Start, then it turns into Exit sketch. The Planes button is gone (no use)
+				{ "start", "Start", "Start: planes appear where you're looking - click one to sketch on it. Press again = exit the sketch", function()
+					if sk or ENT.sketchStarted then
+						if sk then exitSketch() end
+						ENT.sketchStarted = false
+						setTarget(nil)
+						drawPlanes()
+						setStatus("Sketch closed - press Start to start again.")
+					else
+						ENT.startPlanes()
+					end
+				end, "&sketchtog", alt = { "exit", "Exit sketch" } },
 				{ "finish", "Finish", "Finish the line / spline you're drawing (Enter)", function() finishLine() end },
 			} },
+			{ "Draw", {
+				{ small = true, "line", "Line", "Click point after point - a chain of lines (A = tangent arc next)", T("line"), "line" },
+				{ small = true, "tarc", "Tangent arc", "Starts on the end of a line / arc and carries on smoothly", T("tarc"), "tarc" },
+				{ small = true, "midline", "Centre line", "Click the middle, then an end - goes the same way both sides", T("midline"), "midline" },
+				{ small = true, "rect", "Rect", "Click the centre, then a corner", T("rect"), "rect" },
+				{ small = true, "rectc", "Rect 2pt", "Click one corner, then the opposite one", T("rectc"), "rectc" },
+				{ small = true, "rect3", "Rect 3pt", "Any angle: one edge, then how wide", T("rect3"), "rect3" },
+				{ small = true, "spline", "Spline", "Click points for a smooth curve", T("spline"), "spline" },
+				{ small = true, "circle", "Circle", "Click the centre, then the edge", T("circle"), "circle" },
+				{ small = true, "circle3", "Circle 3pt", "Click 3 points it goes through", T("circle3"), "circle3" },
+				{ small = true, "arc", "Arc", "Centre, start, end (Alt = long way round)", T("arc"), "arc" },
+				{ small = true, "ellipse", "Ellipse", "Centre, end of the long axis, then how wide", T("ellipse"), "ellipse" },
+				{ small = true, "slot", "Slot", "Centre of each end, then how wide", T("slot"), "slot" },
+				{ small = true, "ngon", "Polygon", "Centre, then a corner", T("ngon"), "ngon" },
+				{ small = true, "wall", "Double line", "A wall 'thick' wide round the path", T("wall"), "wall" },
+				{ "point", "Point", "Drop a snap point", T("point"), "point" },
+			} },
 			{ "Edit", {
-				{ "select", "Select", "Pick drawings. Ctrl / Shift-click = pick edges (multi), Shift + drag = reshape / move", T("select"), "select" },
-				{ "dimension", "Dimension", "Click a line and type its size", T("dimension"), "dimension" },
-				{ "trim", "Trim", "Click a piece to cut it away up to where it crosses", T("trim"), "trim" },
-				{ "split", "Split", "Break a line anywhere", T("split"), "split" },
-				{ "extend", "Extend", "Click near a line's end - it grows to the next drawing", T("extend"), "extend" },
-				{ "cutpts", "Cut pt-pt", "Click 2 points - the bit between goes", function() ENT.cutA = nil setTool("cutpts") end, "cutpts" },
+				{ small = true, "select", "Select", "Pick drawings. Ctrl / Shift-click = pick edges (multi), Shift + drag = reshape / move", T("select"), "select" },
+				{ small = true, "dimension", "Dimension", "Click a line and type its size", T("dimension"), "dimension" },
+				{ small = true, "trim", "Trim", "Click a piece to cut it away up to where it crosses", T("trim"), "trim" },
+				{ small = true, "split", "Split", "Break a line anywhere", T("split"), "split" },
+				{ small = true, "extend", "Extend", "Click near a line's end - it grows to the next drawing", T("extend"), "extend" },
+				{ small = true, "cutpts", "Cut pt-pt", "Click 2 points - the bit between goes", function() ENT.cutA = nil setTool("cutpts") end, "cutpts" },
 
-				{ "undo", "Undo shape", "Take back the last drawing", function() undoShape() end },
-				{ "delete", "Delete", "Delete the picked drawing", function() ENT.deleteSel() end },
-				{ box = "dimBox", enter = true, "Value", "Dimension: type the size here + Enter" },
+				{ small = true, "undo", "Undo shape", "Take back the last drawing", function() undoShape() end },
+				{ small = true, "delete", "Delete", "Delete the picked drawing", function() ENT.deleteSel() end },
+				-- (v3.10: the Value box is gone - the size box pops up right on the line instead)
 			} },
 			{ "Plane", {
+				{ proxy = "planeMoveBtn", "Handles on the sketch plane: orange arrows slide it, rings tilt it (drawings move with it)" },
+				{ proxy = "planeResetBtn", "Put the sketch plane back where it started (not moved, not tilted)" },
 				{ box = "planeOff", "Move", "Move the sketch plane up / down (studs)" },
 				{ proxy = "edgesBtn", "Show the real edges of the part as yellow lines you can snap to" },
 				{ proxy = "edgeLinesBtn", "Turn those edges into drawing lines" },
+				{ proxy = "lensBtn", "Show the length of every line in studs, beside it (circles: diameter)" },
 				{ box = "grid", "Grid", "Snap grid in studs (Shift = 1/10, Ctrl = free)" },
-			} },
+			}, stack = true },   -- v3.21: buttons on top, the number boxes under them
 		} },
 		{ "FEATURES", {
-			{ "Build", {
-				{ "extrude", "Extrude", "Pull the picked areas into a solid", function() extrude() end, "@extrude" },
-				{ "cut", "Cut", "Cut the picked areas out of parts", function() extrude(true) end, "@cut" },
-				{ "overlap", "Overlap", "Pull the drawing right through the part and keep ONLY where they overlap (nothing drawn yet = Views)", function() ENT.overlap() end, "@overlap" },
-				{ "views", "Views", "Pick Front / Side / Top, draw the shape on each, BUILD = only where they all overlap (hulls, cars...)", function() ENT.mvStart() end, "&views" },
-				{ "revolve", "Revolve", "Spin the drawing round a centre line (early access)", function() ENT.revolve(false) end, "@revolve" },
-				{ "revcut", "Rev cut", "Spin and cut away (early access)", function() ENT.revolve(true) end, "@revcut" },
-			} },
-			{ "Extrude", {
-				{ box = "depth", "Depth", "How far it extrudes / cuts (studs)" },
-				{ box = "startBox", "Start", "Where it starts, from the sketch (studs)" },
-				{ proxy = "dirBtn", "Extrude both ways from the sketch" },
-				{ proxy = "flipBtn", "Flip the direction" },
-				{ proxy = "scopeBtn", "What a cut cuts" },
-				{ proxy = "meshBtn", "Mesh cutter (beta)" },
-			} },
-			{ "Revolve", {
-				{ box = "revAngle", "Angle", "How far round it spins (degrees)" },
-				{ box = "revSides", "Sides", "How smooth (more = smoother, heavier)" },
-			} },
+			-- v3.22 (Dylan): Accept / Cancel first, on the left
 			{ "Finish", {
-				{ "accept", "Accept", "Make it real (Enter). While clicking areas = done picking, go", function()
-					if not ex and ENT.picking and sk then extrude() else acceptExtrude() end end, "@accept" },
+				{ "accept", "Accept", "Make it real (Enter). While clicking areas = done picking, go. Editing a cut's sketch = rebuild with it", function()
+					if not ex and ENT.editCut and sk then ENT.editCutApply()
+					elseif not ex and ENT.picking and sk then extrude() else acceptExtrude() end end, "@accept" },
 				{ "cancel", "Cancel", "Nothing made (Esc). While clicking areas = stop picking", function()
 					if not ex and ENT.picking and sk then
 						ENT.picking = nil
@@ -13302,6 +20503,21 @@ function ENT.ribDef()
 						drawSketch() refreshStatus()
 					else cancelExtrude() end
 				end, "@cancel" },
+			} },
+			{ "Build", {
+				{ "extrude", "Extrude", "Pull the picked areas into a solid", function() extrude() end, "@extrude" },
+				{ "cut", "Cut", "Cut the picked areas out of parts", function() extrude(true) end, "@cut" },
+				{ "overlap", "Overlap", "Pull the drawing right through the part and keep ONLY where they overlap (nothing drawn yet = Views)", function() ENT.overlap() end, "@overlap" },
+				{ "views", "Views", "Pick Front / Side / Top, draw the shape on each, BUILD = only where they all overlap (hulls, cars...)", function() ENT.mvStart() end, "&views" },
+				{ "revolve", "Revolve", "Spin the drawing round a centre line (early access)", function() ENT.revolve(false) end, "@revolve" },
+				{ "revcut", "Rev cut", "Spin and cut away (early access)", function() ENT.revolve(true) end, "@revcut" },
+				-- v3.19 (Dylan): fillet / chamfer / shell sit with the other features
+				{ "efillet", "Fillet edge", "Round edges: set the Size, then click an edge - done. Click more to add more", function()
+					if ENT.edgeTool == "fillet" then ENT.edgeStop() else ENT.edgeStart("fillet") end end, "&efillet" },
+				{ "echamfer", "Chamfer edge", "Chamfer edges: set the Size, then click an edge - done. Click more to add more", function()
+					if ENT.edgeTool == "chamfer" then ENT.edgeStop() else ENT.edgeStart("chamfer") end end, "&echamfer" },
+				{ "shell", "Shell", "Hollow a part to a wall thickness: click the faces to leave OPEN (green), then Hollow / Enter", function()
+					if ENT.shellTool then ENT.shellStop() else ENT.shellStart() end end, "&shell" },
 			} },
 			{ "Shape", {
 				{ "whole", "Whole object", "ON = one cube round everything that's joined (arch + slab). OFF = a cube per build", function()
@@ -13313,20 +20529,6 @@ function ENT.ribDef()
 				{ "group", "Group feature", "Loose pieces of one shape -> one group, pivot in the middle", function() ENT.groupFeature() end },
 				{ "straighten", "Straighten", "Planes on the clicked part come out tilted? This lines them up", function() ENT.straighten() end },
 				{ "face", "Face pull", "Click a face and drag it in / out", function() setMode("face") end, "#face" },
-				{ box = "faceAmt", "Amount", "Face pull: how far + / - moves it" },
-				{ proxy = "facePlus", "Pull the face out by Amount" },
-				{ proxy = "faceMinus", "Push the face in by Amount" },
-			} },
-			{ "Edges", {
-				{ "efillet", "Fillet edge", "Click an edge of a block = it gets rounded (size box next to it)", function()
-					if ENT.edgeTool == "fillet" then ENT.edgeStop() else ENT.edgeStart("fillet") end end, "&efillet" },
-				{ "echamfer", "Chamfer edge", "Click an edge of a block = it's cut off flat (size box next to it)", function()
-					if ENT.edgeTool == "chamfer" then ENT.edgeStop() else ENT.edgeStart("chamfer") end end, "&echamfer" },
-				{ box = "filletR", "Size", "Fillet radius / chamfer size in studs" },
-				{ "ejoin", "Join parts", "ON = an inside-corner fillet / chamfer also WELDS the two parts into one solid. OFF = it only adds the fill", function()
-					ENT.edgeJoin = not ENT.edgeJoin
-					setStatus(ENT.edgeJoin and "JOIN PARTS on: inside-corner fillets / chamfers weld both parts into one solid." or "JOIN PARTS off: inside-corner fillets / chamfers only add the fill, the parts stay separate.")
-				end, "&ejoin" },
 			} },
 		} },
 		{ "PATTERN", {
@@ -13339,7 +20541,7 @@ function ENT.ribDef()
 				{ "mirror", "Right", "Mirror across the Right plane", function() mirrorSel("Right") end },
 			} },
 			{ "Pattern", {
-				{ "linear", "Linear", "Copies in a row (count + spacing in the panel)", function() pattern("linear") end },
+				{ "linear", "Linear", "Copies in rows - see-through copies show first: pull a BLUE arrow (any side) for copies that way, GREEN = each higher, RED = bigger / smaller. Enter = place", function() ENT.arrStart() end },
 				{ "circular", "Circular", "Copies round the clicked part (early access)", function() pattern("circular") end },
 				{ "circular", "Copy round", "Copies round a point / line you pick", function() ENT.patStart("round") end },
 				{ "along", "Copy along", "Copies along lines you pick", function() ENT.patStart("along") end },
@@ -13347,7 +20549,7 @@ function ENT.ribDef()
 			} },
 			{ "Settings", {
 				{ box = "count", "Count", "How many copies" },
-				{ box = "spacing", "Spacing", "Gap between copies (studs)" },
+				{ box = "spacing", "Spacing", "Distance from one copy to the next (studs, middle to middle). Copy along: GAP mode uses it" },
 				{ box = "angle", "Angle", "Circular: total angle (degrees)" },
 				{ proxy = "patSpreadBtn", "Along: even spread or fixed spacing" },
 				{ proxy = "patPerSideBtn", "Count per side or in total" },
@@ -13359,17 +20561,25 @@ function ENT.ribDef()
 		} },
 		{ "PAINT", {
 			{ "Paint", {
-				{ "paint", "Paint mode", "Click parts to paint them (colour / material in the panel)", function() setMode("paint") end, "#paint" },
-				{ "pick", "Pick", "Copy colour + material from a part", function() setMode("paint") ENT.paintPicking = true ENT.paintRefresh() end },
-				{ "paintsel", "Paint selected", "Paint everything selected", function() ENT.paintSelected() end },
-				{ "start", "Back to sketch", "Leave paint mode", function() setMode("planes") end },
+				{ "paint", "Paint mode", "ON = click parts to paint them. Click again = OFF (back to normal)", function() setMode(mode == "paint" and "planes" or "paint") end, "#paint" },
+				{ "pick", "Pick", "ON = click a part to copy its colour + material. Click again = OFF", function() ENT.pickToggle() end, "&pick" },
 			} },
 			{ "Colour", {
-				{ box = "paintRGB", "R, G, B", "Colour as R, G, B (then Set) - swatches + materials are in the Panel" },
-				{ proxy = "paintSetBtn", "Use the typed colour" },
-				{ proxy = "paintColBtn", "Paint the colour on / off" },
-				{ proxy = "paintMatBtn", "Paint the material on / off" },
-				{ proxy = "paintFaceBtn", "Whole part or one face" },
+				{ proxy = "paintPickBtn", "Pick a colour from the hex picker" },
+				{ proxy = "paintMatPick", "Pick a material (Brick, Wood, Metal, Neon...)" },
+				{ proxy = "paintColBtn", "What gets painted: COLOUR + MATERIAL / COLOUR / MATERIAL (click to switch)" },
+				{ proxy = "paintFaceBtn", "Whole part / one face / brush (click to switch)" },
+			} },
+			{ "Decal", {
+				{ box = "decalBox", "Image / text", "An image ID (the number) or the words to write - goes on the face of the selected part that's towards you" },
+				{ proxy = "decalImgBtn", "Put the image on the selected part's face towards you" },
+				{ proxy = "decalTxtBtn", "Write the text on the selected part's face towards you" },
+			} },
+			{ "Brush", {
+				{ box = "brushR", "Radius", "Brush size (studs)" },
+				{ box = "brushS", "Strength", "How strong each dab is (0.05 - 1)" },
+				{ proxy = "brushSymBtn", "Mirror the brush across the part's middle (X)" },
+				{ proxy = "brushClearBtn", "Take all the brush paint off the picked part" },
 			} },
 		} },
 		{ "VIEW", {
@@ -13391,6 +20601,15 @@ function ENT.ribDef()
 				{ proxy = "detailBtn", "How many pieces curves get" },
 				{ proxy = "decorBtn", "Decor = no collision / no touch at all" },
 				{ proxy = "shadowBtn", "Small parts cast shadows or not" },
+			} },
+		} },
+		-- v3.42 (Dylan: "make help like the others"): HELP is a tab like the rest, not a text button on the strip
+		{ "HELP", {
+			{ "Learn", {
+				{ "hlpTut", "Tutorial", "Step-by-step lessons: your first block, cutting a door, rounds, revolve, copies, paint, shell, Views, saving", function() ENT.helpOpen("tut") end },
+				{ "hlpTools", "Every tool", "What every button does, how to use it and what it's good for", function() ENT.helpOpen("tools") end },
+				{ "hlpKeys", "Keys", "Every key and mouse shortcut", function() ENT.helpOpen("keys") end },
+				{ "hlpFix", "Fixes", "Something went wrong? What each message means and what to do", function() ENT.helpOpen("fix") end },
 			} },
 		} },
 	}
@@ -13428,11 +20647,21 @@ function ENT.buildRibbon()
 	root.BorderSizePixel = 0
 	root.Active = true
 	root.Parent = g
+	-- v2.88 (Dylan: "fix that UI tab to the top"): PINNED across the top of the 3D view by default (Unpin = float + drag)
+	ENT.ribFloatPos = root.Position
+	ENT.ribDock = true
+	pcall(function() local v = plugin:GetSetting("PROTO_ribDock") if v ~= nil then ENT.ribDock = v == true end end)
 	local cr = Instance.new("UICorner") cr.CornerRadius = UDim.new(0, 8) cr.Parent = root
 	local st = Instance.new("UIStroke") st.Color = Color3.fromRGB(70, 110, 160) st.Thickness = 1 st.Parent = root
 	local vl = Instance.new("UIListLayout") vl.SortOrder = Enum.SortOrder.LayoutOrder vl.Parent = root
 	root.MouseEnter:Connect(function() ENT.overHud = true end)
 	root.MouseLeave:Connect(function() ENT.overHud = false end)
+	-- v2.71: Studio paused PROTO (one of its tools took the mouse): any click on the toolbar takes it back
+	root.InputBegan:Connect(function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 and widget.Enabled and not active and not ENT.sleeping and not ENT.closing then
+			task.defer(function() if widget.Enabled and not active then turnOn() end end)
+		end
+	end)
 	ENT.ribRoot = root
 	-- top strip: grip, name, tabs, collapse, panel
 	local strip = Instance.new("Frame")
@@ -13487,7 +20716,7 @@ function ENT.buildRibbon()
 	for ti, tab in ipairs(def) do
 		local tb = txtBtn(tab[1], #tab[1] * 8 + 18, C.W)
 		ENT.ribTabs[tab[1]] = tb
-		tb.Activated:Connect(function() ENT.ribShow(tab[1]) end)
+		tb.Activated:Connect(function() ENT.ribShow(tab[1]) pcall(ENT.ribTabMode, tab[1]) end)
 		local page = Instance.new("Frame")
 		page.Name = tab[1]
 		page.BackgroundTransparency = 1
@@ -13539,6 +20768,27 @@ function ENT.buildRibbon()
 			glab.TextColor3 = Color3.fromRGB(150, 160, 180)
 			glab.Text = grp[1]
 			glab.Parent = gf
+			local smallGrid = nil   -- v3.05: small buttons, 2 rows (Dylan: "double up on the shapes and shrink them")
+			local stTop, stBot = nil, nil   -- v3.21: a "stack" group = the buttons on top, the number boxes under them
+			if grp.stack then
+				gl.FillDirection = Enum.FillDirection.Vertical
+				gl.Padding = UDim.new(0, 4)
+				local function sub(o)
+					local f = Instance.new("Frame")
+					f.BackgroundTransparency = 1
+					f.Size = UDim2.fromOffset(0, 26)
+					f.AutomaticSize = Enum.AutomaticSize.X
+					f.LayoutOrder = o
+					local l = Instance.new("UIListLayout")
+					l.FillDirection = Enum.FillDirection.Horizontal
+					l.SortOrder = Enum.SortOrder.LayoutOrder
+					l.Padding = UDim.new(0, 2)
+					l.Parent = f
+					f.Parent = row
+					return f
+				end
+				stTop, stBot = sub(1), sub(2)
+			end
 			for bi, it in ipairs(grp[2]) do
 				if it.proxy then
 					-- v2.40: a copy of a panel button (its text / colour / show-hide follow the panel one; click = its job)
@@ -13556,15 +20806,52 @@ function ENT.buildRibbon()
 						pb.TextColor3 = C.W
 						local pc = Instance.new("UICorner") pc.CornerRadius = UDim.new(0, 5) pc.Parent = pb
 						local function sync()
-							pb.Text = src.Text
+							pb.Text = (it.proxy == "paintPickBtn") and "" or src.Text   -- (v3.62: the colour button's word is on its blue tag)
+							if it.proxy == "paintMatPick" then pb.BackgroundColor3 = Color3.fromRGB(60, 62, 72) end
 							pb.BackgroundColor3 = src.BackgroundColor3
 							pb.Visible = src.Visible
 						end
 						sync()
+						if it.proxy == "paintPickBtn" or it.proxy == "paintMatPick" then
+							local isMat = it.proxy == "paintMatPick"
+							-- v3.03: the HEX PICKER - wider than the other buttons so it doesn't look like the hex box.
+							-- v3.62 (Dylan: "I hate this box"): a plain BLACK edge (no rainbow), and the word "Colour" sits on its
+							-- own small blue tag in the middle, so it reads on any colour. The button itself shows the colour.
+							pb.Size = UDim2.fromOffset(96, 50)
+							pb.Text = isMat and src.Text or ""
+							local st = Instance.new("UIStroke")
+							st.Thickness = 2
+							st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+							st.Color = Color3.new(0, 0, 0)
+							st.Parent = pb
+							local tag = Instance.new("TextLabel")
+							tag.Name = "Tag"
+							tag.AnchorPoint = Vector2.new(0.5, 0.5)
+							tag.Position = UDim2.fromScale(0.5, 0.5)
+							tag.Size = UDim2.fromOffset(56, 20)
+							tag.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
+							tag.BorderSizePixel = 0
+							tag.Font = Enum.Font.GothamBold
+							tag.TextSize = 11
+							tag.TextColor3 = Color3.new(1, 1, 1)
+							tag.Text = isMat and "Material" or "Colour"
+							local tc = Instance.new("UICorner") tc.CornerRadius = UDim.new(0, 4) tc.Parent = tag
+							tag.Parent = pb
+							if isMat then
+								-- v3.63: the material's name under its tag
+								tag.Size = UDim2.fromOffset(64, 18)
+								tag.Position = UDim2.fromScale(0.5, 0.36)
+								pb.TextYAlignment = Enum.TextYAlignment.Bottom
+								pb.TextSize = 10
+								pb.TextColor3 = Color3.new(1, 1, 1)
+								local pp = Instance.new("UIPadding") pp.PaddingBottom = UDim.new(0, 5) pp.Parent = pb
+							end
+						end
 						src:GetPropertyChangedSignal("Text"):Connect(sync)
 						src:GetPropertyChangedSignal("BackgroundColor3"):Connect(sync)
 						src:GetPropertyChangedSignal("Visible"):Connect(sync)
-						pb.Parent = row
+						pb.Parent = stTop or row
+						if stTop then pb.Size = UDim2.fromOffset(86, 26) end
 						pb.MouseEnter:Connect(function() ENT.ribTip = src.Text .. ":  " .. it[1] ENT.ribPaint() end)
 						pb.MouseLeave:Connect(function() ENT.ribTip = nil ENT.ribPaint() end)
 						pb.Activated:Connect(function()
@@ -13585,8 +20872,8 @@ function ENT.buildRibbon()
 					local f = Instance.new("Frame")
 					f.LayoutOrder = bi
 					f.BackgroundTransparency = 1
-					f.Size = UDim2.fromOffset((it.box == "paintRGB") and 92 or 54, 60)
-					f.Parent = row
+					f.Size = UDim2.fromOffset((it.box == "paintRGB") and 92 or (it.box == "decalBox") and 110 or 54, 60)
+					f.Parent = stBot or row
 					local tb = Instance.new("TextBox")
 					tb.Position = UDim2.fromOffset(4, 8)
 					tb.Size = UDim2.new(1, -8, 0, 24)
@@ -13609,6 +20896,15 @@ function ENT.buildRibbon()
 					lb.TextColor3 = C.W
 					lb.Text = it[1]
 					lb.Parent = f
+					if stBot then
+						-- (stacked: the name on the left, the box beside it)
+						f.Size = UDim2.fromOffset(86, 26)
+						lb.Position = UDim2.fromOffset(2, 0)
+						lb.Size = UDim2.new(0, 34, 1, 0)
+						lb.TextXAlignment = Enum.TextXAlignment.Left
+						tb.Position = UDim2.fromOffset(38, 1)
+						tb.Size = UDim2.new(1, -40, 1, -2)
+					end
 					tb.FocusLost:Connect(function(enter)
 						if not src then return end
 						src.Text = tb.Text
@@ -13629,13 +20925,31 @@ function ENT.buildRibbon()
 				local longest = 0
 				for w in it[2]:gmatch("%S+") do longest = math.max(longest, #w) end
 				b.Size = UDim2.fromOffset(math.max(50, longest * 7 + 2), 60)   -- a long word (Dimension) gets a wider button, not a broken one
+				if it.small and not smallGrid then
+					local nSmall = 0
+					for _, o in ipairs(grp[2]) do if o.small then nSmall += 1 end end
+					smallGrid = Instance.new("Frame")
+					smallGrid.Name = "Small"
+					smallGrid.LayoutOrder = bi
+					smallGrid.BackgroundTransparency = 1
+					smallGrid.Size = UDim2.fromOffset(math.ceil(nSmall / 2) * 31, 60)
+					smallGrid.Parent = row
+					local gl2 = Instance.new("UIGridLayout")
+					gl2.CellSize = UDim2.fromOffset(30, 28)
+					gl2.CellPadding = UDim2.fromOffset(1, 3)
+					gl2.FillDirection = Enum.FillDirection.Horizontal
+					gl2.FillDirectionMaxCells = math.ceil(nSmall / 2)
+					gl2.SortOrder = Enum.SortOrder.LayoutOrder
+					gl2.Parent = smallGrid
+					local sp2 = Instance.new("UIPadding") sp2.PaddingTop = UDim.new(0, 1) sp2.Parent = smallGrid
+				end
 				b.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
 				b.BackgroundTransparency = 1
 				b.BorderSizePixel = 0
 				b.AutoButtonColor = false
 				b.Text = ""
 				local bc = Instance.new("UICorner") bc.CornerRadius = UDim.new(0, 5) bc.Parent = b
-				b.Parent = row
+				b.Parent = it.small and smallGrid or row
 				local ic = ENT.drawIcon(b, it[1])
 				ic.AnchorPoint = Vector2.new(0.5, 0)
 				ic.Position = UDim2.new(0.5, 0, 0, 4)
@@ -13650,7 +20964,22 @@ function ENT.buildRibbon()
 				lb.TextYAlignment = Enum.TextYAlignment.Top
 				lb.Text = it[2]
 				lb.Parent = b
+				if it.small then
+					-- small: just the icon (v3.06, Dylan: "it does not need names people can see them") - hover still says what it is
+					local us = Instance.new("UIScale") us.Scale = 0.8 us.Parent = ic
+					ic.AnchorPoint = Vector2.new(0.5, 0.5)
+					ic.Position = UDim2.fromScale(0.5, 0.5)
+					lb.Visible = false
+				end
 				local rec = { b = b, key = it[5], lb = lb, base = it[2] }
+				if it.alt then
+					-- v3.09: a button that swaps (Start <-> Exit sketch): the 2nd icon, hidden till it swaps
+					local ic2 = ENT.drawIcon(b, it.alt[1])
+					ic2.AnchorPoint = ic.AnchorPoint
+					ic2.Position = ic.Position
+					ic2.Visible = false
+					rec.ic, rec.ic2, rec.alt = ic, ic2, it.alt
+				end
 				table.insert(ENT.ribBtns, rec)
 				b.MouseEnter:Connect(function() rec.hover = true ENT.ribTip = it[2] .. ":  " .. it[3] ENT.ribPaint() end)
 				b.MouseLeave:Connect(function() rec.hover = false ENT.ribTip = nil ENT.ribPaint() end)
@@ -13663,6 +20992,18 @@ function ENT.buildRibbon()
 			end
 		end
 	end
+	-- v3.54: SAVE (manual mesh saving, Dylan) + Auto toggle
+	local sv = txtBtn("Saved", 74, C.D, true)
+	ENT.ribSaveBtn = sv
+	sv.Activated:Connect(function() local ok, e = pcall(ENT.saveNow) if not ok then warn("PROTO save: " .. tostring(e)) end end)
+	sv.MouseEnter:Connect(function() ENT.ribTip = "Save:  sends your changed PROTO parts to Roblox so they show in the published game. Until then they only live in this Studio session." ENT.ribPaint() end)
+	sv.MouseLeave:Connect(function() ENT.ribTip = nil ENT.ribPaint() end)
+	local au = txtBtn("Auto: off", 62, C.D)
+	ENT.ribAutoBtn = au
+	au.Activated:Connect(function() pcall(ENT.autoSaveToggle) end)
+	au.MouseEnter:Connect(function() ENT.ribTip = "Auto save:  on = every change saves by itself a moment after you stop (the part flickers as it swaps). Off = only when you press Save." ENT.ribPaint() end)
+	au.MouseLeave:Connect(function() ENT.ribTip = nil ENT.ribPaint() end)
+	pcall(ENT.saveBtnUpd)
 	-- right end of the strip: hide / show the tools, open the settings panel
 	local fold = txtBtn("—", 24, C.D, true)
 	fold.Activated:Connect(function()
@@ -13672,7 +21013,18 @@ function ENT.buildRibbon()
 	end)
 	pcall(function() if plugin:GetSetting("PROTO_ribFold") then body.Visible = false fold.Text = "+" end end)
 	local opt = txtBtn("Panel", 46, C.B)
-	opt.Activated:Connect(function() widget.Enabled = true end)
+	opt.Activated:Connect(function()
+		widget.Enabled = true
+		if ENT.sideTab then ENT.sideTab(ENT.sideTabNow == "side" and "all" or "side") end
+	end)
+	-- v2.88: pin to the top / float
+	local pin = txtBtn(ENT.ribDock and "Unpin" or "Pin top", 58, C.D)
+	ENT.ribPinBtn = pin
+	pin.Activated:Connect(function()
+		ENT.ribDock = not ENT.ribDock
+		pcall(function() plugin:SetSetting("PROTO_ribDock", ENT.ribDock) end)
+		ENT.ribApplyDock()
+	end)
 	-- the hint line under the buttons (hover = what the button does, otherwise PROTO's status)
 	local tip = Instance.new("TextLabel")
 	tip.Name = "Hint"
@@ -13690,7 +21042,7 @@ function ENT.buildRibbon()
 	U.status:GetPropertyChangedSignal("Text"):Connect(function() if not ENT.ribTip then tip.Text = U.status.Text end end)
 	-- drag by the :: grip (where it was is remembered)
 	grip.InputBegan:Connect(function(i)
-		if i.UserInputType == Enum.UserInputType.MouseButton1 then
+		if i.UserInputType == Enum.UserInputType.MouseButton1 and not ENT.ribDock then
 			ENT.ribDrag = { m = i.Position, p = root.Position }
 		end
 	end)
@@ -13707,9 +21059,13 @@ function ENT.buildRibbon()
 			if i.UserInputType == Enum.UserInputType.MouseButton1 and ENT.ribDrag then
 				ENT.ribDrag = nil
 				local p = root.Position
+				ENT.ribFloatPos = p
 				pcall(function() plugin:SetSetting("PROTO_ribPos2", { p.X.Scale, p.X.Offset, p.Y.Scale, p.Y.Offset }) end)
 			end
 		end),
+		-- v2.88: the FEATURES panel sits just under the toolbar
+		root:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() if ENT.detailPlace then pcall(ENT.detailPlace) end end),
+		g:GetPropertyChangedSignal("Enabled"):Connect(function() if ENT.detailPlace then pcall(ENT.detailPlace) end end),
 	}
 	grip.InputEnded:Connect(function(i)
 		if i.UserInputType == Enum.UserInputType.MouseButton1 and ENT.ribDrag then
@@ -13721,7 +21077,8 @@ function ENT.buildRibbon()
 	local last = "SKETCH"
 	pcall(function() last = plugin:GetSetting("PROTO_ribTab") or "SKETCH" end)
 	ENT.ribShow(ENT.ribPages[last] and last or "SKETCH")
-	if ENT.ribOldPos then
+	ENT.ribApplyDock()
+	if ENT.ribOldPos and not ENT.ribDock then
 		-- where the old (centre-pinned) toolbar sat -> same left edge, now pinned there
 		task.defer(function()
 			local o = ENT.ribOldPos
@@ -13736,6 +21093,52 @@ function ENT.buildRibbon()
 		end)
 	end
 end
+-- v2.88: pinned = full width across the top of the 3D view; floating = where it was dragged to
+function ENT.ribApplyDock()
+	local root = ENT.ribRoot
+	if not root then return end
+	root.AnchorPoint = Vector2.new(0, 0)
+	if ENT.ribDock then
+		root.Position = UDim2.fromOffset(0, 0)
+		root.Size = UDim2.new(1, 0, 0, 0)
+		root.AutomaticSize = Enum.AutomaticSize.Y
+		root.ClipsDescendants = true
+	else
+		root.Position = ENT.ribFloatPos or UDim2.fromOffset(12, 8)
+		root.Size = UDim2.fromOffset(0, 0)
+		root.AutomaticSize = Enum.AutomaticSize.XY
+		root.ClipsDescendants = false
+	end
+	-- v3.03: pinned = the groups wrap onto another line when the view is too narrow (Dylan: "where is the hex" -
+	-- the Brush group was cut off the right of the screen)
+	local dock = ENT.ribDock
+	local body = ENT.ribBody
+	if body then
+		body.Size = dock and UDim2.new(1, 0, 0, 0) or UDim2.fromOffset(0, 80)
+		body.AutomaticSize = dock and Enum.AutomaticSize.Y or Enum.AutomaticSize.X
+	end
+	for _, pg in pairs(ENT.ribPages or {}) do
+		pg.Size = dock and UDim2.new(1, 0, 0, 0) or UDim2.fromOffset(0, 80)
+		pg.AutomaticSize = dock and Enum.AutomaticSize.Y or Enum.AutomaticSize.X
+		local l = pg:FindFirstChildOfClass("UIListLayout")
+		if l then pcall(function() l.Wraps = dock end) end
+	end
+	if ENT.ribPinBtn then ENT.ribPinBtn.Text = ENT.ribDock and "Unpin" or "Pin top" end
+	if ENT.detailPlace then pcall(ENT.detailPlace) end
+end
+-- v3.58 (Dylan: "when I paint it still adds planes - there should be no planes on paint"): the tab you click sets the
+-- mode. PAINT = paint mode (no planes). Leaving PAINT = back to normal. Mirror (PATTERN tab) ends when you go to another tab.
+-- (VIEW / HELP only look - they don't change the mode.)
+function ENT.ribTabMode(name)
+	if not active then return end
+	if name == "PAINT" then
+		if mode ~= "paint" then setMode("paint") end
+	elseif name == "VIEW" or name == "HELP" then
+		return
+	elseif mode == "paint" or (mode == "mirror" and name ~= "PATTERN") then
+		setMode("planes")
+	end
+end
 function ENT.ribShow(name)
 	ENT.ribTab = name
 	for k, pg in pairs(ENT.ribPages) do pg.Visible = (k == name) end
@@ -13748,6 +21151,7 @@ function ENT.ribShow(name)
 end
 -- light up what's on: the current tool, the mode, ACCEPT / CANCEL while a preview is open
 function ENT.ribPaint()
+	if ENT.featRefresh then pcall(ENT.featRefresh) end   -- v3.20
 	if not ENT.ribBtns then return end
 	if ENT.ribHint then ENT.ribHint.Text = ENT.ribTip or U.status.Text end
 	for _, r in ipairs(ENT.ribBtns) do
@@ -13768,6 +21172,9 @@ function ENT.ribPaint()
 			elseif k == "&views" then on = ENT.mv ~= nil
 			elseif k == "&efillet" then on = ENT.edgeTool == "fillet"
 			elseif k == "&echamfer" then on = ENT.edgeTool == "chamfer"
+			elseif k == "&shell" then on = ENT.shellTool ~= nil
+			elseif k == "&pick" then on = mode == "paint" and ENT.paintPicking == true   -- v3.61
+			elseif k == "#paint" then on = mode == "paint" and not ENT.paintPicking
 			elseif k:sub(1, 1) == "#" then on = mode == k:sub(2)
 			else on = sk ~= nil and tool == k end
 		end
@@ -13783,6 +21190,12 @@ function ENT.ribPaint()
 			on = (k == "@cancel") or nP > 0
 			if k == "@accept" then lbl = (nP > 0) and ("Go (" .. nP .. ")") or "Pick areas" end
 		end
+		if r.alt then
+			local sw = (sk ~= nil) or ENT.sketchStarted == true
+			r.ic.Visible, r.ic2.Visible = not sw, sw
+			if sw then lbl = r.alt[2] end
+			on = false
+		end
 		if r.lb and lbl and r.lb.Text ~= lbl then r.lb.Text = lbl end
 		r.b.BackgroundTransparency = on and 0.15 or (r.hover and 0.75 or 1)
 		r.b.BackgroundColor3 = pickMe and COL.arrow
@@ -13797,6 +21210,454 @@ function ENT.ribVisible(on)
 	pcall(ENT.ribPaint)
 end
 
+-- ===== v3.41 HELP + TUTORIAL (Dylan: "add a help panel with a full tutorial and explain all the features and uses") =====
+-- Its own window (dock widget "PROTO Help"): TUTORIAL (lessons, one step at a time), TOOLS (every button: what it does,
+-- how to use it, what it's good for), KEYS, FIXES (when something goes wrong). A search box filters TOOLS / KEYS / FIXES.
+-- Opened from the "?" on the toolbar strip and the HELP section of the panel. Built the first time it's opened.
+ENT.HELP = {}
+ENT.HELP.lessons = {
+	{ t = "1. Your first block", steps = {
+		"Turn PROTO on with the PROTO button in Studio's Plugins tab. The PROTO toolbar appears across the top of the 3D view.",
+		"SKETCH tab > Start. Three see-through planes appear where you're looking: Front, Top and Right.",
+		"Click the Top plane (the flat one). You're now sketching on it - the camera turns to look straight at it.",
+		"Pick Rect in the Draw group (hover the small icons to see their names). Click once for the middle, then once for a corner. A light orange area = a closed shape you can build.",
+		"Want an exact size? Before you click, turn on Exact size in PROPERTIES on the right and type W and H. Then one click places it.",
+		"FEATURES tab > Extrude. A blue preview appears. Drag the orange ball to set how tall it is (Shift = fine steps, Ctrl = no snapping).",
+		"Press Accept (or Enter). Your block is real. Esc leaves the sketch. Ctrl+Z undoes any step.",
+	} },
+	{ t = "2. Cut a door", steps = {
+		"Hold Shift and move over a wall of your block - the face under the mouse lights up. Shift-click it: a sketch starts flat on that face.",
+		"Pick Rect 2pt (one corner, then the opposite one). Draw a door shape touching the bottom edge.",
+		"Need it exact? Select tool > double-click a line of the rectangle and type its length.",
+		"FEATURES > Cut. The red preview shows what will go. Drag the orange ball so it goes through the wall.",
+		"Accept / Enter. The door is cut. The part remembers the cut - you can change it later (lesson 4).",
+	} },
+	{ t = "3. Round and chamfer edges", steps = {
+		"FEATURES > Fillet edge (round) or Chamfer edge (flat).",
+		"Type the Size in PROPERTIES (how big the round / chamfer is).",
+		"Move over an edge - the one right under the mouse lights up green (lighter green = an inside edge: it gets filled). Click it - done.",
+		"Click more edges to add more (corners join up). Ctrl+Z undoes the last one. Esc = stop.",
+	} },
+	{ t = "4. Change it later (FEATURES list)", steps = {
+		"Click a PROTO part. The FEATURES list on the right shows every step that made it: block, cuts, rounds, shell, paint.",
+		"Change a number in a step and press Enter - the part rebuilds with it. One Ctrl+Z puts it back.",
+		"Press X on a step to take it out.",
+		"Double-click a Cut row: its sketch opens (the part goes see-through). Change the drawing, then Enter / Accept to rebuild. Esc twice = leave it as it was.",
+		"The triangle count at the top shows how heavy the part is: green is light, amber is OK, red is heavy.",
+	} },
+	{ t = "5. Revolve a pillar or vase", steps = {
+		"Start a sketch on the Front plane.",
+		"Draw a straight line for the middle (Centre line works well), then draw HALF the outline beside it as a closed shape.",
+		"FEATURES > Revolve. If asked, click the area. Then click the centre line (or press Enter for the suggested one).",
+		"Angle 360 = all the way round. Sides = how smooth (more sides = more triangles). Accept.",
+		"Rev cut does the same but cuts away - for grooves, round holes and bowls.",
+	} },
+	{ t = "6. Copies: mirror and pattern", steps = {
+		"MIRROR: PATTERN tab > Mirror mode. Click the parts to copy (Ctrl-click for more), then click a plane. Click a face of the build first and the copy lands right against that face.",
+		"COPIES IN A ROW: click a part, press Linear. See-through copies appear - pull the blue arrow for more, the green one for stairs, the red one to grow / shrink. Enter = place them.",
+		"ALONG A PATH: open a sketch and draw the path. Copy along > click the lines (orange) > Enter > click the parts to copy > Enter.",
+		"ROUND A POINT: open a sketch, Copy round > click a point, circle or line > click the parts > Enter.",
+		"Count includes the original. The most is 500 copies.",
+	} },
+	{ t = "7. Paint and brush", steps = {
+		"PAINT tab > Paint mode. Pick a colour with Colour (the hex picker), then click parts.",
+		"Paint: WHOLE PART / ONE FACE / BRUSH switches what a click paints.",
+		"ONE FACE on a PROTO part puts the colour into the mesh - it stays when the part rebuilds. Shift-click = clear it.",
+		"BRUSH: drag over a PROTO part. Radius and Strength are in the Brush group. Shift = paint back to the part's own colour. X sym mirrors the brush.",
+		"Materials are picked in the panel's ALL TOOLS tab > PAINT section. Click Paint mode again to turn it off.",
+	} },
+	{ t = "8. Hollow it out (Shell)", steps = {
+		"Click a part. FEATURES > Shell.",
+		"Set the Wall thickness in PROPERTIES.",
+		"Click the flat faces you want left OPEN (they go green). Click again to close one. None picked = a closed hollow.",
+		"Press Hollow (or Enter). Shell is a step in the FEATURES list, so you can change the wall later.",
+	} },
+	{ t = "9. Hulls and cars with Views", steps = {
+		"FEATURES > Views. A purple bar appears.",
+		"Tick FRONT, SIDE and/or TOP (at least 2), then CONTINUE.",
+		"Draw one closed outline on each view: the shape seen from that side. NEXT > moves on, < Back goes back.",
+		"On the last view press BUILD (smooth net) or Overlap (blocky). PROTO keeps only where all the views overlap.",
+	} },
+	{ t = "10. Saving and publishing", steps = {
+		"PROTO builds real meshes and saves each one to Roblox straight after you build it, so it shows in the published game.",
+		"One-time setup: File > Beta Features > tick CreateAssetAsync Lua API, save, restart Studio.",
+		"Then Game Settings > Security > turn on Allow Mesh / Image APIs (publish the place first).",
+		"Output says 'Mesh READY' when it's all set. Your changes stay in this Studio session until you press SAVE (top bar, next to HELP; it shows how many are waiting) - or turn Auto on. Closing PROTO saves them too. If a part says MESH NOT SAVED, fix the reason shown, then press SAVE again.",
+	} },
+}
+-- every tool, by toolbar tab: { name, what it does, how to use it, good for, (note) }
+ENT.HELP.tools = {
+	{ g = "SKETCH tab", items = {
+		{ "Start", "Puts Front / Top / Right planes where you're looking. Press again = Exit sketch.", "Press it, then click a plane to sketch on it. Or just click any part - its planes appear through its middle.", "Starting a new build on empty ground." },
+		{ "Shift-click a face", "Sketch straight on the face under the mouse.", "Hold Shift (the face lights up), then click.", "Doors, windows, details on one wall - even inside a group or a pocket." },
+		{ "Line", "A chain of straight lines.", "Click point after point. Click the start again = closed shape. Double-click / Enter / Esc = stop. Press A = the next piece is a tangent arc.", "Floor plans, ramps, odd outlines.", "Yellow words show snaps: HORIZONTAL, VERTICAL, PARALLEL, PERPENDICULAR, TANGENT, END, MIDPOINT, CENTRE. Ctrl = no snapping." },
+		{ "Tangent arc", "An arc that carries on smoothly from a line's end.", "Click the END of a line or arc, then where the arc finishes.", "Rounded corners on a track or path." },
+		{ "Centre line", "A guide line that goes the same way both sides.", "Click the middle, then one end.", "Symmetry lines and revolve axes. Guides don't make areas." },
+		{ "Rect / Rect 2pt / Rect 3pt", "Rectangles: from the centre, from a corner, or at any angle.", "Rect: centre then corner. Rect 2pt: corner then opposite corner. Rect 3pt: one edge, then how wide.", "Walls, slabs, doors, windows.", "Exact size (PROPERTIES) = type W and H, then one click places it." },
+		{ "Circle / Circle 3pt", "Circles.", "Circle: centre then edge. Circle 3pt: click 3 points it goes through.", "Pillars, holes, wheels." },
+		{ "Arc", "Part of a circle.", "Centre, start, end. Hold Alt = the long way round.", "Arch tops." },
+		{ "Ellipse", "An oval.", "Centre, end of the long side, then how wide.", "Oval windows, rugs." },
+		{ "Slot", "A pill shape.", "Centre of each end, then how wide.", "Slots, rounded openings." },
+		{ "Polygon", "A shape with equal sides.", "Centre, then a corner. Sides: PROPERTIES (3 to 64).", "Hex tiles, towers." },
+		{ "Spline", "A smooth curve.", "Click points. Click the first again = closed. Enter = finish it open.", "Signs, organic paths." },
+		{ "Double line", "A wall of a set thickness round a path.", "Click along the path, Enter = done. Click the first point = a ring. Thickness and Middle / Side in PROPERTIES.", "Building walls, fences." },
+		{ "Point", "A dot you can snap to.", "One click.", "A pattern centre, a reference spot." },
+		{ "Select", "Pick and change drawings.", "Click a drawing. Drag a corner / side to reshape, drag the middle dot to move. Double-click a line = type its size. Ctrl-click = pick one edge (Delete removes it).", "Tidying and resizing shapes." },
+		{ "Dimension", "Set a size exactly.", "Click a line or circle, type the size, Enter. Click a second line = type the angle.", "Exact lengths and angles." },
+		{ "Trim", "Cut a piece away up to where lines cross.", "Click the piece. Hold and drag = trim everything you cross.", "Cleaning up overlapping shapes." },
+		{ "Split", "Break a line anywhere.", "Click the line where it should break.", "Making a corner or a gap." },
+		{ "Extend", "Grow a line to the next drawing.", "Click near the line's end.", "Closing gaps between lines." },
+		{ "Cut pt-pt", "Remove the bit between two points.", "Click two points. On a closed shape the shorter way round goes.", "Openings in an outline." },
+		{ "Undo shape / Delete", "Take back the last drawing / delete the picked one.", "Press the button (or the Delete key).", "" },
+		{ "Move plane", "Slide or tilt the sketch plane. Drawings move with it.", "While sketching, turn SKETCH > Plane > Move plane ON. Then drag the orange arrows at the plane's middle to slide it (grid steps), the rings to tilt it (5 degree steps; Ctrl = free). Or type in Move. Reset plane = back where it started. Click it again (or leave the sketch) to hide the handles.", "Sketching a little above a face, or on a slope / angled roof." },
+		{ "Edges / Edges -> lines", "Shows the part's real edges as yellow lines to snap to / turns them into drawing lines.", "Toggle Edges, or press Edges -> lines.", "Tracing an existing part." },
+		{ "Lengths", "Shows every line's length (circles: diameter).", "Toggle it.", "Checking sizes at a glance." },
+		{ "Grid", "The snap step in studs.", "Type it. Shift = 1/10, Ctrl = free.", "" },
+	} },
+	{ g = "FEATURES tab", items = {
+		{ "Accept / Cancel", "Make the preview real / throw it away.", "Accept or Enter. Cancel or Esc.", "" },
+		{ "Extrude", "Pulls closed areas into a solid.", "One area: a preview appears straight away. Several: click the ones you want (blue, Shift = add / take away), then Extrude or Enter. Drag the orange ball (depth) or purple ball (start). Accept.", "Walls, floors, props.", "The end snaps level with nearby faces (yellow). Pressing Cut instead switches the preview to a cut." },
+		{ "Cut", "Cuts the areas out of the parts they touch.", "Same as Extrude, but the preview is a RED ghost showing what will be taken away. Nothing is cut until you press ACCEPT.", "Doors, windows, holes, pockets.", "Cut hits: everything it touches / only this object (PROPERTIES). Locked parts and the baseplate are skipped." },
+		{ "Overlap", "Keeps only where the drawing and the part overlap.", "Sketch on a part, draw a closed area, press Overlap. With nothing drawn it opens Views.", "Trimming a block to a profile." },
+		{ "Views", "Builds a shape from 2 or 3 side views.", "Tick FRONT / SIDE / TOP, CONTINUE, draw one outline per view, BUILD.", "Boat hulls, cars, planes." },
+		{ "Revolve / Rev cut", "Spins a half-outline round a centre line (adds / cuts).", "Draw half the shape beside a straight line, press Revolve, click the line (Enter = suggested). Angle and Sides in PROPERTIES.", "Pillars, vases, wheels, grooves, bowls.", "Early access. Under 360 degrees the shape must sit on one side of the line." },
+		{ "Fillet edge / Chamfer edge", "Rounds / cuts flat any edges of a part - pick them, size them live, done.", "Press it. Click edges to pick them (orange; click again = drop). Drag the orange arrow or type Size - you see it live. Enter = make it (all picked edges at once). Esc = drop picks / stop. Each edge is a step you can change later.", "Soft corners, bevelled tops, rounded pockets.", "Works on blocks, cylinders and anything PROTO built. 'Too big' = the faces beside the edge are smaller than the size." },
+		{ "Shell", "Hollows a part to a wall thickness.", "Press it, set Wall, click the flat faces to leave open (green), then Hollow or Enter.", "Boxes, cups, rooms from a block." },
+		{ "Whole object", "ON = one box round everything joined. OFF = one per build.", "Toggle it.", "Sketching on the middle of a joined-up build." },
+		{ "Group feature / Straighten", "Gathers loose pieces into one group / lines up tilted planes.", "Click the part, press the button.", "Tidying older builds." },
+		{ "Face pull", "Drag one face of a part in or out.", "Press it, click a face, drag the orange handle - or type Amount and press + / -.", "Quick resizing of plain parts." },
+	} },
+	{ g = "PATTERN tab", items = {
+		{ "Mirror mode", "Copies parts across a plane, flipped.", "Click parts (Ctrl-click for more), then click a plane. Click a face first = the copy lands against it.", "Symmetric buildings, left and right doors." },
+		{ "Box faces / Sketch / Front / Top / Right", "Mirror the selected parts across that plane.", "Select parts, press the button.", "" },
+		{ "Linear", "Copies in rows, any direction - see-through copies show where they'll go first.", "Click a part (or select some), press Linear. Pull a BLUE arrow on any of the 6 sides for copies that way - two ways = a grid. GREEN arrow up = each copy along the X row higher (stairs), RED = bigger / smaller. X+ X- Z+ Z- Y+ Y-, Gap, Rise, Scale %, Turn are in PROPERTIES. Enter = place, Esc = cancel.", "Fences, floors of tiles, shelves, stairs, towers that get smaller.", "Bigger / smaller copies keep their shape as it is (their FEATURES steps start fresh)." },
+		{ "Circular", "Copies round the clicked part.", "Set Count and Angle, press Circular.", "Columns round a tower.", "Early access." },
+		{ "Copy round", "Copies round a point or line you pick.", "In a sketch: Copy round > click a point / circle / line > click the parts > Enter.", "Spokes, chairs round a table." },
+		{ "Copy along", "Copies along lines you pick.", "In a sketch: Copy along > click lines > Enter > click the parts > Enter.", "Lights along a path, posts round a fence." },
+		{ "Centre", "Moves the selected parts onto the target's centre.", "Select, press Centre.", "Lining things up." },
+		{ "Settings", "Count, Spacing, Angle, Along EVEN / GAP, Count PER SIDE / TOTAL, Corners, Middle, Flip, Axis.", "Set them before pressing a pattern button.", "", "Count includes the original. Max 500 copies." },
+	} },
+	{ g = "PAINT tab", items = {
+		{ "Paint mode", "Click parts to paint them.", "Press it, pick a colour, click parts. Each click is one undo step.", "Colouring builds." },
+		{ "Pick", "Copy colour + material from a part.", "", "" },
+		{ "Colour", "Opens the hex colour picker.", "Click a colour. Click outside to close.", "" },
+		{ "WHOLE PART / ONE FACE / BRUSH", "What a click paints.", "Click to switch. ONE FACE: Shift-click = clear. BRUSH: drag over a PROTO part, Shift = paint back.", "Details, worn edges, two-tone parts.", "One face can only change colour (Roblox can't give one face its own material)." },
+		{ "Brush settings", "Radius, Strength, X sym, Clear brush.", "Set them before brushing. Clear brush takes all brush paint off the picked part.", "" },
+		{ "Image / text decal", "Puts an image ID or words on the face of the selected part that's towards you.", "Type the ID or text, press Add image / Add text.", "Signs, posters, labels." },
+	} },
+	{ g = "VIEW tab", items = {
+		{ "Front / Back / Left / Right / Top / Bottom / Iso", "Turns the camera to look from that side of the clicked part.", "", "" },
+		{ "Normal to", "Looks straight at the sketch.", "", "" },
+		{ "Collision", "HULL / PRECISE / BOX for new builds.", "Hull is lightest that still feels solid.", "" },
+		{ "Detail", "LOW / MED / HIGH: how many pieces curves get.", "", "Lower = fewer triangles = faster games." },
+		{ "Decor / Small shadows", "Decor = no collision or touch at all. Small shadows OFF = parts under 2 studs cast no shadow.", "", "Lighter scenery." },
+		{ "Buttons here too", "Shows the tool buttons in the side panel as well.", "", "" },
+	} },
+	{ g = "PANEL (right side)", items = {
+		{ "PROPERTIES", "Settings for the tool you're using or the drawing you picked.", "Type numbers and press Enter.", "Exact sizes, depth, round size, wall thickness." },
+		{ "FEATURES list", "Every step that made the picked part.", "Change a number + Enter = rebuild. X = take the step out. Double-click a Cut = edit its sketch.", "Changing things later without starting again." },
+		{ "Sleep", "Esc twice with nothing to cancel = PROTO lets go of the mouse.", "Click REACTIVATE to wake it.", "Using Studio's own tools for a while." },
+	} },
+}
+ENT.HELP.keys = {
+	{ "Esc", "Cancel / go back one step. With nothing left: leave the sketch. Twice quickly = sleep." },
+	{ "Enter", "Accept / finish a line or spline / go with a pattern / Hollow. In a sketch with nothing else going on = Extrude." },
+	{ "Shift", "Fine grid (1/10). Held on the placing click = the tool stays on. Shift-click a face = sketch on it. Shift-click areas = add / take away." },
+	{ "Ctrl", "No snapping. Ctrl-click = pick one edge / add parts to the selection." },
+	{ "Alt", "Arc the long way round. Move drawings freely." },
+	{ "Delete / Backspace", "Delete the picked drawing, the picked edges, or break at the picked point." },
+	{ "Space", "In a sketch: look from the other side." },
+	{ "A", "While drawing lines: the next piece is a tangent arc (A again = straight)." },
+	{ "Double-click", "Select: a line or circle = type its size. Line chain = stop. FEATURES: a Cut = edit its sketch." },
+	{ "Ctrl+Z / Ctrl+Y", "Undo / redo - every PROTO step is its own undo step." },
+	{ "Hotkeys", "File > Customize Shortcuts, search PROTO (on/off, views, extrude, cut, draw tools, revolve, trim, dimension...)." },
+}
+ENT.HELP.fixes = {
+	{ "It says 'PROTO can't build yet'", "Mesh saving isn't set up. File > Beta Features > tick CreateAssetAsync Lua API, restart Studio. Then Game Settings > Security > Allow Mesh / Image APIs (publish the place first). Output says 'Mesh READY' when done." },
+	{ "A part says MESH NOT SAVED / checkered cubes in game", "Not saved yet, or the upload failed - Output says why. Press SAVE (top bar) - it saves every PROTO part that's waiting." },
+	{ "'step N (edge) - that edge isn't there any more'", "A step changed the part so that edge is gone (another round or cut took it). Take that step out with X, or click the edge again." },
+	{ "'too big - the faces beside that edge are only X studs'", "The round / chamfer is bigger than the faces next to the edge. Use a smaller Size." },
+	{ "'that edge already has this chamfer (step N)'", "That edge is done already. Change its size in the FEATURES list instead of clicking again." },
+	{ "Clicks do nothing / PAUSED", "Another Studio tool (Move, Scale...) took the mouse. Click any PROTO button to carry on." },
+	{ "Big green REACTIVATE", "PROTO is asleep (Esc twice). Click REACTIVATE." },
+	{ "The part looks dark / see-through after editing a cut", "You're still editing the cut's sketch. Enter / Accept to rebuild, or Esc twice to leave it as it was." },
+	{ "Still working - one moment", "PROTO is rebuilding the part. Wait a second and try again." },
+	{ "Report a bug", "Say your version (" .. DIM_VERSION .. "), what you did and what went wrong - a screenshot helps a lot. The feedback link is on the PROTO page in the Creator Store." },
+}
+function ENT.helpBuild()
+	if ENT.helpGui then return ENT.helpGui end
+	local W = plugin:CreateDockWidgetPluginGui("PROTO_Help",
+		DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Float, false, true, 440, 620, 320, 360))
+	W.Title = "PROTO Help"
+	W.Name = "PROTO_Help"
+	W.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	ENT.helpGui = W
+	local BG, CARD, TXT, DIM = COL.bg, Color3.fromRGB(46, 46, 54), Color3.fromRGB(215, 220, 230), Color3.fromRGB(150, 155, 170)
+	local root = Instance.new("Frame")
+	root.Size = UDim2.fromScale(1, 1)
+	root.BackgroundColor3 = BG
+	root.BorderSizePixel = 0
+	root.Parent = W
+	local function corner(o, r) local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, r or 4) c.Parent = o end
+	local function txt(parent, t, size, col, bold, order)
+		local l = Instance.new("TextLabel")
+		l.BackgroundTransparency = 1
+		l.Size = UDim2.new(1, 0, 0, 0)
+		l.AutomaticSize = Enum.AutomaticSize.Y
+		l.Font = bold and Enum.Font.GothamBold or Enum.Font.Gotham
+		l.TextSize = size or 12
+		l.TextColor3 = col or TXT
+		l.TextWrapped = true
+		l.TextXAlignment = Enum.TextXAlignment.Left
+		l.Text = t
+		l.LayoutOrder = order or 0
+		l.Parent = parent
+		return l
+	end
+	local function btn(parent, t, w, col, order)
+		local b = Instance.new("TextButton")
+		b.Size = UDim2.fromOffset(w, 26)
+		b.BackgroundColor3 = col or COL.btn
+		b.BorderSizePixel = 0
+		b.AutoButtonColor = true
+		b.Font = Enum.Font.GothamBold
+		b.TextSize = 12
+		b.TextColor3 = COL.text
+		b.Text = t
+		b.LayoutOrder = order or 0
+		corner(b)
+		b.Parent = parent
+		return b
+	end
+	local function list(parent, pad)
+		local l = Instance.new("UIListLayout")
+		l.SortOrder = Enum.SortOrder.LayoutOrder
+		l.Padding = UDim.new(0, pad or 6)
+		l.Parent = parent
+		return l
+	end
+	-- top: title, tabs, search
+	local top = Instance.new("Frame")
+	top.BackgroundTransparency = 1
+	top.Size = UDim2.new(1, -16, 0, 92)
+	top.Position = UDim2.fromOffset(8, 6)
+	top.Parent = root
+	local ttl = txt(top, "PROTO HELP   " .. DIM_VERSION, 15, COL.head, true)
+	ttl.Size = UDim2.new(1, 0, 0, 20)
+	ttl.AutomaticSize = Enum.AutomaticSize.None
+	local tabs = Instance.new("Frame")
+	tabs.BackgroundTransparency = 1
+	tabs.Position = UDim2.fromOffset(0, 26)
+	tabs.Size = UDim2.new(1, 0, 0, 26)
+	tabs.Parent = top
+	local tl = list(tabs, 4)
+	tl.FillDirection = Enum.FillDirection.Horizontal
+	local search = Instance.new("TextBox")
+	search.Position = UDim2.fromOffset(0, 60)
+	search.Size = UDim2.new(1, 0, 0, 26)
+	search.BackgroundColor3 = CARD
+	search.BorderSizePixel = 0
+	search.Font = Enum.Font.Gotham
+	search.TextSize = 12
+	search.TextColor3 = TXT
+	search.PlaceholderText = "Search tools, keys and fixes (e.g. chamfer, door, Shift)"
+	search.PlaceholderColor3 = DIM
+	search.ClearTextOnFocus = false
+	search.TextXAlignment = Enum.TextXAlignment.Left
+	search.Text = ""
+	corner(search)
+	local sp = Instance.new("UIPadding") sp.PaddingLeft = UDim.new(0, 8) sp.Parent = search
+	search.Parent = top
+	-- the page
+	local page = Instance.new("ScrollingFrame")
+	page.Position = UDim2.fromOffset(8, 104)
+	page.Size = UDim2.new(1, -16, 1, -112)
+	page.BackgroundTransparency = 1
+	page.BorderSizePixel = 0
+	page.ScrollBarThickness = 6
+	page.CanvasSize = UDim2.new()
+	page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	page.Parent = root
+	local H = { tab = "tut", lesson = nil, step = 1 }
+	ENT.helpState = H
+	local tabBtns = {}
+	local function clear()
+		for _, c in ipairs(page:GetChildren()) do if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then c:Destroy() end end
+		page.CanvasPosition = Vector2.new(0, 0)
+	end
+	list(page, 8)
+	local pp = Instance.new("UIPadding") pp.PaddingRight = UDim.new(0, 8) pp.PaddingBottom = UDim.new(0, 12) pp.Parent = page
+	local function card(order)
+		local f = Instance.new("Frame")
+		f.BackgroundColor3 = CARD
+		f.BorderSizePixel = 0
+		f.Size = UDim2.new(1, 0, 0, 0)
+		f.AutomaticSize = Enum.AutomaticSize.Y
+		f.LayoutOrder = order or 0
+		corner(f, 6)
+		local pd = Instance.new("UIPadding")
+		pd.PaddingLeft, pd.PaddingRight, pd.PaddingTop, pd.PaddingBottom = UDim.new(0, 10), UDim.new(0, 10), UDim.new(0, 8), UDim.new(0, 8)
+		pd.Parent = f
+		list(f, 4)
+		f.Parent = page
+		return f
+	end
+	local function hit(q, ...)
+		if q == "" then return true end
+		for _, s in ipairs({ ... }) do if s and string.find(string.lower(s), q, 1, true) then return true end end
+		return false
+	end
+	local render
+	local function lessonList()
+		txt(page, "Start with lesson 1 - each lesson is a few short steps. Do them in Studio as you read.", 12, DIM, false, 0)
+		for i, L in ipairs(ENT.HELP.lessons) do
+			local b = btn(page, L.t .. "   (" .. #L.steps .. " steps)", 10, COL.btn, i)
+			b.Size = UDim2.new(1, 0, 0, 32)
+			b.TextXAlignment = Enum.TextXAlignment.Left
+			local bp = Instance.new("UIPadding") bp.PaddingLeft = UDim.new(0, 10) bp.Parent = b
+			b.Activated:Connect(function() H.lesson, H.step = i, 1 render() end)
+		end
+	end
+	local function lessonView()
+		local L = ENT.HELP.lessons[H.lesson]
+		local n = #L.steps
+		H.step = math.clamp(H.step, 1, n)
+		txt(page, L.t, 15, COL.head, true, 1)
+		txt(page, "Step " .. H.step .. " of " .. n, 11, DIM, false, 2)
+		local c = card(3)
+		txt(c, L.steps[H.step], 14, TXT, false, 1)
+		local row = Instance.new("Frame")
+		row.BackgroundTransparency = 1
+		row.Size = UDim2.new(1, 0, 0, 28)
+		row.LayoutOrder = 4
+		row.Parent = page
+		local rl = list(row, 6)
+		rl.FillDirection = Enum.FillDirection.Horizontal
+		local back = btn(row, "< Back", 80, COL.btn, 1)
+		back.Activated:Connect(function()
+			if H.step > 1 then H.step -= 1 else H.lesson = nil end
+			render()
+		end)
+		local last = H.step >= n
+		local nx = btn(row, last and (H.lesson < #ENT.HELP.lessons and "Next lesson >" or "Done") or "Next >", 120, COL.go, 2)
+		nx.Activated:Connect(function()
+			if not last then H.step += 1
+			elseif H.lesson < #ENT.HELP.lessons then H.lesson += 1 H.step = 1
+			else H.lesson = nil end
+			render()
+		end)
+		local all = btn(row, "All lessons", 100, COL.btn, 3)
+		all.Activated:Connect(function() H.lesson = nil render() end)
+		-- every step of this lesson below, small (to look back / ahead)
+		local ov = card(5)
+		for i, s in ipairs(L.steps) do
+			txt(ov, i .. ".  " .. s, 11, i == H.step and COL.text or DIM, i == H.step, i)
+		end
+	end
+	local function toolsView(q)
+		local any = false
+		for gi, G in ipairs(ENT.HELP.tools) do
+			local shown = {}
+			for _, it in ipairs(G.items) do if hit(q, G.g, it[1], it[2], it[3], it[4], it[5]) then shown[#shown + 1] = it end end
+			if #shown > 0 then
+				any = true
+				txt(page, G.g, 13, COL.head, true, gi * 1000)
+				for ii, it in ipairs(shown) do
+					local c = card(gi * 1000 + ii)
+					txt(c, it[1], 13, COL.text, true, 1)
+					txt(c, it[2], 12, TXT, false, 2)
+					local more = {}
+					if it[3] and it[3] ~= "" then more[#more + 1] = "HOW: " .. it[3] end
+					if it[4] and it[4] ~= "" then more[#more + 1] = "GOOD FOR: " .. it[4] end
+					if it[5] and it[5] ~= "" then more[#more + 1] = "NOTE: " .. it[5] end
+					if #more > 0 then
+						local det = txt(c, table.concat(more, "\n"), 11, DIM, false, 4)
+						det.Visible = q ~= ""
+						local tg = btn(c, det.Visible and "less" or "how + uses", 90, CARD, 3)
+						tg.TextColor3 = COL.head
+						tg.Font = Enum.Font.Gotham
+						tg.Size = UDim2.fromOffset(90, 18)
+						tg.TextXAlignment = Enum.TextXAlignment.Left
+						tg.Activated:Connect(function()
+							det.Visible = not det.Visible
+							tg.Text = det.Visible and "less" or "how + uses"
+						end)
+					end
+				end
+			end
+		end
+		return any
+	end
+	local function keysView(q, base)
+		local c
+		local n = 0
+		for i, k in ipairs(ENT.HELP.keys) do
+			if hit(q, k[1], k[2]) then
+				c = c or card((base or 0) + 1)
+				n += 1
+				txt(c, k[1], 12, COL.text, true, i * 2)
+				txt(c, k[2], 11, TXT, false, i * 2 + 1)
+			end
+		end
+		return n > 0
+	end
+	local function fixesView(q, base)
+		local any = false
+		for i, f in ipairs(ENT.HELP.fixes) do
+			if hit(q, f[1], f[2]) then
+				any = true
+				local c = card((base or 0) + i)
+				txt(c, f[1], 12, COL.text, true, 1)
+				txt(c, f[2], 11, TXT, false, 2)
+			end
+		end
+		return any
+	end
+	render = function()
+		clear()
+		for k, b in pairs(tabBtns) do b.BackgroundColor3 = (H.tab == k) and COL.on or COL.btn end
+		local q = string.lower(search.Text or "")
+		q = q:gsub("^%s+", ""):gsub("%s+$", "")
+		if q ~= "" then
+			-- searching: everything that matches, from every tab
+			local a = toolsView(q)
+			local kh = txt(page, "KEYS", 13, COL.head, true, 50000)
+			local b = keysView(q, 50000)
+			kh.Visible = b
+			local fh = txt(page, "FIXES", 13, COL.head, true, 60000)
+			local c = fixesView(q, 60000)
+			fh.Visible = c
+			if not (a or b or c) then txt(page, "Nothing found for '" .. q .. "'. Try one word, like 'cut' or 'round'.", 12, DIM, false, 1) end
+			return
+		end
+		if H.tab == "tut" then
+			if H.lesson then lessonView() else lessonList() end
+		elseif H.tab == "tools" then
+			txt(page, "Every button, by toolbar tab. Press 'how + uses' on a card for the steps.", 12, DIM, false, 0)
+			toolsView("")
+		elseif H.tab == "keys" then keysView("")
+		else fixesView("") end
+	end
+	for i, T in ipairs({ { "tut", "Tutorial" }, { "tools", "Tools" }, { "keys", "Keys" }, { "fix", "Fixes" } }) do
+		local b = btn(tabs, T[2], 92, COL.btn, i)
+		tabBtns[T[1]] = b
+		b.Activated:Connect(function() H.tab = T[1] search.Text = "" render() end)
+	end
+	search:GetPropertyChangedSignal("Text"):Connect(function() render() end)
+	ENT.helpRender = render
+	render()
+	return W
+end
+-- open the help (tab = "tut" / "tools" / "keys" / "fix"); toggles closed if it's open and no tab was asked for
+function ENT.helpOpen(tab)
+	local ok, W = pcall(ENT.helpBuild)
+	if not ok or not W then warn("PROTO help: " .. tostring(W)) return end
+	if not tab and W.Enabled then W.Enabled = false return end
+	if tab and ENT.helpState then ENT.helpState.tab = tab ENT.helpState.lesson = nil end
+	W.Enabled = true
+	if ENT.helpRender then pcall(ENT.helpRender) end
+end
+-- ===== end v3.41 HELP + TUTORIAL =====
 -- ===== v2.38 SLEEP MODE: Esc twice (nothing to cancel) = PROTO lets go of the mouse; the toolbar + panel show a
 -- big green REACTIVATE - one click anywhere on them = back on =====
 function ENT.sleepCover(parent, big)
@@ -13825,6 +21686,15 @@ end
 function ENT.sleep()
 	if ENT.sleeping then return end
 	if sk then exitSketch() end
+	-- v3.41 (glitch sweep): Views session, colour picker, paint hover box and brush ring all go when PROTO sleeps
+	if ENT.mv then pcall(ENT.mvStop) end
+	if ENT.arr then pcall(ENT.arrStop) end   -- v3.47
+	pcall(function() if ENT.planeH then ENT.planeH.Adornee = nil ENT.planeArc.Adornee = nil end if ENT.planeAnchor then ENT.planeAnchor.Parent = nil end end)   -- v3.49
+	pcall(function() if ENT.pickerGui then ENT.pickerGui.Enabled = false end end)
+	pcall(function() if ENT.matGui then ENT.matGui.Enabled = false end end)   -- v3.63
+	if ENT.paintHover then ENT.paintHover.Adornee = nil end
+	pcall(ENT.brushRingOff)
+	ENT.brushStroke = nil   -- v3.44 (paint check): a half-done brush stroke is dropped (it kept painting on hover)
 	setTarget(nil)
 	faceUnlock()
 	faceHover.Adornee = nil
@@ -13861,23 +21731,71 @@ function turnOn()
 	ENT.ribVisible(true)
 	mainBtn:SetActive(true)
 	plugin:Activate(true)
+	if ENT.ribTab and ENT.ribTabMode then pcall(ENT.ribTabMode, ENT.ribTab) end   -- v3.58: opened on the PAINT tab = paint mode
 	drawPlanes() drawSketch() rebuildFields() refreshStatus()
+	if ENT.detailRefresh then pcall(ENT.detailRefresh) end
+	-- v2.99: old DIM_ names in this place -> PROTO_ (once per session, in Edit only)
+	pcall(function() if game:GetService("RunService"):IsEdit() then ENT.renameOld() end end)
+	-- v3.41: the very first time, the tutorial opens by itself (once)
+	pcall(function()
+		if not plugin:GetSetting("PROTO_helpSeen") then
+			plugin:SetSetting("PROTO_helpSeen", true)
+			task.defer(function() if ENT.helpOpen then ENT.helpOpen("tut") end end)
+		end
+	end)
+end
+-- v2.71 (Dylan: "the plugin sometimes does not close down correctly"): everything PROTO draws or holds, cleared
+function ENT.closeAll()
+	pcall(function() if ENT.edgeTool then ENT.edgeStop() end end)
+	pcall(function() if ENT.shellTool then ENT.shellStop() end end)
+	pcall(function() ENT.edgeLine.Visible = false end)
+	ENT.pocketHot = nil
+	pcall(ENT.dimHide)
+	pcall(function() if ENT.faceGlow then ENT.faceGlow.Visible = false end end)
+	pcall(function() for _, b in ipairs(ENT.glowPool or {}) do b.Visible = false end end)
+	pcall(function() for _, b in ipairs(ENT.holePool or {}) do b.Visible = false end end)
+	pcall(function() ENT.revAsk = nil ENT.revUI() end)
+	pcall(function() if ENT.patStop then ENT.patStop() end end)
+	pcall(function() if ENT.mvHide then ENT.mvHide() end end)
+	-- v3.41 (glitch sweep): the Views session ends too (its bar stayed up after PROTO was turned off), and the colour picker closes
+	if ENT.mv then pcall(ENT.mvStop) end
+	if ENT.arr then pcall(ENT.arrStop) end   -- v3.47
+	pcall(function() if ENT.planeH then ENT.planeH.Adornee = nil ENT.planeArc.Adornee = nil end if ENT.planeAnchor then ENT.planeAnchor.Parent = nil end end)   -- v3.49
+	pcall(function() if ENT.pickerGui then ENT.pickerGui.Enabled = false end end)
+	pcall(function() if ENT.matGui then ENT.matGui.Enabled = false end end)   -- v3.63
+	-- v3.41 (glitch sweep): the paint hover box and brush ring go too (they stayed on screen)
+	if ENT.paintHover then ENT.paintHover.Adornee = nil end
+	pcall(ENT.brushRingOff)
+	ENT.brushStroke = nil   -- v3.44 (paint check): a half-done brush stroke is dropped (it kept painting on hover)
+	pcall(function() if ENT.pvClear then ENT.pvClear() end end)
+	pcall(function() if ENT.detailGui then ENT.detailGui.Enabled = false end end)
+	pcall(function() ENT.drawTopoFace(nil) end)
+	ENT.topoHot, ENT.topoFaceHot = nil, nil
+	ENT.overHud = false
 end
 function turnOff()
+	if ENT.closing then return end
+	ENT.closing = true
+	-- v3.54: closing PROTO saves the changed parts (manual mode) so nothing is left unsaved by accident
+	if not ENT.autoSave and ENT.unsavedCount and ENT.unsavedCount() > 0 then task.defer(function() pcall(ENT.saveNow) end) end
 	active = false
 	mainBtn:SetActive(false)
-	if sk then exitSketch() end
-	setTarget(nil)
-	faceUnlock()
+	if sk then pcall(exitSketch) end
+	pcall(setTarget, nil)
+	pcall(faceUnlock)
 	faceHover.Adornee = nil
 	widget.Enabled = false
 	ENT.ribVisible(false)
 	if ENT.sleeping then ENT.wake() end
-	drawPlanes() drawPreview()
-	plugin:Deactivate()
+	pcall(ENT.closeAll)
+	pcall(drawPlanes) pcall(drawPreview)
+	pcall(function() plugin:Deactivate() end)
+	ENT.closing = false
 end
+-- v2.71: the toolbar button closes PROTO whenever it's open. (It used to look at "active" - which Studio turns off
+-- whenever one of its own tools takes the mouse - so a click meant to close it switched it back ON.)
 local function toggle()
-	if active then turnOff() else turnOn() end
+	if widget.Enabled or ENT.hud and ENT.hud.Enabled then turnOff() else turnOn() end
 end
 mainBtn.Click:Connect(toggle)
 plugin.Deactivation:Connect(function()
@@ -13885,6 +21803,10 @@ plugin.Deactivation:Connect(function()
 		active = false        -- paused: another tool took the mouse; sketch and target are kept
 		mainBtn:SetActive(false)
 		faceHover.Adornee = nil
+		-- v3.41 (glitch sweep): paint hover box and brush ring off while paused (the mouse no longer updates them)
+		if ENT.paintHover then ENT.paintHover.Adornee = nil end
+		pcall(ENT.brushRingOff)
+		ENT.brushStroke = nil   -- v3.44 (paint check): a half-done brush stroke is dropped (it kept painting on hover)
 		drawPreview()
 		refreshStatus()
 		-- Studio drops plugin tools when Esc is pressed: if that's why, take the mouse straight back
@@ -13894,7 +21816,9 @@ plugin.Deactivation:Connect(function()
 	end
 end)
 widget:GetPropertyChangedSignal("Enabled"):Connect(function()
-	if not widget.Enabled and (active or sk or target) then turnOff() end
+	-- v2.71: closing the panel (its X) always closes PROTO fully - it used to skip that when Studio had paused PROTO,
+	-- leaving the toolbar and highlights on screen
+	if not widget.Enabled then turnOff() end
 end)
 
 U.startBox.FocusLost:Connect(function()
@@ -13922,6 +21846,10 @@ function ENT.boxChanged(box)
 	end
 	if sk then drawPreview() end
 end
+-- v3.41 (glitch sweep): typing a number in the PLANE "move" box did nothing - now it moves the plane like - / + do
+U.planeOff.FocusLost:Connect(function()
+	if ENT.boxChanged then pcall(ENT.boxChanged, U.planeOff) end
+end)
 
 local function needSketch(fn) return function() if sk then fn() else setStatus("Start a sketch first.") end end end
 addAction("DIM_Toggle", "PROTO: On / Off", "Turn PROTO on or off", toggle)
@@ -13963,14 +21891,987 @@ workspace.CurrentCamera:GetPropertyChangedSignal("CFrame"):Connect(function()
 	end)
 end)
 
+-- ===== v2.66 DETAIL PANEL (Dylan: "a triangle slider on the part ... put it on the side like there") =====
+-- A small panel on the right of the 3D view, for the picked part: its triangle count, its collision, and a slider.
+--   a part with a recipe: DETAIL (sides a full circle gets) - let go and it's rebuilt as ONE mesh at that detail.
+--   a mesh with no recipe: REDUCE (keep N% of its triangles) - its points are merged down (v2.67).
+-- v2.67 also: "Hide unseen faces" and an image / text on the face pointing at you. Everything is one undo step.
+function ENT.detailPart()
+	if not widget.Enabled then return nil end
+	local p = target
+	if not (p and p.Parent) then
+		p = nil
+		local sel = Selection:Get()[1]
+		if sel and sel:IsA("BasePart") then p = sel
+		elseif sel and sel:IsA("Model") then
+			for _, d in ipairs(sel:GetDescendants()) do
+				if d:IsA("BasePart") and (d:GetAttribute("PROTO_Kind") or d:GetAttribute("PROTO_Core") or d:GetAttribute("PROTO_Tris")) then p = d break end
+			end
+		end
+	end
+	if p and (p == TERRAIN or ENT.isPrev(p.Name) or ENT.isBox(p.Name) or not p:IsDescendantOf(workspace)) then p = nil end
+	return p
+end
+-- what the slider does for this part: "detail", "reduce" or nil
+function ENT.sliderMode(p)
+	if ENT.detailKind(p) then return "detail" end
+	if p:IsA("MeshPart") and not ENT.msIsCSG(p) and not p:GetAttribute("PROTO_Finished") then return "reduce" end
+	return nil
+end
+
+-- ===== v3.11 SIDE BAR (Dylan: "the left hand panel in the right, hide that old panel, put the drawing special
+-- functions in there"): the PROTO panel now shows PROPERTIES (the picked drawing's sizes, sides, guide / copy /
+-- delete / mirror... - only while sketching) + FEATURES (the picked part). The old panel = the ALL TOOLS tab. =====
+
+-- ===== v3.20 FEATURE SETTINGS in PROPERTIES (Dylan: "all those little buttons go on the right when that feature is
+-- clicked"): Extrude / Cut = depth, start, both ways, flip...  Revolve = angle, sides.  Fillet / Chamfer = size,
+-- join parts.  Shell = wall, Hollow. Each box here IS the panel's box (typing here = typing there). =====
+function ENT.featKey()
+	if ENT.arr then return "arr" end   -- v3.47
+	if ENT.shellTool then return "shell" end
+	if mode == "face" then return "face" end   -- v3.22
+	if ENT.edgeTool then return "edge" end
+	local P = ENT.picking
+	if ENT.revAsk or P == "revolve" or P == "revcut" then return "rev" end
+	if ex or P == "extrude" or P == "cut" or P == "overlap" then return "ex" end
+	return ""
+end
+function ENT.featRefresh(force)
+	local card = ENT.featCard
+	if not card then return end
+	local k = ENT.featKey()
+	-- v3.41 (glitch sweep): Extrude / Cut / Overlap all share the "ex" card - the kind is part of the key now, so
+	-- switching kind rebuilds the card (its title stayed the old one)
+	local exKind = nil
+	if k == "ex" then
+		local P = ENT.picking
+		exKind = ((ex and ex.ov) or (not ex and P == "overlap")) and "Overlap"
+			or (((ex and ex.cut) or (not ex and P == "cut")) and "Cut" or "Extrude")
+	end
+	local kNow = exKind and ("ex:" .. exKind) or k
+	if kNow == ENT.featNow and not force then return end
+	ENT.featNow = kNow
+	for _, c in ipairs(ENT.featConns or {}) do c:Disconnect() end
+	ENT.featConns = {}
+	for _, c in ipairs(card:GetChildren()) do
+		if c:IsA("GuiObject") then c:Destroy() end
+	end
+	card.Visible = k ~= ""
+	pcall(rebuildFields)   -- (the PROPERTIES note)
+	if k == "" then return end
+	local function title(t)
+		local l = mkLabel(nil, t, nil, { bold = true, col = Color3.fromRGB(225, 230, 240) })
+		l.LayoutOrder = 0
+		l.Parent = card
+	end
+	local n = 0
+	local function line()
+		n += 1
+		local r = mkRow(card)
+		r.LayoutOrder = n
+		return r
+	end
+	-- a box that IS the panel's box
+	local function box(r, name, src, w)
+		mkLabel(r, name, 46)
+		local b = mkBox(r, src.Text, w or 56)
+		b.FocusLost:Connect(function()
+			src.Text = b.Text
+			if ENT.boxChanged then pcall(ENT.boxChanged, src) end
+			if sk and drawPreview then pcall(drawPreview) end
+			b.Text = src.Text
+		end)
+		table.insert(ENT.featConns, src:GetPropertyChangedSignal("Text"):Connect(function() if not b:IsFocused() then b.Text = src.Text end end))
+	end
+	-- a button that IS the panel's button (its text / colour follow it, click = its job)
+	local function twin(r, src, w)
+		if not src then return end
+		local b = mkBtn(r, src.Text, w or 104, function()
+			local fn = ENT.btnFn and ENT.btnFn[src]
+			if fn then local ok, err = pcall(fn, src) if not ok then warn("PROTO error: " .. tostring(err)) end end
+		end)
+		local function sync() b.Text = src.Text b.BackgroundColor3 = src.BackgroundColor3 b.Visible = src.Visible end
+		sync()
+		table.insert(ENT.featConns, src:GetPropertyChangedSignal("Text"):Connect(sync))
+		table.insert(ENT.featConns, src:GetPropertyChangedSignal("BackgroundColor3"):Connect(sync))
+		table.insert(ENT.featConns, src:GetPropertyChangedSignal("Visible"):Connect(sync))
+	end
+	if k == "ex" then
+		title(exKind)   -- v3.41 (glitch sweep): an Overlap preview (it is a cut too) was titled "Cut"
+		local r = line()
+		box(r, "Depth", U.depth)
+		box(r, "Start", U.startBox)
+		r = line()
+		twin(r, U.dirBtn, 104)
+		twin(r, U.flipBtn, 60)
+		r = line()
+		twin(r, U.scopeBtn, 182)
+		r = line()
+		twin(r, U.meshBtn, 182)
+	elseif k == "rev" then
+		title((ENT.picking == "revcut" or (ENT.revAsk and ENT.revAsk.cut)) and "Revolved cut" or "Revolve")
+		local r = line()
+		box(r, "Angle", U.revAngle)
+		box(r, "Sides", U.revSides)
+	elseif k == "edge" then
+		title(ENT.edgeTool == "chamfer" and "Chamfer edge" or "Fillet edge")
+		local r = line()
+		box(r, "Size", U.filletR)
+		-- v3.50: the picked edges, and make them
+		local nPick = (ENT.eSel and #ENT.eSel.list) or 0
+		r = line()
+		mkLabel(r, ENT.EDGE_OLD and "Click an edge - done at this Size" or (nPick > 0 and (nPick .. " edge(s) picked - drag the arrow or type Size") or "Click edges to pick them"), 190, { col = nPick > 0 and COL.head or COL.grey, size = 10 })
+		if nPick > 0 then
+			r = line()
+			mkBtn(r, "Make it (Enter)", 110, function() ENT.eSelApply() end, COL.go)
+			mkBtn(r, "Drop picks (Esc)", 104, function() ENT.eSelClear() setStatus("Picks dropped.") end, COL.warn)
+		end
+		r = line()
+		mkBtn(r, ENT.edgeJoin and "Join parts: ON" or "Join parts: OFF", 120, function()
+			ENT.edgeJoin = not ENT.edgeJoin
+			setStatus(ENT.edgeJoin and "JOIN PARTS on: inside-corner fillets / chamfers weld both parts into one solid." or "JOIN PARTS off: inside-corner fillets / chamfers only add the fill.")
+			ENT.featRefresh(true)
+		end, ENT.edgeJoin and COL.on or nil)
+	elseif k == "face" then
+		title("Face pull")
+		local r = line()
+		box(r, "Amount", U.faceAmt)
+		r = line()
+		twin(r, U.facePlus, 80)
+		twin(r, U.faceMinus, 80)
+	elseif k == "shell" then
+		title("Shell")
+		local r = line()
+		box(r, "Wall", U.shellT)
+		r = line()
+		mkBtn(r, "Hollow (Enter)", 120, function() ENT.shellApply() end, COL.go)
+	elseif k == "arr" then
+		-- v3.49 LINEAR PATTERN, LIVE (all directions): its own boxes (the arrows change them too)
+		title("Linear pattern")
+		local F = {}
+		ENT.arrFields = F
+		local function own(r, name, key, w)
+			mkLabel(r, name, 34)
+			local b = mkBox(r, "", w or 44)
+			b.FocusLost:Connect(function() ENT.arrSet(key, b.Text) end)
+			F[key] = b
+		end
+		local r = line()
+		own(r, "X+", "xp") own(r, "X-", "xn")
+		r = line()
+		own(r, "Z+", "zp") own(r, "Z-", "zn")
+		r = line()
+		own(r, "Y+", "yp") own(r, "Y-", "yn")
+		r = line()
+		own(r, "Gap", "gap") own(r, "Turn", "turn")
+		r = line()
+		own(r, "Rise", "rise") own(r, "Scale%", "scale")
+		r = line()
+		F.total = mkLabel(r, "", 120, { col = COL.head })
+		r = line()
+		mkBtn(r, "Place (Enter)", 104, function() ENT.arrGo() end, COL.go)
+		mkBtn(r, "Cancel (Esc)", 92, function() ENT.arrStop() setStatus("Linear pattern cancelled.") end, COL.warn)
+		local hint = mkLabel(nil, "X+ X- Z+ Z- Y+ Y- = copies each way (blue arrows on all 6 sides). Gap = space between. Rise / Scale / Turn change each copy along the X row (green / red handles).", nil, { col = COL.grey, size = 10 })
+		n += 1
+		hint.LayoutOrder = n
+		hint.Parent = card
+	end
+end
+-- ===== end v3.20 =====
+-- v3.23 (Dylan: "give the text a small box"): a section title in its own little tag
+function ENT.pill(l)
+	l.AutomaticSize = Enum.AutomaticSize.X
+	l.Size = UDim2.fromOffset(0, 18)
+	l.BackgroundTransparency = 0
+	l.BackgroundColor3 = Color3.fromRGB(22, 38, 60)
+	l.TextXAlignment = Enum.TextXAlignment.Center
+	l.TextTruncate = Enum.TextTruncate.None
+	Instance.new("UICorner", l).CornerRadius = UDim.new(0, 4)
+	local p = Instance.new("UIPadding") p.PaddingLeft = UDim.new(0, 7) p.PaddingRight = UDim.new(0, 7) p.Parent = l
+	local st = Instance.new("UIStroke") st.Color = Color3.fromRGB(0, 110, 200) st.Thickness = 1 st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border st.Parent = l
+end
+function ENT.mkCard(parent, order)
+	local card = Instance.new("Frame")
+	card.Name = "Card"
+	card.BackgroundColor3 = Color3.fromRGB(36, 38, 46)
+	card.BorderSizePixel = 0
+	card.Size = UDim2.new(1, 0, 0, 0)
+	card.AutomaticSize = Enum.AutomaticSize.Y
+	card.LayoutOrder = order or 0
+	Instance.new("UICorner", card).CornerRadius = UDim.new(0, 6)
+	local cs = Instance.new("UIStroke") cs.Color = Color3.fromRGB(62, 70, 88) cs.Parent = card
+	local cp = Instance.new("UIPadding")
+	cp.PaddingLeft, cp.PaddingRight, cp.PaddingTop, cp.PaddingBottom = UDim.new(0, 8), UDim.new(0, 8), UDim.new(0, 6), UDim.new(0, 7)
+	cp.Parent = card
+	local cl = Instance.new("UIListLayout") cl.SortOrder = Enum.SortOrder.LayoutOrder cl.Padding = UDim.new(0, 3) cl.Parent = card
+	card.Parent = parent
+	return card
+end
+-- (an outer box loses its own frame - the little boxes inside it are the boxes now)
+function ENT.plainBox(f)
+	f.BackgroundTransparency = 1
+	for _, c in ipairs(f:GetChildren()) do
+		if c:IsA("UIStroke") then c.Enabled = false end
+		if c:IsA("UIPadding") then c.PaddingLeft, c.PaddingRight, c.PaddingTop, c.PaddingBottom = UDim.new(0, 0), UDim.new(0, 0), UDim.new(0, 0), UDim.new(0, 0) end
+		if c:IsA("UIListLayout") then c.Padding = UDim.new(0, 6) end
+	end
+end
+function ENT.sideBarSetup()
+	if ENT.sideHost or not ENT.detailRoot then return end
+	local TAB_H = 28
+	local strip = Instance.new("Frame")
+	strip.Name = "PROTO_Tabs"
+	strip.BackgroundColor3 = Color3.fromRGB(22, 23, 28)
+	strip.BorderSizePixel = 0
+	strip.Size = UDim2.new(1, 0, 0, TAB_H)
+	strip.Parent = widget
+	local sl = Instance.new("UIListLayout")
+	sl.FillDirection = Enum.FillDirection.Horizontal
+	sl.SortOrder = Enum.SortOrder.LayoutOrder
+	sl.VerticalAlignment = Enum.VerticalAlignment.Center
+	sl.Padding = UDim.new(0, 2)
+	sl.Parent = strip
+	local spd = Instance.new("UIPadding") spd.PaddingLeft = UDim.new(0, 6) spd.Parent = strip
+	local host = Instance.new("Frame")
+	host.Name = "PROTO_Side"
+	host.BackgroundColor3 = COL.bg
+	host.BorderSizePixel = 0
+	host.Position = UDim2.fromOffset(0, TAB_H)
+	host.Size = UDim2.new(1, 0, 1, -TAB_H)
+	host.Parent = widget
+	local hp = Instance.new("UIPadding")
+	hp.PaddingLeft, hp.PaddingRight, hp.PaddingTop, hp.PaddingBottom = UDim.new(0, 6), UDim.new(0, 6), UDim.new(0, 6), UDim.new(0, 6)
+	hp.Parent = host
+	ENT.sideHost = host
+	scroll.Position = UDim2.fromOffset(0, TAB_H)
+	scroll.Size = UDim2.new(1, 0, 1, -TAB_H)
+	-- PROPERTIES: the picked drawing (the old SHAPE section's insides, moved here)
+	local props = Instance.new("Frame")
+	props.Name = "Properties"
+	props.BackgroundColor3 = Color3.fromRGB(30, 31, 37)
+	props.BorderSizePixel = 0
+	props.Size = UDim2.new(1, 0, 0, 0)
+	props.AutomaticSize = Enum.AutomaticSize.Y
+	props.Parent = host
+	Instance.new("UICorner", props).CornerRadius = UDim.new(0, 8)
+	local ps = Instance.new("UIStroke") ps.Color = Color3.fromRGB(70, 110, 160) ps.Parent = props
+	local pp = Instance.new("UIPadding")
+	pp.PaddingLeft, pp.PaddingRight, pp.PaddingTop, pp.PaddingBottom = UDim.new(0, 10), UDim.new(0, 10), UDim.new(0, 8), UDim.new(0, 10)
+	pp.Parent = props
+	vlist(props)
+	local pt = Instance.new("TextLabel")
+	pt.BackgroundTransparency = 1
+	pt.Size = UDim2.new(1, 0, 0, 16)
+	pt.Font = Enum.Font.GothamBold
+	pt.TextSize = 11
+	pt.TextColor3 = Color3.fromRGB(0, 140, 235)
+	pt.TextXAlignment = Enum.TextXAlignment.Left
+	pt.Text = "PROPERTIES"
+	ENT.plainBox(props)
+	local headCard = ENT.mkCard(props, 0)
+	pt.LayoutOrder = 0
+	pt.Parent = headCard
+	local selL = Instance.new("TextLabel")
+	selL.BackgroundTransparency = 1
+	selL.Size = UDim2.new(1, 0, 0, 16)
+	selL.Font = Enum.Font.GothamBold
+	selL.TextSize = 12
+	selL.TextColor3 = Color3.fromRGB(225, 230, 240)
+	selL.TextXAlignment = Enum.TextXAlignment.Left
+	selL.Text = ""
+	selL.Visible = false
+	selL.LayoutOrder = 1
+	selL.Parent = headCard
+	ENT.sideSel = selL
+	local note = Instance.new("TextLabel")   -- (empty: a short grey note beside the title)
+	note.BackgroundTransparency = 1
+	note.AnchorPoint = Vector2.new(1, 0)
+	note.Position = UDim2.new(1, 0, 0, 0)
+	note.Size = UDim2.new(1, -90, 1, 0)
+	note.Font = Enum.Font.Gotham
+	note.TextSize = 10
+	note.TextColor3 = Color3.fromRGB(140, 150, 165)
+	note.TextXAlignment = Enum.TextXAlignment.Right
+	note.Text = ""
+	note.Parent = pt
+	ENT.sidePropsNote = note
+	-- (the title in its tag on the left, the note on the right)
+	local hdr = Instance.new("Frame")
+	hdr.BackgroundTransparency = 1
+	hdr.Size = UDim2.new(1, 0, 0, 18)
+	hdr.LayoutOrder = 0
+	hdr.Parent = headCard
+	pt.Parent = hdr
+	ENT.pill(pt)
+	note.Parent = hdr
+	note.Size = UDim2.new(1, -100, 1, 0)
+	ENT.featCard = ENT.mkCard(props, 1)
+	ENT.featCard.Visible = false
+	U.status:GetPropertyChangedSignal("Text"):Connect(function() task.defer(function() pcall(ENT.featRefresh) end) end)
+	local fieldsCard = ENT.mkCard(props, 2)
+	U.fields.LayoutOrder = 1
+	U.fields.Parent = fieldsCard
+	ENT.sideFieldsCard = fieldsCard
+	ENT.sideProps = props
+	pcall(rebuildFields)
+	props:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() pcall(ENT.detailPlace) end)
+	host:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() pcall(ENT.detailPlace) end)
+	if ENT.heads and ENT.heads.SHAPE then ENT.heads.SHAPE.Visible = false end
+	-- FEATURES: the box that sat over the 3D view
+	ENT.detailRoot.Parent = host
+	local tabs = {}
+	local function tab(key, text, w)
+		local b = Instance.new("TextButton")
+		b.LayoutOrder = #strip:GetChildren()
+		b.Size = UDim2.fromOffset(w, 22)
+		b.BorderSizePixel = 0
+		b.AutoButtonColor = true
+		b.Font = Enum.Font.GothamBold
+		b.TextSize = 11
+		b.TextColor3 = Color3.new(1, 1, 1)
+		b.Text = text
+		b.Parent = strip
+		Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
+		b.Activated:Connect(function() ENT.sideTab(key) end)
+		tabs[key] = b
+	end
+	tab("side", "SIDE BAR", 82)
+	tab("all", "ALL TOOLS", 82)
+	function ENT.sideTab(key)
+		ENT.sideTabNow = key
+		host.Visible = key == "side"
+		scroll.Visible = key == "all"
+		for k, b in pairs(tabs) do
+			b.BackgroundColor3 = (k == key) and Color3.fromRGB(0, 110, 200) or Color3.fromRGB(40, 42, 50)
+		end
+		pcall(function() plugin:SetSetting("PROTO_sideTab", key) end)
+		pcall(ENT.detailPlace)
+	end
+	local last = "side"
+	pcall(function() local v = plugin:GetSetting("PROTO_sideTab") if v == "all" then last = "all" end end)
+	ENT.sideTab(last)
+end
+-- ===== end v3.11 SIDE BAR =====
+function ENT.buildDetailPanel()
+	if ENT.detailGui then return end
+	local BG, LINE, TXT, DIM, ACC = Color3.fromRGB(30, 31, 37), Color3.fromRGB(70, 110, 160), Color3.fromRGB(225, 230, 240), Color3.fromRGB(140, 150, 165), Color3.fromRGB(0, 120, 215)
+	local g = Instance.new("ScreenGui")
+	g.Name = "PROTO_Detail"
+	g.ResetOnSpawn = false
+	g.IgnoreGuiInset = true
+	g.DisplayOrder = 49
+	g.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	g.Enabled = false
+	g.Parent = CoreGui
+	ENT.detailGui = g
+	local root = Instance.new("Frame")
+	root.Name = "Detail"
+	root.AnchorPoint = Vector2.new(1, 0.5)
+	root.Position = UDim2.new(1, -16, 0.5, 0)
+	root.Size = UDim2.fromOffset(220, 0)
+	root.AutomaticSize = Enum.AutomaticSize.Y
+	ENT.detailRoot = root   -- v2.88: placed by ENT.detailPlace (right side, under the toolbar, full height)
+	root.BackgroundColor3 = BG
+	root.BackgroundTransparency = 0.04
+	root.BorderSizePixel = 0
+	root.Active = true
+	root.Parent = g
+	Instance.new("UICorner", root).CornerRadius = UDim.new(0, 8)
+	local st = Instance.new("UIStroke") st.Color = LINE st.Thickness = 1 st.Parent = root
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft, pad.PaddingRight, pad.PaddingTop, pad.PaddingBottom = UDim.new(0, 12), UDim.new(0, 12), UDim.new(0, 10), UDim.new(0, 12)
+	pad.Parent = root
+	local list = Instance.new("UIListLayout") list.SortOrder = Enum.SortOrder.LayoutOrder list.Padding = UDim.new(0, 6) list.Parent = root
+	root.MouseEnter:Connect(function() if root:IsDescendantOf(g) then ENT.overHud = true end end)
+	root.MouseLeave:Connect(function() ENT.overHud = false end)
+	local order = 0
+	local function label(text, size, col, font, h)
+		order += 1
+		local t = Instance.new("TextLabel")
+		t.LayoutOrder = order
+		t.BackgroundTransparency = 1
+		t.Size = UDim2.new(1, 0, 0, h or (size + 4))
+		t.Font = font or Enum.Font.GothamMedium
+		t.TextSize = size
+		t.TextColor3 = col
+		t.TextXAlignment = Enum.TextXAlignment.Left
+		t.TextTruncate = Enum.TextTruncate.AtEnd
+		t.Text = text
+		t.Parent = root
+		return t
+	end
+	local function row(h)
+		order += 1
+		local f = Instance.new("Frame")
+		f.LayoutOrder = order
+		f.BackgroundTransparency = 1
+		f.Size = UDim2.new(1, 0, 0, h)
+		f.Parent = root
+		return f
+	end
+	local function button(parent, text, x, w, col)
+		local b = Instance.new("TextButton")
+		b.Position = UDim2.new(x, x > 0 and 3 or 0, 0, 0)
+		b.Size = UDim2.new(w, x > 0 and -3 or (w < 1 and -3 or 0), 1, 0)
+		b.BackgroundColor3 = col or Color3.fromRGB(48, 52, 62)
+		b.BorderSizePixel = 0
+		b.AutoButtonColor = true
+		b.Font = Enum.Font.GothamMedium
+		b.TextSize = 11
+		b.TextColor3 = TXT
+		b.Text = text
+		b.Parent = parent
+		Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
+		return b
+	end
+	local U2 = {}
+	U2.title = label("DETAIL", 11, ACC, Enum.Font.GothamBold)
+	U2.name = label("", 12, TXT, Enum.Font.GothamMedium)
+	U2.tris = label("", 24, TXT, Enum.Font.GothamBold, 28)
+	U2.coll = label("", 11, DIM)
+	-- the slider
+	local holder = row(22)
+	local track = Instance.new("Frame")
+	track.Name = "Track"
+	track.AnchorPoint = Vector2.new(0, 0.5)
+	track.Position = UDim2.new(0, 0, 0.5, 0)
+	track.Size = UDim2.new(1, 0, 0, 6)
+	track.BackgroundColor3 = Color3.fromRGB(55, 58, 68)
+	track.BorderSizePixel = 0
+	track.Active = true
+	track.Parent = holder
+	Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+	local fill = Instance.new("Frame")
+	fill.BackgroundColor3 = ACC
+	fill.BorderSizePixel = 0
+	fill.Size = UDim2.new(0.5, 0, 1, 0)
+	fill.Parent = track
+	Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+	local knob = Instance.new("TextButton")
+	knob.Text = ""
+	knob.AutoButtonColor = false
+	knob.AnchorPoint = Vector2.new(0.5, 0.5)
+	knob.Position = UDim2.new(0.5, 0, 0.5, 0)
+	knob.Size = UDim2.fromOffset(16, 16)
+	knob.BackgroundColor3 = Color3.fromRGB(240, 244, 250)
+	knob.BorderSizePixel = 0
+	knob.ZIndex = 3
+	knob.Parent = track
+	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+	local ends = row(14)
+	local function endLabel(text, xa)
+		local t = Instance.new("TextLabel")
+		t.BackgroundTransparency = 1
+		t.Size = UDim2.new(1, 0, 1, 0)
+		t.Font = Enum.Font.Gotham
+		t.TextSize = 10
+		t.TextColor3 = DIM
+		t.TextXAlignment = xa
+		t.Text = text
+		t.Parent = ends
+		return t
+	end
+	U2.left = endLabel("Light", Enum.TextXAlignment.Left)
+	U2.right = endLabel("Smooth", Enum.TextXAlignment.Right)
+	U2.val = endLabel("", Enum.TextXAlignment.Center)
+	U2.val.TextColor3 = TXT
+	U2.val.Font = Enum.Font.GothamBold
+	U2.ex = label("", 10, Color3.fromRGB(170, 200, 235), Enum.Font.GothamMedium)
+	U2.hint = label("", 10, DIM, Enum.Font.Gotham, 28)
+	U2.hint.TextWrapped = true
+	U2.hint.TextTruncate = Enum.TextTruncate.None
+	U2.hint.TextYAlignment = Enum.TextYAlignment.Top
+	-- v2.73: the FEATURE TREE - the part's steps; type a new number + Enter, or X to take a step out
+	U2.stepsTitle = label("STEPS", 10, DIM, Enum.Font.GothamBold)
+	order += 1
+	local sc = Instance.new("ScrollingFrame")
+	sc.LayoutOrder = order
+	sc.BackgroundTransparency = 1
+	sc.BorderSizePixel = 0
+	sc.Size = UDim2.new(1, 0, 0, 0)
+	sc.CanvasSize = UDim2.new(0, 0, 0, 0)
+	sc.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	sc.ScrollBarThickness = 4
+	sc.ScrollingDirection = Enum.ScrollingDirection.Y
+	sc.Parent = root
+	local sl = Instance.new("UIListLayout") sl.SortOrder = Enum.SortOrder.LayoutOrder sl.Padding = UDim.new(0, 3) sl.Parent = sc
+	U2.steps = sc
+	-- v2.67: hide unseen faces
+	-- (v2.98: "Hide unseen faces" removed - Dylan: "bin it, it causes a massive array of glitches")
+	-- v2.67: image / text on the face pointing at you
+	U2.sub = label("ON THE FACE TOWARDS YOU", 10, DIM, Enum.Font.GothamBold)
+	local boxRow = row(24)
+	local box = Instance.new("TextBox")
+	box.Size = UDim2.new(1, 0, 1, 0)
+	box.BackgroundColor3 = Color3.fromRGB(22, 23, 28)
+	box.BorderSizePixel = 0
+	box.ClearTextOnFocus = false
+	box.Font = Enum.Font.Gotham
+	box.TextSize = 11
+	box.TextColor3 = TXT
+	box.PlaceholderText = "Image ID, or the text to write"
+	box.PlaceholderColor3 = DIM
+	box.Text = ""
+	box.TextXAlignment = Enum.TextXAlignment.Left
+	box.Parent = boxRow
+	Instance.new("UICorner", box).CornerRadius = UDim.new(0, 5)
+	local bp = Instance.new("UIPadding") bp.PaddingLeft = UDim.new(0, 6) bp.Parent = box
+	local addRow = row(24)
+	U2.img = button(addRow, "Add image", 0, 0.5)
+	U2.txt = button(addRow, "Add text", 0.5, 0.5)
+	U2.box = box
+	-- v3.13: the image / text adder lives in PAINT now - out of the side bar
+	U2.sub.Parent, boxRow.Parent, addRow.Parent = nil, nil, nil
+	-- v2.71: far-away detail (RenderFidelity Automatic) only kicks in with StreamingEnabled on - check it
+	U2.streamNote = label("Streaming is OFF in this game - Roblox won't make lighter far-away versions.", 10, Color3.fromRGB(255, 200, 90), Enum.Font.Gotham, 26)
+	U2.streamNote.TextWrapped = true
+	U2.streamNote.TextTruncate = Enum.TextTruncate.None
+	local stRow = row(24)
+	U2.stream = button(stRow, "Turn Streaming on", 0, 1, Color3.fromRGB(150, 110, 30))
+	U2.streamRow = stRow
+	U2.stream.MouseButton1Click:Connect(function()
+		local rec
+		pcall(function() rec = CHS:TryBeginRecording("PROTO_Streaming", "PROTO Turn Streaming on") end)
+		local ok, err = pcall(function() workspace.StreamingEnabled = true end)
+		if rec then pcall(function() CHS:FinishRecording(rec, ok and Enum.FinishRecordingOperation.Commit or Enum.FinishRecordingOperation.Cancel) end) end
+		if ok then setStatus("Streaming is on (Workspace > StreamingEnabled). Ctrl+Z turns it back off.") else warn("PROTO: couldn't turn Streaming on - " .. tostring(err)) end
+		ENT.detailRefresh()
+	end)
+	U2.track, U2.fill, U2.knob = track, fill, knob
+	ENT.DU = U2
+	-- v2.88 (Dylan: "the features tab like SolidWorks, on the right"): the FEATURES list comes first, under the name
+	U2.stepsTitle.Text = "FEATURES"
+	U2.stepsTitle.TextColor3 = ACC
+	for i, o in ipairs({ U2.title, U2.name, U2.tris, U2.stepsTitle, sc, U2.coll, holder, ends, U2.ex, U2.hint, U2.sub, boxRow, addRow, U2.streamNote, stRow }) do
+		o.LayoutOrder = i
+	end
+	-- v3.16 (Dylan: "each thing its own box"): name / triangles / features / detail slider - one little box each
+	do
+		ENT.plainBox(root)
+		-- v3.17 (Dylan: "that section joined, but they have their own boxes"): name + triangles share one outer box
+		local sec = ENT.mkCard(root, 1)
+		sec.BackgroundColor3 = Color3.fromRGB(28, 29, 35)
+		sec:FindFirstChildOfClass("UIStroke").Color = Color3.fromRGB(70, 110, 160)
+		sec:FindFirstChildOfClass("UIListLayout").Padding = UDim.new(0, 5)
+		local sp = sec:FindFirstChildOfClass("UIPadding")
+		sp.PaddingLeft, sp.PaddingRight, sp.PaddingTop, sp.PaddingBottom = UDim.new(0, 5), UDim.new(0, 5), UDim.new(0, 5), UDim.new(0, 5)
+		U2.section = sec
+		local cA = ENT.mkCard(sec, 1)
+		for k, o in ipairs({ U2.title, U2.name }) do o.LayoutOrder = k o.Parent = cA end
+		ENT.pill(U2.title)
+		local cB = ENT.mkCard(sec, 2)
+		U2.tris.LayoutOrder = 1 U2.tris.Parent = cB
+		U2.tris.TextSize = 17
+		U2.tris.Size = UDim2.new(1, 0, 0, 20)
+		local cC = ENT.mkCard(sec, 3)   -- v3.18: FEATURES in the same outer box too
+		for k, o in ipairs({ U2.stepsTitle, sc }) do o.LayoutOrder = k o.Parent = cC end
+		ENT.pill(U2.stepsTitle)
+		local cD = ENT.mkCard(root, 4)
+		for k, o in ipairs({ U2.coll, holder, ends, U2.ex, U2.hint }) do o.LayoutOrder = k o.Parent = cD end
+		-- v3.29: send this part's recipe to the Output (so a shape that comes out wrong can be rebuilt + fixed)
+		local dr = Instance.new("Frame")
+		dr.BackgroundTransparency = 1
+		dr.Size = UDim2.new(1, 0, 0, 22)
+		dr.LayoutOrder = 9
+		dr.Parent = cD
+		local db = button(dr, "Recipe -> Output (for fixing)", 0, 1)
+		db.TextSize = 10
+		db.MouseButton1Click:Connect(function()
+			local p = ENT.detailPart()
+			if p and ENT.recipeDumpPart(p) then setStatus("Recipe of " .. p.Name .. " printed to the Output - send it over if the shape's wrong.")
+			else setStatus("That part has no PROTO recipe to print.") end
+		end)
+		U2.dumpRow = dr
+		U2.streamNote.LayoutOrder, stRow.LayoutOrder = 5, 6
+		U2.cards = { cA, cB, cC, cD }
+		U2.card, U2.trisCard, U2.stepsCard, U2.sliderCard = cA, cB, cC, cD
+		U2.inCards = { U2.title, U2.name, U2.tris, cB, cC, dr, U2.stepsTitle, sc, U2.coll, holder, ends, U2.ex, U2.hint }
+	end
+	pcall(ENT.sideBarSetup)   -- v3.11: the FEATURES box moves into the PROTO panel
+	pcall(ENT.detailPlace)
+	-- the slider's range for the mode
+	local function range()
+		if ENT.detailMode == "reduce" then return 10, 100 end
+		return ENT.DETAIL_MIN, ENT.DETAIL_MAX
+	end
+	function ENT.detailShow(v)
+		local lo, hi = range()
+		local f = math.clamp((v - lo) / (hi - lo), 0, 1)
+		fill.Size = UDim2.new(f, 0, 1, 0)
+		knob.Position = UDim2.new(f, 0, 0.5, 0)
+		U2.val.Text = (ENT.detailMode == "reduce") and ("keep " .. v .. "%") or ("level " .. v)
+		-- v2.68: what the level means, in sides
+		if ENT.detailMode == "detail" then
+			U2.ex.Text = ("1-stud bolt: %d sides  -  10-stud column: %d"):format(ENT.sidesFor(0.5, v), ENT.sidesFor(5, v))
+		else
+			U2.ex.Text = ""
+		end
+	end
+	local function valueAt(x)
+		local lo, hi = range()
+		local f = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
+		return math.floor(lo + f * (hi - lo) + 0.5)
+	end
+	local function begin(i)
+		if i.UserInputType ~= Enum.UserInputType.MouseButton1 or ENT.detailBusy or not ENT.detailEditable then return end
+		ENT.detailDrag = valueAt(i.Position.X)
+		ENT.detailShow(ENT.detailDrag)
+		U2.hint.Text = "Let go to rebuild."
+	end
+	local function move(i)
+		if ENT.detailDrag and i.UserInputType == Enum.UserInputType.MouseMovement then
+			ENT.detailDrag = valueAt(i.Position.X)
+			ENT.detailShow(ENT.detailDrag)
+		end
+	end
+	-- run one job on the picked part (busy while it runs), then show the result
+	local job
+	function ENT.detailJob(text, fn) return job(text, fn) end
+	-- v3.13: PAINT > Decal
+	function ENT.decalAdd(kind)
+		local p = ENT.paintTargetPart() or ENT.detailPart()
+		if not p then setStatus("DECAL: select a part first (click it in Select / the Explorer), then Add image / Add text.") return end
+		local fn = (kind == "img") and ENT.addFaceImage or ENT.addFaceText
+		local ok, d, w = pcall(fn, p, U.decalBox and U.decalBox.Text or "")
+		if ok and d then
+			setStatus(((kind == "img") and "Image" or "Text") .. " added to the " .. tostring(w and w.Name or "") .. " face (Ctrl+Z takes it off).")
+		else
+			setStatus("DECAL: " .. tostring(ok and w or d))
+		end
+		pcall(ENT.detailRefresh)
+	end
+	job = function(text, fn)
+		local p = ENT.detailPart()
+		if not p then return end
+		if ENT.detailBusy then
+			-- v3.41 (glitch sweep): say it wasn't done (it used to be dropped without a word) and put the real values back
+			if U2.hint then U2.hint.Text = "Still working - try again in a moment" else setStatus("Still working - try again in a moment") end
+			pcall(ENT.detailRefresh)
+			return
+		end
+		ENT.detailBusy = true
+		U2.hint.Text = text
+		task.spawn(function()
+			local ok, np, why = pcall(fn, p)
+			if not ok then np, why = nil, np end
+			ENT.detailBusy = false
+			ENT.detailRefresh()
+			if np then
+				local n = (typeof(np) == "Instance" and np:IsA("BasePart")) and np:GetAttribute("PROTO_Tris") or nil
+				setStatus(("Done%s."):format(n and (": " .. tostring(n) .. " triangles") or ""))
+			else
+				U2.hint.Text = "Couldn't: " .. tostring(why)
+				warn("PROTO: " .. tostring(why))
+			end
+		end)
+	end
+	local function release(i)
+		if i.UserInputType ~= Enum.UserInputType.MouseButton1 or not ENT.detailDrag then return end
+		local v = ENT.detailDrag
+		ENT.detailDrag = nil
+		local p = ENT.detailPart()
+		if not p then ENT.detailRefresh() return end
+		if ENT.detailMode == "reduce" then
+			if v >= 100 then ENT.detailRefresh() return end
+			job("Making it lighter (keeping about " .. v .. "%)...", function(q) return ENT.reducePart(q, v / 100) end)
+		else
+			if v == ENT.partDetail(p) then ENT.detailRefresh() return end
+			job("Rebuilding at level " .. v .. "...", function(q) return ENT.setDetail(q, v) end)
+		end
+	end
+	track.InputBegan:Connect(begin)
+	knob.InputBegan:Connect(begin)
+	track.InputChanged:Connect(move)
+	knob.InputChanged:Connect(move)
+	track.InputEnded:Connect(release)
+	knob.InputEnded:Connect(release)
+
+	U2.img.MouseButton1Click:Connect(function()
+		job("Adding the image...", function(q) local d, w = ENT.addFaceImage(q, box.Text) if d then return q end return nil, w end)
+	end)
+	U2.txt.MouseButton1Click:Connect(function()
+		job("Adding the text...", function(q) local d, w = ENT.addFaceText(q, box.Text) if d then return q end return nil, w end)
+	end)
+	ENT.detailConns = {
+		UIS.InputChanged:Connect(move),
+		UIS.InputEnded:Connect(release),
+		Selection.SelectionChanged:Connect(function() task.defer(function() pcall(ENT.detailRefresh) end) end),
+		widget:GetPropertyChangedSignal("Enabled"):Connect(function() pcall(ENT.detailRefresh) end),
+	}
+end
+-- v2.88: the panel's spot - the right of the 3D view, under the pinned toolbar, down to the bottom
+function ENT.detailPlace()
+	local root = ENT.detailRoot
+	if not root then return end
+	if ENT.sideHost and root.Parent == ENT.sideHost then
+		-- v3.11: in the PROTO panel, under PROPERTIES (when a sketch is open), down to the bottom
+		local props = ENT.sideProps
+		local top = (props and props.Visible) and (props.AbsoluteSize.Y + 6) or 0
+		root.AnchorPoint = Vector2.new(0, 0)
+		root.Position = UDim2.fromOffset(0, top)
+		local pOk, pPart = pcall(ENT.detailPart)
+		if not (pOk and pPart) then
+			-- nothing picked: just the title + a line (it shrinks, it never goes)
+			root.Size = UDim2.new(1, 0, 0, 0)
+			root.AutomaticSize = Enum.AutomaticSize.Y
+			return
+		end
+		root.AutomaticSize = Enum.AutomaticSize.None
+		root.Size = UDim2.new(1, 0, 1, -top)
+		if ENT.DU and ENT.stepsFit then pcall(ENT.stepsFit) end
+		return
+	end
+	local top = 8
+	local rr = ENT.ribRoot
+	if rr and ENT.hud and ENT.hud.Enabled and ENT.ribDock then top = rr.AbsolutePosition.Y + rr.AbsoluteSize.Y + 6 end
+	root.AnchorPoint = Vector2.new(1, 0)
+	root.Position = UDim2.new(1, -8, 0, top)
+	root.AutomaticSize = Enum.AutomaticSize.None
+	root.Size = UDim2.new(0, 240, 1, -(top + 8))
+	if ENT.DU and ENT.stepsFit then pcall(ENT.stepsFit) end
+end
+-- the feature list gets the room the rest of the panel leaves
+function ENT.stepsFit()
+	local U2, root = ENT.DU, ENT.detailRoot
+	if not (U2 and root) then return end
+	local sc = U2.steps
+	local used = 22
+	for _, ch in ipairs(root:GetChildren()) do
+		if ch:IsA("GuiObject") and ch.Visible and ch ~= sc then
+			if ch == U2.stepsCard or ch == U2.section then used += ch.AbsoluteSize.Y - sc.AbsoluteSize.Y + 6
+			else used += ch.AbsoluteSize.Y + 6 end
+		end
+	end
+	local want = (ENT.stepsN or 0) * 27
+	sc.Size = UDim2.new(1, 0, 0, math.max(0, math.min(want, root.AbsoluteSize.Y - used)))
+end
+-- which icon a step gets in the list
+function ENT.stepIcon(name)
+	if name == "Block" then return "cube" end
+	if name:find("^Extrude") then return "extrude" end
+	if name:find("^Revolved cut") then return "revcut" end
+	if name:find("^Revolve") then return "revolve" end
+	if name:find("^Cut") then return "cut" end
+	if name:find("^Round") then return "efillet" end
+	if name:find("^Chamfer") then return "echamfer" end
+	if name:find("^Fill") then return "ejoin" end
+	if name:find("^Shell") then return "shell" end
+	if name:find("^Painted") then return "paint" end
+	return nil
+end
+-- v2.73: draw the STEPS list for this part
+function ENT.stepsDraw(p)
+	local U2 = ENT.DU
+	local sc = U2.steps
+	for _, ch in ipairs(sc:GetChildren()) do if ch:IsA("Frame") then ch:Destroy() end end
+	local steps = p and ENT.stepsOf(p) or {}
+	U2.stepsTitle.Visible = #steps > 0
+	sc.Visible = #steps > 0
+	ENT.stepsN = #steps
+	sc.Size = UDim2.new(1, 0, 0, math.min(#steps * 27, 175))
+	local TXT, DIM = Color3.fromRGB(225, 230, 240), Color3.fromRGB(140, 150, 165)
+	for i, st in ipairs(steps) do
+		local r = Instance.new("Frame")
+		r.LayoutOrder = i
+		r.Size = UDim2.new(1, -6, 0, 24)
+		r.BackgroundColor3 = Color3.fromRGB(40, 43, 52)
+		r.BorderSizePixel = 0
+		r.Parent = sc
+		Instance.new("UICorner", r).CornerRadius = UDim.new(0, 4)
+		-- v2.88: the step's icon (same pictures as the toolbar), like SolidWorks' tree
+		local icx = 0
+		local icn = ENT.stepIcon(st.name)
+		if icn then
+			local okI, ic = pcall(ENT.drawIcon, r, icn)
+			if okI and ic then
+				ic.AnchorPoint = Vector2.new(0, 0.5)
+				ic.Position = UDim2.new(0, 2, 0.5, 0)
+				local us = Instance.new("UIScale") us.Scale = 0.72 us.Parent = ic
+				icx = 22
+			end
+		end
+		-- v2.94 (Dylan: "double click opens up that sketch so I could change the cut easily"): EDIT SKETCH
+		if st.cutIndex then
+			local last = 0
+			r.InputBegan:Connect(function(i)
+				if i.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+				local now = os.clock()
+				if now - last < 0.4 then
+					last = 0
+					local okE, errE = pcall(ENT.editCutSketch, p, st.cutIndex)
+					if not okE then warn("PROTO edit sketch: " .. tostring(errE)) setStatus("Couldn't open the sketch: " .. tostring(errE)) end
+				else
+					last = now
+					setStatus("Double-click " .. st.name .. " to open its sketch and change the drawing.")
+				end
+			end)
+		end
+		local nmL = Instance.new("TextLabel")
+		nmL.BackgroundTransparency = 1
+		nmL.Position = UDim2.fromOffset(6 + icx, 0)
+		nmL.Size = UDim2.new(1, -(st.value and 100 or 30) - icx, 1, 0)
+		nmL.Font = Enum.Font.GothamMedium
+		nmL.TextSize = 11
+		nmL.TextColor3 = TXT
+		nmL.TextXAlignment = Enum.TextXAlignment.Left
+		nmL.TextTruncate = Enum.TextTruncate.AtEnd
+		nmL.Text = st.name
+		nmL.Parent = r
+		if st.value then
+			local b = Instance.new("TextBox")
+			b.AnchorPoint = Vector2.new(1, 0.5)
+			b.Position = UDim2.new(1, st.del and -24 or -3, 0.5, 0)
+			b.Size = UDim2.fromOffset(st.name == "Block" and 92 or 64, 18)
+			b.BackgroundColor3 = Color3.fromRGB(22, 23, 28)
+			b.BorderSizePixel = 0
+			b.ClearTextOnFocus = false
+			b.Font = Enum.Font.GothamMedium
+			b.TextSize = 11
+			b.TextColor3 = TXT
+			b.PlaceholderText = st.hint or ""
+			b.PlaceholderColor3 = DIM
+			b.Text = st.value
+			b.Parent = r
+			Instance.new("UICorner", b).CornerRadius = UDim.new(0, 4)
+			if st.name == "Block" then nmL.Size = UDim2.new(1, -(st.del and 126 or 104) - icx, 1, 0) end
+			b.FocusLost:Connect(function(enter)
+				if not enter or b.Text == st.value then b.Text = st.value return end
+				local prep, why = st.edit(p, b.Text)
+				if not prep then b.Text = st.value U2.hint.Text = "Couldn't: " .. tostring(why) return end
+				ENT.detailJob(st.name .. ": rebuilding with " .. b.Text .. "...", function(q) return ENT.stepChange(q, prep, "PROTO Edit " .. st.name) end)
+			end)
+		end
+		if st.del then
+			local x = Instance.new("TextButton")
+			x.AnchorPoint = Vector2.new(1, 0.5)
+			x.Position = UDim2.new(1, -3, 0.5, 0)
+			x.Size = UDim2.fromOffset(18, 18)
+			x.BackgroundColor3 = Color3.fromRGB(120, 50, 50)
+			x.BorderSizePixel = 0
+			x.Font = Enum.Font.GothamBold
+			x.TextSize = 11
+			x.TextColor3 = TXT
+			x.Text = "X"
+			x.Parent = r
+			Instance.new("UICorner", x).CornerRadius = UDim.new(0, 4)
+			x.MouseButton1Click:Connect(function()
+				ENT.detailJob("Taking out " .. st.name .. "...", function(q) return ENT.stepChange(q, st.del(q), "PROTO Remove " .. st.name) end)
+			end)
+		end
+	end
+	pcall(ENT.stepsFit)
+end
+function ENT.detailRefresh()
+	if not ENT.detailGui then ENT.buildDetailPanel() end
+	if ENT.detailDrag then return end
+	local U2 = ENT.DU
+	local p = ENT.detailPart()
+	ENT.detailGui.Enabled = widget.Enabled
+	pcall(ENT.detailPlace)
+	if not widget.Enabled then ENT.overHud = false return end
+	if not p then
+		for _, ch in ipairs(ENT.detailRoot:GetChildren()) do
+			if ch:IsA("GuiObject") then ch.Visible = (ch == U2.title or ch == U2.hint or ch == U2.card or ch == U2.section) end
+		end
+		if U2.inCards then
+			for _, o in ipairs(U2.inCards) do o.Visible = (o == U2.title or o == U2.hint) end
+		end
+		U2.title.Text = "FEATURES"
+		U2.hint.Text = "Click a part - its features show here. Change a number + Enter to rebuild, X takes one out."
+		pcall(ENT.detailPlace)   -- v3.12: shrink to the title
+		return
+	end
+	for _, ch in ipairs(ENT.detailRoot:GetChildren()) do if ch:IsA("GuiObject") then ch.Visible = true end end
+	U2.name.Visible, U2.tris.Visible = true, true
+	if U2.inCards then for _, o in ipairs(U2.inCards) do o.Visible = true end end
+	-- v3.34 (Dylan: "can we remove / hide him"): the detail slider box (collision, level, notes, recipe button) is hidden
+	if U2.sliderCard then U2.sliderCard.Visible = false end
+	U2.name.Text = p.Name
+	local tris = p:GetAttribute("PROTO_Tris")
+	-- v2.84: count the REAL mesh when PROTO still holds it (every triangle in it, nothing estimated)
+	pcall(function()
+		if p:IsA("MeshPart") then
+			local mc = p.MeshContent
+			if mc.SourceType == Enum.ContentSourceType.Object and mc.Object and mc.Object:IsA("EditableMesh") then
+				local n = #mc.Object:GetFaces()
+				if n > 0 then
+					tris = n
+					if p:GetAttribute("PROTO_Tris") ~= n then p:SetAttribute("PROTO_Tris", n) end
+				end
+			end
+		end
+	end)
+	if not tris and p:IsA("Part") then tris = (p.Shape == Enum.PartType.Block and 12) or nil end
+	U2.tris.Text = tris and (tostring(tris) .. " triangles") or "? triangles"
+	local n = tonumber(tris) or 0
+	-- (v2.71: green under 2,000 = fine even copied many times; amber up to 10,000; red = over the usual 10k per mesh)
+	U2.tris.TextColor3 = (n >= 10000 and Color3.fromRGB(255, 120, 110)) or (n >= 2000 and Color3.fromRGB(255, 200, 90)) or Color3.fromRGB(120, 220, 140)
+	pcall(function() U2.streamRow.Visible = not workspace.StreamingEnabled U2.streamNote.Visible = not workspace.StreamingEnabled end)
+	local coll = "Part shape"
+	pcall(function() if not p:IsA("Part") then coll = p.CollisionFidelity.Name end end)
+	U2.coll.Text = "Collision: " .. coll .. (p.CanCollide and "" or " (off)") .. (p:GetAttribute("PROTO_Finished") and " - unseen faces hidden" or "")
+	local mode = ENT.sliderMode(p)
+	ENT.detailMode = mode
+	ENT.detailEditable = mode ~= nil and not ENT.detailBusy
+	U2.title.Text = (mode == "reduce") and "REDUCE" or "DETAIL"
+	U2.left.Text = (mode == "reduce") and "Lighter" or "Light"
+	U2.right.Text = (mode == "reduce") and "As it is" or "Smooth"
+	U2.track.BackgroundTransparency = mode and 0 or 0.6
+	U2.knob.Visible = mode ~= nil
+	U2.fill.Visible = mode ~= nil
+	ENT.detailShow((mode == "reduce") and 100 or ENT.partDetail(p))
+	pcall(ENT.stepsDraw, p)   -- v2.73
+	if ENT.detailBusy then return end
+	if mode == "detail" then
+		U2.hint.Text = "Round bits get the sides their size needs. Lower = fewer triangles = less lag. Drag, then let go."
+	elseif mode == "reduce" then
+		U2.hint.Text = "No recipe on this part: drag left to merge its points down (rougher). Let go to do it."
+	else
+		U2.val.Text = ""
+		U2.hint.Text = (p:GetAttribute("PROTO_Finished") and "Unseen faces are hidden on this part and it has no recipe - Ctrl+Z the hide to cut / change it again." )
+			or "PROTO can't read this part's shape (a Roblox cut result) - its detail can't be changed."
+	end
+end
+-- ===== end v2.66 DETAIL PANEL =====
+-- v3.50 (smoother): the mouse work once a frame, and the live edge preview
+mouse.Move:Connect(function() ENT.moveDirty = true end)
+ENT.hbConn = game:GetService("RunService").Heartbeat:Connect(function()
+	if ENT.moveDirty then
+		ENT.moveDirty = false
+		local ok, e = pcall(ENT.onMouseMove)
+		if not ok then
+			local m = tostring(e)
+			if m ~= ENT.moveErr then ENT.moveErr = m warn("PROTO mouse: " .. m) end
+		end
+	end
+	local mo = ENT.mo   -- v3.53: a stretch waiting for its exact result keeps the step running
+	if ENT.cutLiveDirty or (ENT.cutLiveShown and not ex) or (mo and mo.pend and mo.kind == "cut") then   -- v3.51
+		local ok, e = pcall(ENT.cutLiveStep)
+		if not ok then warn("PROTO live cut: " .. tostring(e)) ENT.cutLiveDirty = false end
+	end
+	if ENT.edgeLiveDirty or (mo and mo.pend and mo.kind == "edge") then
+		local ok, e = pcall(ENT.edgeLiveStep)
+		if not ok then warn("PROTO live preview: " .. tostring(e)) ENT.edgeLiveDirty = false end
+	end
+end)
+if U.filletR then U.filletR:GetPropertyChangedSignal("Text"):Connect(function() ENT.edgeLiveDirty = true end) end
 plugin.Unloading:Connect(function()
+	pcall(function() if ENT.hbConn then ENT.hbConn:Disconnect() end end)   -- v3.50
+	pcall(function() ENT.liveHide() end)
 	if ex and ex.carrier then pcall(function() ex.carrier:Destroy() end) end
+	pcall(ENT.pvClear)   -- v2.59: the one-piece previews
 	for _, c in ipairs(targetConns) do c:Disconnect() end
 	-- v2.36: plugin-owned bits that live outside adornRoot (CoreGui) - were left behind on reload
 	if ENT.storeConn then ENT.storeConn:Disconnect() end
 	for _, c in ipairs(ENT.ribConns or {}) do c:Disconnect() end
+	for _, c in ipairs(ENT.detailConns or {}) do c:Disconnect() end   -- v2.66
+	if ENT.detailGui then pcall(function() ENT.detailGui:Destroy() end) end
 	if ENT.hud then pcall(function() ENT.hud:Destroy() end) end
 	if ENT.dimGui then pcall(function() ENT.dimGui:Destroy() end) end
+	-- v3.41 (glitch sweep): PROTO's own Views bar, colour picker and error box were left behind on reload
+	for _, k in ipairs({ "mvGui", "pickerGui", "matGui", "errGui" }) do
+		if ENT[k] then pcall(function() ENT[k]:Destroy() end) end
+	end
 	for _, b in ipairs(ENT.patBox or {}) do pcall(function() b:Destroy() end) end
 	adornRoot:Destroy()
 end)
