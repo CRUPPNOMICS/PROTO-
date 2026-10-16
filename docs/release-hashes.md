@@ -230,3 +230,5 @@ Per-release salt: v2.79 = R279-2fb-db  (hex colours; NOT for the store)
 | PROTO_v3.65_RELEASE.rbxmx | build 3.65 | 59d744b064c2507fd3a4427bad3e026900400f3c5032e9fb88a50738d6c85324 | salt 365 |
 | PROTO_v3.66_RELEASE.rbxmx | build 3.66 | 37259ee99e2f7ec3729a58914e574d14d79a39939ab2fc9f11a1b3904ad04a9d | salt 366 |
 | PROTO_v3.67_RELEASE.rbxmx | build 3.67 | c8b750958729bdba201258ca25ad6aab7aab2735dd9ac81ee66b292dc90c459c | salt 367 |
+| PROTO_v3.68_RELEASE.rbxmx | build 3.68 | 7a2b5d0ed1d9ceb40914dd6f053358367df3fd2ca67038b3a5a327d1533d5820 | salt 368 |
+| PROTO_v3.69_RELEASE.rbxmx | build 3.69 | d720b615cf6feb8d059b823ff1cf5d2a51eff494c7d20f1633156b6f52174d46 | salt 369 |

@@ -1,6 +1,6 @@
--- PROTO v3.67  (c) 2026 Giga_gad27 - all rights reserved. Do not copy or re-upload.  (marker: DIM_V1)  - PROTO 3.0 - HEX colour picker + BRUSH paint + one-face paint; typing a side's size changes only that side; double-click a line = type its size; names PROTO_ (not DIM_); REMOVED Hide unseen faces; cut failures say why; NEW: centred rectangles stay centred; EDIT SKETCH (double-click a cut); DRAG HANDLES; FIX: cuts next to / inside drawings; NEW: pinned toolbar + FEATURES list on the right; line LENGTHS; SHELL
+-- PROTO v3.68  (c) 2026 Giga_gad27 - all rights reserved. Do not copy or re-upload.  (marker: DIM_V1)  - PROTO 3.0 - HEX colour picker + BRUSH paint + one-face paint; typing a side's size changes only that side; double-click a line = type its size; names PROTO_ (not DIM_); REMOVED Hide unseen faces; cut failures say why; NEW: centred rectangles stay centred; EDIT SKETCH (double-click a cut); DRAG HANDLES; FIX: cuts next to / inside drawings; NEW: pinned toolbar + FEATURES list on the right; line LENGTHS; SHELL
 -- =====================================================================================
--- PROTO (Sketch to Build) - Version 3.67.0 - Build 367
+-- PROTO (Sketch to Build) - Version 3.68.0 - Build 368
 -- OFFICIAL Roblox Creator Store asset 124557362882102 (the only official copy).
 -- (c) 2026 Giga_gad27 (Cruppnomics). All rights reserved. PROPRIETARY SOFTWARE.
 -- Licensed for use only. You may NOT copy, modify, redistribute, resell, sublicense,
@@ -286,10 +286,10 @@ local function mkBox(parent, default, w)
 end
 
 local U = { tools = {} }
-local DIM_VERSION = "v3.67"
+local DIM_VERSION = "v3.68"
 mkLabel(nil, "PROTO  " .. DIM_VERSION, nil, { bold = true, size = 16, col = Color3.fromRGB(0, 170, 255) })   -- v2.01: new name (Dylan)
-mkLabel(nil, "Version 3.67.0 - Build 367  |  (c) 2026 Giga_gad27 (Cruppnomics)", nil, { col = COL.grey, size = 10 })
-print("PROTO " .. DIM_VERSION .. " (Build 367) loaded")
+mkLabel(nil, "Version 3.68.0 - Build 368  |  (c) 2026 Giga_gad27 (Cruppnomics)", nil, { col = COL.grey, size = 10 })
+print("PROTO " .. DIM_VERSION .. " (Build 368) loaded")
 -- v2.14: "still in testing" warning (top + bottom of the panel)
 function ENT.warnBanner()
 	local f = Instance.new("Frame")
@@ -316,8 +316,8 @@ ENT.warnBanner()
 -- It only WARNS (never breaks anything). Local test copies ("user_...") are left alone.
 ENT.OFFICIAL_ID = "124557362882102"
 ENT.BUILD_TAG = "PRT-GG27-K7Q4-2026"
-ENT.BUILD_NUMBER = 367
-ENT.RELEASE_SALT = "367"   -- changes every release (maps a leaked copy to its build)   -- fingerprint (proves a copy came from this code)
+ENT.BUILD_NUMBER = 368
+ENT.RELEASE_SALT = "368"   -- changes every release (maps a leaked copy to its build)   -- fingerprint (proves a copy came from this code)
 ENT.SNAP_EPS = 0.0002713               -- fingerprint
 ENT.MAX_COPIES = 500                   -- v2.36: pattern / copy-along limit (huge counts froze Studio)
 function ENT.officialCheck()
@@ -16660,13 +16660,14 @@ function ENT.meshCutFlow(e, items, z0, z1)
 	local frame = CFrame.fromMatrix(pl.o, pl.u, pl.v)
 	local grow = ENT.cutGrow()
 	local regs = {}
+	items = ENT.mergeCutItems(items)   -- v3.68: touching areas = ONE cutter outline
 	for _, it in ipairs(items) do
 		local r = it.region
 		if r.inside and #r.inside > 1 then r.inside = ENT.innermost(r.inside) end   -- v2.90: nested drawings
 		if not (r.whole or (r.inside and #r.inside == 1)) then ENT.cutWhy = "this area is made of several shapes overlapping each other" return false end
 		local sh = r.whole or r.inside[1]
 		local g = (grow and grow > 0) and ENT.grown(sh, grow) or sh
-		local holes = ENT.meshHoles(r, outline(sh))
+		local holes = r.mergedHoles or ENT.meshHoles(r, outline(sh))   -- (v3.68: joined areas bring their own holes)
 		if not holes then ENT.cutWhy = ENT.cutWhy or "a drawing crosses the edge of the area you picked" return false end
 		-- v2.65 light curves for the cutter now; v2.66 the recipe keeps the drawing at full detail
 		local full = outline(g)
@@ -16998,6 +16999,19 @@ end
 -- together that TOUCH (share an edge) and go the same depth are joined into ONE outline first, then made as ONE mesh.
 -- Each used to be its own piece, side by side: a seam line where they met, and specks where their edges (each
 -- smoothed on its own) didn't quite line up. Areas with holes in them are left as they were.
+-- v3.68 (Dylan: "a circle cut left this" - stripes down the walls): a slot with circles drawn on it is 5 areas side by
+-- side. Each was its own cutter, so the walls where they met were cut twice and the shape came out with open sides
+-- (stripes, or "came out broken"). Touching areas picked together are joined into ONE outline first, like extrudes.
+function ENT.mergeCutItems(items)
+	if not items or #items < 2 then return items end
+	local was = ENT.cutting
+	ENT.cutting = nil
+	local okM, m = pcall(ENT.mergeItems, items)
+	ENT.cutting = was
+	if okM and type(m) == "table" and #m >= 1 then return m end
+	if not okM then warn("PROTO: joining the cut areas failed (" .. tostring(m) .. ") - cutting them one by one") end
+	return items
+end
 function ENT.mergeItems(items)
 	if ENT.cutting or not (ENT.SHOW_MESH and ENT.meshCut) then return items end   -- (only when it can build meshes)
 	items = ENT.mergeWholes(items)
