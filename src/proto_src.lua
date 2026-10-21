@@ -24,9 +24,9 @@ if old then old:Destroy() end
 local s = Instance.new("Script")
 s.Name = "DIMPlugin"
 s.Source = [=====[
--- PROTO v4.00  (c) 2026 Giga_gad27 (Cruppnomics) - free + open source, GPL-3.0-or-later  (marker: DIM_V1)  - PROTO 4.0 - v4.00: FREE + OPEN SOURCE (GPL-3.0)
+-- PROTO v4.02  (c) 2026 Giga_gad27 (Cruppnomics) - free + open source, GPL-3.0-or-later  (marker: DIM_V1)  - PROTO 4.0 - v4.02: the face engine (ROBLEND's way: cuts, rounds and chamfers edit the faces); rounds / chamfers: pick edges, then Add
 -- =====================================================================================
--- PROTO (Sketch to Build) - Version 4.00.0 - Build 400
+-- PROTO (Sketch to Build) - Version 4.02.0 - Build 402
 -- Free and open source: https://github.com/CRUPPNOMICS/PROTO-  (Creator Store asset 124557362882102)
 -- Copyright (C) 2026 Giga_gad27 (Cruppnomics)
 -- This program is free software: you can redistribute it and/or modify it under the terms of the GNU General
@@ -349,10 +349,10 @@ local function mkBox(parent, default, w)
 end
 
 local U = { tools = {} }
-local DIM_VERSION = "v4.00"
+local DIM_VERSION = "v4.02"
 mkLabel(nil, "PROTO  " .. DIM_VERSION, nil, { bold = true, size = 16, col = COL.on })   -- v2.01: new name (Dylan)
-mkLabel(nil, "Version 4.00.0 - Build 400  |  (c) 2026 Giga_gad27 (Cruppnomics)", nil, { col = COL.grey, size = 10 })
-print("PROTO " .. DIM_VERSION .. " (Build 400) loaded")
+mkLabel(nil, "Version 4.02.0 - Build 402  |  (c) 2026 Giga_gad27 (Cruppnomics)", nil, { col = COL.grey, size = 10 })
+print("PROTO " .. DIM_VERSION .. " (Build 402) loaded")
 -- v2.14: "still in testing" warning (top + bottom of the panel)
 function ENT.warnBanner()
 	local f = Instance.new("Frame")
@@ -378,8 +378,8 @@ ENT.warnBanner()
 -- v4.00: PROTO is free and open source (GPL-3.0) - the old "official copy" check is gone: every copy is fine.
 ENT.OFFICIAL_ID = "124557362882102"   -- (the Creator Store listing)
 ENT.REPO = "github.com/CRUPPNOMICS/PROTO-"
-ENT.BUILD_NUMBER = 400
-ENT.RELEASE_SALT = "400"   -- (release number, for bug reports)
+ENT.BUILD_NUMBER = 402
+ENT.RELEASE_SALT = "402"   -- (release number, for bug reports)
 ENT.SNAP_EPS = 0.0002713
 ENT.MAX_COPIES = 500                   -- v2.36: pattern / copy-along limit (huge counts froze Studio)
 U.status = mkLabel(nil, "", nil, { col = Color3.fromRGB(240, 235, 220) })
@@ -8082,7 +8082,7 @@ function ENT.edgeStart(kind)
 	if ENT.shellTool then ENT.shellStop() end
 	ENT.edgeTool = kind
 	if ENT.eSelClear then pcall(ENT.eSelClear, true) end
-	setStatus((kind == "fillet" and "ROUND" or "CHAMFER") .. ": set the Size (PROPERTIES), then CLICK an edge - it's done straight away (green = the edge under the mouse). Click more edges to add more. Ctrl+Z undoes one. Esc = stop.")
+	setStatus((kind == "fillet" and "ROUND" or "CHAMFER") .. ": click edges to pick them (orange; click again to drop one), set the Size, then ADD (or Enter). Esc = drop picks / stop.")
 	if ENT.ribPaint then pcall(ENT.ribPaint) end
 end
 function ENT.edgeStop()
@@ -8478,7 +8478,11 @@ end
 -- v3.57 (Dylan: "just make it click to add, that's it"): click an edge = it's chamfered / rounded straight away at the
 -- Size in PROPERTIES (no picking, no live preview, no Enter). The screen-pixel edge finding (v3.50) stays.
 -- (false = the v3.50 pick + live preview + Enter way again.)
-ENT.EDGE_OLD = true
+ENT.EDGE_OLD = false
+-- v4.02 (Dylan: "make it so I have to select the edges then click add, the instant add causes errors"): click edges to
+-- PICK them (orange), then ADD (button or Enter) makes them all in one go. No live preview while picking (nothing is
+-- built until Add) - the live preview mesh + the drag arrow stay off (ENT.EDGE_LIVE = true turns them back on).
+ENT.EDGE_LIVE = false
 function ENT.edgeClick()
 	if not ENT.meshGate() then return end
 	if ENT.rebuildBusy then setStatus("Still working on the last one - one moment.") return end
@@ -9755,7 +9759,7 @@ function ENT.triHoles(outer, holes)
 		end
 	end
 	local function cr(o, a, b) return (a.X - o.X) * (b.Y - o.Y) - (a.Y - o.Y) * (b.X - o.X) end
-	local function same(a, b) return (a - b).Magnitude < 1e-6 end
+	local function same(a, b) local dx, dy = a.X - b.X, a.Y - b.Y return dx * dx + dy * dy < 1e-12 end   -- (v4.02: no new point made)
 	local function crosses(p1, p2, q1, q2)
 		if same(p1, q1) or same(p1, q2) or same(p2, q1) or same(p2, q2) then return false end
 		local d1, d2 = cr(q1, q2, p1), cr(q1, q2, p2)
@@ -9779,9 +9783,27 @@ function ENT.triHoles(outer, holes)
 		local rings = { loop }
 		for k = hi, #hs do table.insert(rings, hs[k]) end
 		local best, bd = nil, math.huge
-		for li, id in ipairs(loop) do
-			local d = (pts[id] - M).Magnitude
-			if d < bd and not blocked(M, pts[id], rings) then best, bd = li, d end
+		-- v4.02: the bridge must leave P INTO the shape (a point used twice - by an earlier hole's bridge - has two
+		-- corners; the wrong one crossed the loop over itself and the filling got stuck: two holes in one face failed)
+		local function inWedge(li)
+			local m = #loop
+			local A0, B0, C0 = pts[loop[(li - 2) % m + 1]], pts[loop[li]], pts[loop[li % m + 1]]
+			local c1, c2 = cr(A0, B0, M), cr(B0, C0, M)
+			if cr(A0, B0, C0) >= 0 then return c1 > E and c2 > E end
+			return c1 > E or c2 > E
+		end
+		-- (nearest first: the first one that's open is the one - checking every point against every side was slow on a
+		-- face with many holes)
+		local order = {}
+		for li, id in ipairs(loop) do order[#order + 1] = { li, (pts[id] - M).Magnitude } end
+		table.sort(order, function(x, y) return x[2] < y[2] end)
+		for _, o in ipairs(order) do
+			if inWedge(o[1]) and not blocked(M, pts[loop[o[1]]], rings) then best = o[1] break end
+		end
+		if not best then
+			for _, o in ipairs(order) do
+				if not blocked(M, pts[loop[o[1]]], rings) then best = o[1] break end
+			end
 		end
 		if not best then return nil end
 		local nl = {}
@@ -9806,7 +9828,7 @@ function ENT.triHoles(outer, holes)
 				local id = V[j]
 				if id ~= ia and id ~= ib and id ~= ic then
 					local p = pts[id]
-					if cr(pts[V[(j - 2) % n + 1]], p, pts[V[j % n + 1]]) <= E and not (same(p, a) or same(p, b) or same(p, c)) and inTri(p, a, b, c) then
+					if cr(pts[V[(j - 2) % n + 1]], p, pts[V[j % n + 1]]) <= E and inTri(p, a, b, c) and not (same(p, a) or same(p, b) or same(p, c)) then
 						ear = false
 						break
 					end
@@ -11723,7 +11745,7 @@ end
 -- one cut's cutter as triangles (world): the outline (corners put in) lofted from just past its opening down to its
 -- floor, each side moved out at the top (opening edge done) and in at the bottom (floor edge done), holes straight
 -- rc = { outer, holes, z0, z1, open = 0 / 1 (which end opens) or nil (through), rim = {}, bot = {}, vc = {} }
-function ENT.recipeTris(rc, frame)
+function ENT.recipeTris(rc, frame, raw)
 	local function area(q) local A = 0 for i = 1, #q do local a, b = q[i], q[i % #q + 1] A += a.X * b.Y - b.X * a.Y end return A / 2 end
 	local outer = rc.outer
 	local flipped = area(outer) < 0
@@ -11780,7 +11802,7 @@ function ENT.recipeTris(rc, frame)
 		if S.f then return S.r - math.sqrt(math.max(0, S.r * S.r - (S.r - d) ^ 2)) end
 		return S.r - d
 	end
-	local ds = { -0.3 }
+	local ds = { raw and 0 or -0.3 }   -- (v4.02 raw: the face engine starts AT the opening)
 	if rimMax > 0 then for j = 0, 10 do ds[#ds + 1] = rimMax * j / 10 end end
 	if botMax > 0 then for j = 0, 10 do ds[#ds + 1] = depth - botMax + botMax * j / 10 end end
 	ds[#ds + 1] = depth
@@ -11792,6 +11814,26 @@ function ENT.recipeTris(rc, frame)
 		local offs = {}
 		for j = 1, nB do offs[j] = prof(rim[j], d) - prof(bot[j], depth - d) end
 		rings[#rings + 1] = { pts = ENT.offsetPoly(base, offs), z = zo + dirIn * d }
+	end
+	if raw then
+		-- v4.02: the rings themselves for the face engine (outline anticlockwise, opening first), each side's sharp-
+		-- corner group, and which zone (opening round / floor round / straight wall) each ring-to-ring strip is in
+		local SHARP = math.cos(math.rad(35))
+		local pg, g0 = {}, 0
+		for j = 1, nB do
+			local a, b, c = base[(j - 2) % nB + 1], base[j], base[j % nB + 1]
+			if (b - a).Unit:Dot((c - b).Unit) <= SHARP then g0 += 1 end
+			pg[j] = g0
+		end
+		local zone = {}
+		for k = 1, #rings - 1 do
+			zone[k] = {}
+			for j = 1, nB do
+				if rim[j] and uds[k + 1] <= rim[j].r + 1e-6 then zone[k][j] = ":rim"
+				elseif bot[j] and uds[k] >= depth - bot[j].r - 1e-6 then zone[k][j] = ":bot" end
+			end
+		end
+		return { rings = rings, holes = rc.holes or {}, depth = depth, pg = pg, zone = zone }
 	end
 	local function W3(p, z) return frame:PointToWorldSpace(V3(p.X, p.Y, z)) end
 	local tris = {}
@@ -12567,6 +12609,793 @@ end
 function ENT.ownIntersect(bodyTris, cutterTris, frame)
 	return CSG.toTris(CSG.intersect(CSG.fromTris(bodyTris, frame, "A"), CSG.fromTris(cutterTris, frame, "C")), frame)
 end
+-- ===== v4.02 FACE ENGINE (Dylan 21 Oct: ROBLEND's trick for PROTO - "there is no part, it's all a trick") =====
+-- Like ROBLEND (and Blender), the solid is a list of points and flat faces (each face an outline plus its holes).
+-- A step EDITS that list instead of working a boolean out:
+--   a cut inside one face = a new hole in that face + walls + a floor (a through cut: a hole in the far face too);
+--   a round / chamfer on a straight edge = the two faces along it pulled back, a strip of new faces in the gap, and
+--   the end faces given the curve at their corners.
+-- Only when the step can't be done that way (a cut crossing another cut or a round, a curved edge, a corner where more
+-- than three faces meet, shells, revolve cuts) does PROTO's boolean engine do it, as before.
+-- Everything here is in the part's own space, in full 64-bit numbers (D3 / D2).
+local FM = {}
+CSG.FM = FM
+local FEPS = 2e-4
+
+local function dot(a, b) return a.X * b.X + a.Y * b.Y + a.Z * b.Z end
+-- a face's 2D basis (u, v) with u x v = n
+local function basisOf(n)
+	local u = (math.abs(n.X) < 0.9) and D3(1, 0, 0):Cross(n) or D3(0, 1, 0):Cross(n)
+	u = unit(u)
+	return u, n:Cross(u)
+end
+local function area2(q) local A = 0 for i = 1, #q do local a, b = q[i], q[i % #q + 1] A += a.X * b.Y - b.X * a.Y end return A / 2 end
+local function inPoly2(p, q)
+	local inside = false
+	local m = #q
+	for i = 1, m do
+		local a, b = q[i], q[i % m + 1]
+		if (a.Y > p.Y) ~= (b.Y > p.Y) then
+			local x = a.X + (p.Y - a.Y) * (b.X - a.X) / (b.Y - a.Y)
+			if x > p.X then inside = not inside end
+		end
+	end
+	return inside
+end
+-- do two 2D segments cross (touching counts, within e)?
+local function segX(a, b, c, d, e)
+	local function cr(o, p, q) return (p.X - o.X) * (q.Y - o.Y) - (p.Y - o.Y) * (q.X - o.X) end
+	local d1, d2, d3, d4 = cr(c, d, a), cr(c, d, b), cr(a, b, c), cr(a, b, d)
+	if ((d1 > e and d2 < -e) or (d1 < -e and d2 > e)) and ((d3 > e and d4 < -e) or (d3 < -e and d4 > e)) then return true end
+	return false
+end
+-- distance from point p to segment ab (2D)
+local function dSeg2(p, a, b)
+	local dx, dy = b.X - a.X, b.Y - a.Y
+	local l2 = dx * dx + dy * dy
+	local t = l2 > 0 and math.clamp(((p.X - a.X) * dx + (p.Y - a.Y) * dy) / l2, 0, 1) or 0
+	local x, y = a.X + dx * t - p.X, a.Y + dy * t - p.Y
+	return math.sqrt(x * x + y * y)
+end
+
+-- ---------- polys -> faces (outline loops of point ids) ----------
+-- M = { pos = {D3}, faces = { { loops = { outer, hole, ... }, n, w, g } } }
+function FM.fromPolys(polys)
+	local faces0, pos = tFix(polys)
+	if #faces0 < 4 then return nil, "too few faces" end
+	-- only a sealed shape is edited this way (a shape with gaps - left by an earlier boolean - stays with the booleans)
+	do
+		local cnt = {}
+		for _, F in ipairs(faces0) do
+			local m = #F.ids
+			for k = 1, m do local key = F.ids[k] .. ">" .. F.ids[k % m + 1] cnt[key] = (cnt[key] or 0) + 1 end
+		end
+		for key, c in pairs(cnt) do
+			local a, b = key:match("(%d+)>(%d+)")
+			if (cnt[b .. ">" .. a] or 0) ~= c then return nil, "the shape has gaps" end
+		end
+	end
+	-- group coplanar faces that share a side
+	local parent = {}
+	local function root(i) while parent[i] do i = parent[i] end return i end
+	local plane = {}
+	for i, F in ipairs(faces0) do
+		local P = cPoly((function() local v = {} for k, id in ipairs(F.ids) do v[k] = pos[id] end return v end)(), F.P.g)
+		if not P then return nil, "a flat-as-a-line face" end
+		plane[i] = P
+	end
+	local sideOwner = {}
+	for i, F in ipairs(faces0) do
+		local m = #F.ids
+		for k = 1, m do sideOwner[F.ids[k] .. ">" .. F.ids[k % m + 1]] = i end
+	end
+	for i, F in ipairs(faces0) do
+		local m = #F.ids
+		for k = 1, m do
+			local a, b = F.ids[k], F.ids[k % m + 1]
+			local j = sideOwner[b .. ">" .. a]
+			if j and j ~= i then
+				local P, Q = plane[i], plane[j]
+				if dot(P.n, Q.n) > 1 - 1e-9 and math.abs(P.w - Q.w) < FEPS then
+					local ri, rj = root(i), root(j)
+					if ri ~= rj then parent[ri] = rj end
+				end
+			end
+		end
+	end
+	local groups, order = {}, {}
+	for i in ipairs(faces0) do
+		local r = root(i)
+		if not groups[r] then groups[r] = {} order[#order + 1] = r end
+		table.insert(groups[r], i)
+	end
+	local M = { pos = pos, faces = {} }
+	for _, r in ipairs(order) do
+		local list = groups[r]
+		-- the group's own outline: its sides that no other member runs the other way
+		local cnt = {}
+		for _, i in ipairs(list) do
+			local ids = faces0[i].ids
+			local m = #ids
+			for k = 1, m do
+				local key = ids[k] .. ">" .. ids[k % m + 1]
+				cnt[key] = (cnt[key] or 0) + 1
+			end
+		end
+		local nxt = {}
+		local keys = {}
+		for key in pairs(cnt) do keys[#keys + 1] = key end
+		table.sort(keys)
+		for _, key in ipairs(keys) do
+			local a, b = key:match("(%d+)>(%d+)")
+			a, b = tonumber(a), tonumber(b)
+			local extra = cnt[key] - (cnt[b .. ">" .. a] or 0)
+			if extra > 0 then
+				if extra > 1 or nxt[a] then return nil, "two outlines touch at a point" end
+				nxt[a] = b
+			end
+		end
+		local starts = {}
+		for a in pairs(nxt) do starts[#starts + 1] = a end
+		table.sort(starts)
+		local used, loops = {}, {}
+		for _, a in ipairs(starts) do
+			if not used[a] then
+				local loop, cur = {}, a
+				while cur and not used[cur] do used[cur] = true loop[#loop + 1] = cur cur = nxt[cur] end
+				if cur ~= a then return nil, "an outline doesn't close" end
+				if #loop >= 3 then loops[#loops + 1] = loop end
+			end
+		end
+		local P = plane[list[1]]
+		local u, v = basisOf(P.n)
+		local outers, holes = {}, {}
+		for _, loop in ipairs(loops) do
+			local q = {}
+			for k, id in ipairs(loop) do local p = pos[id] q[k] = D2(dot(p, u), dot(p, v)) end
+			local a = area2(q)
+			if a > 0 then outers[#outers + 1] = { loop = loop, q = q } elseif a < 0 then holes[#holes + 1] = { loop = loop, q = q } end
+		end
+		if #outers == 0 then return nil, "a face with no outline" end
+		local fs = {}
+		local members = {}
+		for _, i in ipairs(list) do members[#members + 1] = faces0[i].P end
+		for _, o in ipairs(outers) do
+			-- (members: the face's own pieces as they came in - put back as they were when the step leaves it alone)
+			local f = { loops = { o.loop }, n = P.n, w = P.w, g = P.g, q = o.q, members = (#outers == 1) and members or nil }
+			fs[#fs + 1] = f
+		end
+		for _, h in ipairs(holes) do
+			local home = nil
+			for _, f in ipairs(fs) do if inPoly2(h.q[1], f.q) then home = f break end end
+			if not home then return nil, "a hole outside its face" end
+			table.insert(home.loops, h.loop)
+		end
+		for _, f in ipairs(fs) do f.q = nil M.faces[#M.faces + 1] = f end
+	end
+	return M
+end
+
+-- ---------- faces -> polys (each face cut into triangles, its holes kept) ----------
+function FM.toPolys(M)
+	local out = {}
+	local pos = M.pos
+	for _, f in ipairs(M.faces) do
+	if f.members and not f.changed then
+		for _, P in ipairs(f.members) do out[#out + 1] = P end
+	else
+		local u, v = basisOf(f.n)
+		local O = f.n * f.w
+		local function q2(id) local p = pos[id] local d = D2(dot(p, u), dot(p, v)) rawset(d, "id", id) return d end
+		local outer = {}
+		for _, id in ipairs(f.loops[1]) do outer[#outer + 1] = q2(id) end
+		if #f.loops == 1 and #outer == 3 then
+			local P = cPoly({ pos[f.loops[1][1]], pos[f.loops[1][2]], pos[f.loops[1][3]] }, f.g)
+			if P then out[#out + 1] = P end
+		else
+			local holes = {}
+			for k = 2, #f.loops do
+				local h = {}
+				for _, id in ipairs(f.loops[k]) do h[#h + 1] = q2(id) end
+				holes[#holes + 1] = h
+			end
+			local pts, tt = ENT.triHoles(outer, holes)
+			if not pts then return nil, "a face couldn't be filled" end
+			local function p3(d)
+				local id = rawget(d, "id")
+				if id then return pos[id] end
+				return O + u * d.X + v * d.Y
+			end
+			for _, t in ipairs(tt) do
+				local a, b, c = p3(pts[t[1]]), p3(pts[t[2]]), p3(pts[t[3]])
+				local P = cPoly({ a, b, c }, f.g)
+				if P then
+					if dot(P.n, f.n) < 0 then P = cPoly({ a, c, b }, f.g) end
+					out[#out + 1] = P
+				end
+			end
+		end
+	end
+	end
+	return out
+end
+
+-- ---------- helpers on M ----------
+local function newPoint(M, p) M.pos[#M.pos + 1] = p return #M.pos end
+local function facesAt(M, id)
+	local out = {}
+	for fi, f in ipairs(M.faces) do
+		for li, loop in ipairs(f.loops) do
+			for k, x in ipairs(loop) do if x == id then out[#out + 1] = { fi = fi, li = li, k = k } end end
+		end
+	end
+	return out
+end
+-- a face's triangles (for the clash check), as D3 triples
+local function faceTris(M, f)
+	local P = FM.toPolys({ pos = M.pos, faces = { f } })
+	local t = {}
+	for _, p in ipairs(P or {}) do t[#t + 1] = { p.v[1], p.v[2], p.v[3] } end
+	return t
+end
+-- does segment pq go through triangle abc (strictly inside it, not just touching)?
+local function segTri(p, q, a, b, c, e)
+	local n = (b - a):Cross(c - a)
+	local nl = mag(n)
+	if nl < 1e-12 then return false end
+	n = n / nl
+	local dp, dq = dot(p - a, n), dot(q - a, n)
+	if (dp > e and dq > e) or (dp < -e and dq < -e) then return false end
+	if math.abs(dp - dq) < 1e-12 then return false end   -- (lying in its plane: not a crossing)
+	if math.abs(dp) <= e or math.abs(dq) <= e then return false end   -- (an end touching it)
+	local t = dp / (dp - dq)
+	local x = p + (q - p) * t
+	local c1 = dot((b - a):Cross(x - a), n)
+	local c2 = dot((c - b):Cross(x - b), n)
+	local c3 = dot((a - c):Cross(x - c), n)
+	return (c1 > e and c2 > e and c3 > e) or (c1 < -e and c2 < -e and c3 < -e)
+end
+local function boxOf(ts)
+	local lo, hi = D3(math.huge, math.huge, math.huge), D3(-math.huge, -math.huge, -math.huge)
+	for _, t in ipairs(ts) do for k = 1, 3 do lo, hi = lo:Min(t[k]), hi:Max(t[k]) end end
+	return lo, hi
+end
+-- do the new triangles cross any of the faces in `others`?
+local function clash(M, newTris, others)
+	local lo, hi = boxOf(newTris)
+	local e = 1e-5
+	for _, f in ipairs(others) do
+		local ft = faceTris(M, f)
+		local flo, fhi = boxOf(ft)
+		if not (flo.X > hi.X + e or flo.Y > hi.Y + e or flo.Z > hi.Z + e or fhi.X < lo.X - e or fhi.Y < lo.Y - e or fhi.Z < lo.Z - e) then
+			for _, A in ipairs(newTris) do
+				for _, B in ipairs(ft) do
+					for k = 1, 3 do
+						if segTri(A[k], A[k % 3 + 1], B[1], B[2], B[3], e) then return true end
+						if segTri(B[k], B[k % 3 + 1], A[1], A[2], A[3], e) then return true end
+					end
+				end
+			end
+		end
+	end
+	return false
+end
+-- a face's outline / holes as 2D (in its own basis)
+local function face2(M, f)
+	local u, v = basisOf(f.n)
+	local L = {}
+	for li, loop in ipairs(f.loops) do
+		local q = {}
+		for k, id in ipairs(loop) do local p = M.pos[id] q[k] = D2(dot(p, u), dot(p, v)) end
+		L[li] = q
+	end
+	return L, u, v
+end
+-- is the 2D outline ring well inside face f (inside its outline, clear of its holes)?
+local function ringInFace(L, ring)
+	local e = 1e-4
+	for _, p in ipairs(ring) do
+		if not inPoly2(p, L[1]) then return false end
+		for k = 2, #L do if inPoly2(p, L[k]) then return false end end
+		for _, q in ipairs(L) do for i = 1, #q do if dSeg2(p, q[i], q[i % #q + 1]) < e then return false end end end
+	end
+	for k = 2, #L do
+		local h = L[k]
+		for _, p in ipairs(h) do if inPoly2(p, ring) then return false end end
+	end
+	for _, q in ipairs(L) do
+		for i = 1, #q do
+			for j = 1, #ring do
+				if segX(q[i], q[i % #q + 1], ring[j], ring[j % #ring + 1], 1e-9) then return false end
+			end
+		end
+	end
+	return true
+end
+
+-- ---------- a CUT done by editing faces ----------
+-- c = PROTO's saved cut; L = detail. Returns the new polys, or nil + why (then the boolean engine does it)
+function FM.cut(A, c, L)
+	if c.kind == "rev" then return nil, "a revolve cut" end
+	local M, why = FM.fromPolys(A)
+	if not M then return nil, why end
+	-- the cut's frame in the part's own space, from its saved numbers (64-bit)
+	local f = c.f
+	local O = D3(f[1], f[2], f[3])
+	local X, Y, Z = D3(f[4], f[7], f[10]), D3(f[5], f[8], f[11]), D3(f[6], f[9], f[12])
+	local function W(p2, z) return O + X * p2.X + Y * p2.Y + Z * z end
+	local rc = ENT.lowRecipe(ENT.recipeWork(c), L)
+	local zo, zf
+	if rc.open == 1 then zo, zf = rc.z1, rc.z0 else zo, zf = rc.z0, rc.z1 end
+	local dirIn = (zf > zo) and 1 or -1
+	local dIn = Z * dirIn
+	-- the face the cut opens in: on the plane z = zo, facing out against the cut's way in
+	local Fo, Fi = nil, nil
+	local wo = dot(W(D2(0, 0), zo), -dIn)
+	for i, g in ipairs(M.faces) do
+		if dot(g.n, -dIn) > 1 - 1e-7 and math.abs(g.w - wo) < 2e-4 then
+			Fo = Fo or {}
+			table.insert(Fo, i)
+		end
+	end
+	if not Fo then return nil, "the cut doesn't start on a face" end
+	-- the rings (outline at each depth, PROTO's own: corners, opening + floor rounds / chamfers)
+	local R = ENT.recipeTris(rc, CFrame.new(), true)
+	if not R then return nil, "the outline couldn't be made" end
+	local top = R.rings[1]
+	-- which face: the one holding the whole opening
+	local face, fL
+	for _, i in ipairs(Fo) do
+		local L2 = face2(M, M.faces[i])
+		local u, v = basisOf(M.faces[i].n)
+		local ring = {}
+		for k, p in ipairs(top.pts) do local q = W(p, top.z) ring[k] = D2(dot(q, u), dot(q, v)) end
+		if area2(ring) < 0 then local r2 = {} for k = #ring, 1, -1 do r2[#r2 + 1] = ring[k] end ring = r2 end
+		if ringInFace(L2, ring) then face, fL = i, L2 break end
+	end
+	if not face then return nil, "the cut's opening isn't wholly inside one face" end
+	local F = M.faces[face]
+	local through = rc.open == nil
+	local depth = R.depth
+	local exitI = nil
+	if through then
+		-- the face it comes out of: facing the way in, holding the whole outline, the nearest one
+		local best
+		for i, g in ipairs(M.faces) do
+			if i ~= face and dot(g.n, dIn) > 1 - 1e-7 then
+				local d = g.w - dot(W(D2(0, 0), zo), dIn)
+				if d > 1e-3 and (not best or d < best) then
+					local L2 = face2(M, g)
+					local u, v = basisOf(g.n)
+					local ring = {}
+					for k, p in ipairs(top.pts) do local q = W(p, zo + dirIn * d) ring[k] = D2(dot(q, u), dot(q, v)) end
+					if area2(ring) < 0 then local r2 = {} for k = #ring, 1, -1 do r2[#r2 + 1] = ring[k] end ring = r2 end
+					if ringInFace(L2, ring) then best, exitI = d, i end
+				end
+			end
+		end
+		if not exitI then return nil, "the far side isn't one flat face" end
+		depth = best
+		local rc2 = table.clone(rc)
+		rc2.z1 = rc.z0 + dirIn * depth
+		R = ENT.recipeTris(rc2, CFrame.new(), true)
+		if not R then return nil, "the outline couldn't be made" end
+		top = R.rings[1]
+	end
+	-- every ring must be a plain outline (an opening round on some sides only can twist one round a corner)
+	local function simple(q)
+		local m = #q
+		for i = 1, m do
+			for j = i + 2, m do
+				if not (i == 1 and j == m) then
+					if segX(q[i], q[i % m + 1], q[j], q[j % m + 1], 1e-9) then return false end
+				end
+			end
+		end
+		return true
+	end
+	for _, ring in ipairs(R.rings) do
+		if not simple(ring.pts) then return nil, "the outline twists at some depth" end
+	end
+	for _, h in ipairs(R.holes) do if not simple(h) then return nil, "an island's outline crosses itself" end end
+	-- point ids: every ring point once (in the part's space)
+	local ringIds = {}
+	for k, ring in ipairs(R.rings) do
+		local ids = {}
+		for j, p in ipairs(ring.pts) do
+			local q = W(p, ring.z)
+			-- (the opening ring sits exactly on its face; a through cut's last ring on the far face)
+			if k == 1 then q = q - F.n * (dot(q, F.n) - F.w) end
+			if through and k == #R.rings then local G = M.faces[exitI] q = q - G.n * (dot(q, G.n) - G.w) end
+			ids[j] = newPoint(M, q)
+		end
+		ringIds[k] = ids
+	end
+	local holeIds = {}   -- islands: { top ids, bottom ids }
+	for hi, h in ipairs(R.holes) do
+		local t, b = {}, {}
+		for j, p in ipairs(h) do
+			local qt = W(p, R.rings[1].z)
+			qt = qt - F.n * (dot(qt, F.n) - F.w)
+			local qb = W(p, R.rings[#R.rings].z)
+			if through then local G = M.faces[exitI] qb = qb - G.n * (dot(qb, G.n) - G.w) end
+			t[j], b[j] = newPoint(M, qt), newPoint(M, qb)
+		end
+		holeIds[hi] = { t = t, b = b, q = h }
+	end
+	local newFaces = {}
+	local gw = "fmW" .. tostring(c.id or "")
+	local function addFace(loops, n, g)
+		local p0 = M.pos[loops[1][1]]
+		newFaces[#newFaces + 1] = { loops = loops, n = n, w = dot(n, p0), g = g }
+	end
+	-- a planar quad / triangle side, its normal pointing away from `away` (a point inside the solid side)
+	local function side(ids, towards, g)
+		local a, b, c2 = M.pos[ids[1]], M.pos[ids[2]], M.pos[ids[3]]
+		local n = (b - a):Cross(c2 - a)
+		if mag(n) < 1e-12 and ids[4] then n = (c2 - a):Cross(M.pos[ids[4]] - a) end
+		if mag(n) < 1e-12 then return end
+		n = unit(n)
+		if dot(n, towards) < 0 then
+			local r = {} for k = #ids, 1, -1 do r[#r + 1] = ids[k] end
+			ids = r
+			n = -n
+		end
+		addFace({ ids }, n, g)
+	end
+	-- walls, ring to ring: each side faces into the cut (towards the outline's inside)
+	local nB = #R.rings[1].pts
+	local area0 = area2(R.rings[1].pts)
+	local ccw = area0 > 0
+	for k = 1, #R.rings - 1 do
+		local A1, B1 = ringIds[k], ringIds[k + 1]
+		for j = 1, nB do
+			local j2 = j % nB + 1
+			local pa, pb = R.rings[k].pts[j], R.rings[k].pts[j2]
+			local dx, dy = pb.X - pa.X, pb.Y - pa.Y
+			local inX, inY = -dy, dx            -- (left of the side = inside an anticlockwise outline)
+			if not ccw then inX, inY = dy, -dx end
+			local towards = X * inX + Y * inY
+			local g = gw .. ":" .. tostring(R.pg[j]) .. (R.zone[k][j] or "")
+			local ids = { A1[j], A1[j2], B1[j2], B1[j] }
+			-- (a side shrunk to a point at a sharp corner: a triangle)
+			local P = {}
+			for _, id in ipairs(ids) do if #P == 0 or mag(M.pos[P[#P]] - M.pos[id]) > 1e-7 then P[#P + 1] = id end end
+			if #P >= 3 and mag(M.pos[P[1]] - M.pos[P[#P]]) <= 1e-7 then table.remove(P) end
+			if #P >= 3 then side(P, towards, g) end
+		end
+	end
+	-- islands: their walls face out of them, their tops stay level with the face
+	for hi, H in ipairs(holeIds) do
+		local q = H.q
+		local hccw = area2(q) > 0
+		for j = 1, #q do
+			local j2 = j % #q + 1
+			local dx, dy = q[j2].X - q[j].X, q[j2].Y - q[j].Y
+			local oX, oY = dy, -dx             -- (right of the side = outside an anticlockwise island)
+			if not hccw then oX, oY = -dy, dx end
+			side({ H.t[j], H.t[j2], H.b[j2], H.b[j] }, X * oX + Y * oY, gw .. ":h" .. hi)
+		end
+		-- its top: a face of its own on the opening's face
+		local tl = table.clone(H.t)
+		local p0, p1, p2 = M.pos[tl[1]], M.pos[tl[2]], M.pos[tl[3]]
+		if hccw ~= (dot(X:Cross(Y), F.n) > 0) then local r = {} for k = #tl, 1, -1 do r[#r + 1] = tl[k] end tl = r end
+		addFace({ tl }, F.n, F.g)
+		if through then
+			local G = M.faces[exitI]
+			local bl = table.clone(H.b)
+			if hccw ~= (dot(X:Cross(Y), G.n) > 0) then local r = {} for k = #bl, 1, -1 do r[#r + 1] = bl[k] end bl = r end
+			addFace({ bl }, G.n, G.g)
+		end
+	end
+	-- the opening: a new hole in its face (wound the other way to the face's outline)
+	local function holeLoop(ids, n)
+		local q = {}
+		local u, v = basisOf(n)
+		for k, id in ipairs(ids) do local p = M.pos[id] q[k] = D2(dot(p, u), dot(p, v)) end
+		if area2(q) > 0 then local r = {} for k = #ids, 1, -1 do r[#r + 1] = ids[k] end return r end
+		return table.clone(ids)
+	end
+	-- the floor (a pocket) or the hole in the far face (through)
+	local last = ringIds[#ringIds]
+	if through then
+		table.insert(M.faces[exitI].loops, holeLoop(last, M.faces[exitI].n))
+		M.faces[exitI].changed = true
+	else
+		local fl = holeLoop(last, -dIn)
+		local r = {} for k = #fl, 1, -1 do r[#r + 1] = fl[k] end   -- (an outline: anticlockwise round its normal)
+		local loops = { r }
+		for _, H in ipairs(holeIds) do loops[#loops + 1] = holeLoop(H.b, -dIn) end
+		addFace(loops, -dIn, "fmF" .. tostring(c.id or ""))
+	end
+	-- the clash check: the new walls / floor must not cross any face but the one it opens in (and comes out of)
+	local others = {}
+	for i, g in ipairs(M.faces) do if i ~= face and i ~= exitI then others[#others + 1] = g end end
+	local nt = {}
+	for _, g in ipairs(newFaces) do
+		if dot(g.n, F.n) < 1 - 1e-7 or math.abs(g.w - F.w) > 1e-6 then   -- (not the island tops)
+			for _, t in ipairs(faceTris(M, g)) do nt[#nt + 1] = t end
+		end
+	end
+	if #nt > 0 and clash(M, nt, others) then return nil, "the cut runs into another part of the shape" end
+	table.insert(F.loops, holeLoop(ringIds[1], F.n))
+	F.changed = true
+	for _, g in ipairs(newFaces) do M.faces[#M.faces + 1] = g end
+	return FM.toPolys(M)
+end
+
+-- ---------- a ROUND / CHAMFER on a straight edge, done by editing faces ----------
+function FM.edge(A, f, L)
+	local pts = f.pts or {}
+	if #pts < 2 or not f.r or f.r <= 1e-4 then return nil, "no edge" end
+	local P0 = D3(pts[1][1], pts[1][2], pts[1][3])
+	local P1 = D3(pts[#pts][1], pts[#pts][2], pts[#pts][3])
+	local e = P1 - P0
+	local len = mag(e)
+	if len < 1e-4 then return nil, "a closed or tiny edge" end
+	e = e / len
+	for k = 2, #pts - 1 do
+		local q = D3(pts[k][1], pts[k][2], pts[k][3])
+		local t = dot(q - P0, e)
+		if mag(P0 + e * t - q) > 1e-3 then return nil, "a curved edge" end
+	end
+	local M, why = FM.fromPolys(A)
+	if not M then return nil, why end
+	local pos = M.pos
+	-- the points along the edge line (its ends + any in between), in order
+	local on = {}
+	for id, p in ipairs(pos) do
+		local t = dot(p - P0, e)
+		if t > -2e-3 and t < len + 2e-3 and mag(P0 + e * t - p) < 2e-3 then on[#on + 1] = { t = t, id = id } end
+	end
+	table.sort(on, function(x, y) return x.t < y.t end)
+	-- (only points some face uses)
+	local usedPt = {}
+	for _, g in ipairs(M.faces) do for _, loop in ipairs(g.loops) do for _, id in ipairs(loop) do usedPt[id] = true end end end
+	local path = {}
+	for _, o in ipairs(on) do if usedPt[o.id] then path[#path + 1] = o.id end end
+	if #path < 2 then return nil, "the edge isn't there any more" end
+	-- every piece along it between the same two faces
+	local function sideFace(a, b)
+		for fi, g in ipairs(M.faces) do
+			for li, loop in ipairs(g.loops) do
+				local m = #loop
+				for k = 1, m do if loop[k] == a and loop[k % m + 1] == b then return fi, li, k end end
+			end
+		end
+		return nil
+	end
+	local f1 = sideFace(path[1], path[2])
+	local f2 = sideFace(path[2], path[1])
+	if not (f1 and f2) then return nil, "not an edge between two faces" end
+	-- (f1 runs a -> b, f2 runs b -> a; swap ends if needed)
+	local a, b = path[1], path[#path]
+	for k = 1, #path - 1 do
+		local x1 = sideFace(path[k], path[k + 1])
+		local x2 = sideFace(path[k + 1], path[k])
+		if x1 ~= f1 or x2 ~= f2 then return nil, "the edge has more than two faces along it" end
+	end
+	-- the points in the middle of the edge belong to these two faces only: take them out of both
+	for k = 2, #path - 1 do
+		for _, h in ipairs(facesAt(M, path[k])) do
+			if h.fi ~= f1 and h.fi ~= f2 then return nil, "another face meets the edge part-way" end
+		end
+	end
+	local mid = {}
+	for k = 2, #path - 1 do mid[path[k]] = true end
+	for _, fi in ipairs({ f1, f2 }) do
+		for li, loop in ipairs(M.faces[fi].loops) do
+			local keep = {}
+			for _, id in ipairs(loop) do if not mid[id] then keep[#keep + 1] = id end end
+			M.faces[fi].loops[li] = keep
+		end
+	end
+	local F1, F2 = M.faces[f1], M.faces[f2]
+	local n1, n2 = F1.n, F2.n
+	local pa, pb = pos[a], pos[b]
+	e = unit(pb - pa)
+	len = mag(pb - pa)
+	-- into each face, square to the edge
+	local d1 = n1:Cross(e)
+	local d2 = e:Cross(n2)
+	local function intoFace(g, d)
+		-- a point a hair along d from the edge's middle must be inside the face
+		local L2, u, v = face2(M, g)
+		local m = (pa + pb) / 2 + d * 1e-3
+		local p = D2(dot(m, u), dot(m, v))
+		if not inPoly2(p, L2[1]) then return false end
+		for k = 2, #L2 do if inPoly2(p, L2[k]) then return false end end
+		return true
+	end
+	if not intoFace(F1, d1) then d1 = -d1 end
+	if not intoFace(F2, d2) then d2 = -d2 end
+	if not (intoFace(F1, d1) and intoFace(F2, d2)) then return nil, "couldn't tell which way the faces run" end
+	local convex = dot(d1, n2) < 0
+	local r = f.r
+	-- the profile across the edge (in the plane square to it, through the edge's start), F1 side first
+	local prof = {}
+	local isRound = f.t == "fillet"
+	local sinA = mag(n1:Cross(n2))
+	if sinA < 0.02 then return nil, "the faces are nearly flat to each other" end
+	if isRound then
+		-- the centre: r from both faces, on the material side (a fill: on the empty side)
+		local s = convex and -1 or 1
+		-- solve c.n1 = s r, c.n2 = s r, c.e = 0
+		local m11, m12, m22 = dot(n1, n1), dot(n1, n2), dot(n2, n2)
+		local det = m11 * m22 - m12 * m12
+		local al = (s * r * m22 - s * r * m12) / det
+		local be = (s * r * m11 - s * r * m12) / det
+		local C = n1 * al + n2 * be
+		local T1, T2 = C - n1 * (s * r), C - n2 * (s * r)
+		local v1, v2 = unit(T1 - C), unit(T2 - C)
+		local ang = math.acos(math.clamp(dot(v1, v2), -1, 1))
+		local w = unit(e:Cross(v1))
+		if dot(w, v2) < 0 then w = -w end
+		local segs = math.max(2, math.ceil((ENT.sidesFor and ENT.sidesFor(r, L) or 24) * ang / (2 * math.pi)))
+		for k = 0, segs do
+			local t = ang * k / segs
+			prof[#prof + 1] = C + (v1 * math.cos(t) + w * math.sin(t)) * r
+		end
+	else
+		prof = { d1 * r, d2 * r }
+	end
+	-- each end: the face across it (exactly three faces meet there), the profile laid onto that face
+	local function endOf(v, other)
+		local hits = facesAt(M, v)
+		local fs = {}
+		for _, h in ipairs(hits) do fs[h.fi] = h end
+		local n = 0
+		for _ in pairs(fs) do n += 1 end
+		if n ~= 3 then return nil, "more than three faces meet at the edge's end" end
+		local f3
+		for fi in pairs(fs) do if fi ~= f1 and fi ~= f2 then f3 = fi end end
+		local G = M.faces[f3]
+		local ge = dot(G.n, e)
+		if math.abs(ge) < 0.1 then return nil, "the end face runs along the edge" end
+		-- the neighbours of v in F1 and F2 (other than the edge's other end)
+		local function nb(fi)
+			local h = fs[fi]
+			local loop = M.faces[fi].loops[h.li]
+			local m = #loop
+			local p, q = loop[(h.k - 2) % m + 1], loop[h.k % m + 1]
+			return (p == other) and q or p
+		end
+		local x1, x2 = nb(f1), nb(f2)
+		local P3 = {}
+		for i, q in ipairs(prof) do
+			local p = pos[v] + q
+			local s = (G.w - dot(G.n, p)) / dot(G.n, e)
+			P3[i] = p + e * s
+		end
+		-- the profile's ends must land on the end face's sides v-x1 and v-x2 (inside them)
+		-- (landing exactly ON the neighbour point - an equal chamfer meeting an earlier one at a corner - joins it)
+		local function onSide(p, x)
+			local A0, B0 = pos[v], pos[x]
+			local d = B0 - A0
+			local l2 = dot(d, d)
+			if l2 < 1e-12 then return false end
+			local t = dot(p - A0, d) / l2
+			if mag(A0 + d * t - p) >= 2e-3 then return false end
+			if t > 1 - 1e-6 and t < 1 + 1e-6 then return "snap" end
+			return t > 1e-6 and t < 1 - 1e-6
+		end
+		local s1, sK = onSide(P3[1], x1), onSide(P3[#P3], x2)
+		if not s1 or not sK then return nil, "too big for the faces next to it" end
+		-- (and the curve must stay on the end face)
+		local L2, u, vv = face2(M, G)
+		for i = 2, #P3 - 1 do
+			local p2 = D2(dot(P3[i], u), dot(P3[i], vv))
+			if not inPoly2(p2, L2[1]) then return nil, "too big for the end face" end
+		end
+		return { f3 = f3, x1 = x1, x2 = x2, P3 = P3, snap1 = s1 == "snap", snapK = sK == "snap" }
+	end
+	local Ea, wa = endOf(a, b)
+	if not Ea then return nil, wa end
+	local Eb, wb = endOf(b, a)
+	if not Eb then return nil, wb end
+	-- nothing else of F1 / F2 may sit in the strip that goes
+	local function stripClear(g, d, off)
+		local L2, u, vv = face2(M, g)
+		for li, loop in ipairs(g.loops) do
+			for _, id in ipairs(loop) do
+				if id ~= a and id ~= b then
+					local p = pos[id]
+					local t = dot(p - pa, e)
+					local s = dot(p - pa, d)
+					if t > -1e-6 and t < len + 1e-6 and s > -1e-6 and s < off - 1e-6 then
+						-- (the neighbours at the ends are fine: they're past the strip's end points)
+						if not (id == Ea.x1 or id == Ea.x2 or id == Eb.x1 or id == Eb.x2) then return false end
+					end
+				end
+			end
+		end
+		return true
+	end
+	if not stripClear(F1, d1, dot(Ea.P3[1] - pa, d1) + 1e-6) or not stripClear(F2, d2, dot(Ea.P3[#Ea.P3] - pa, d2) + 1e-6) then
+		return nil, "something else is in the way on the faces next to it"
+	end
+	-- new points
+	local ia, ib = {}, {}
+	local K = #prof
+	for i = 1, K do
+		ia[i] = (i == 1 and Ea.snap1 and Ea.x1) or (i == K and Ea.snapK and Ea.x2) or newPoint(M, Ea.P3[i])
+		ib[i] = (i == 1 and Eb.snap1 and Eb.x1) or (i == K and Eb.snapK and Eb.x2) or newPoint(M, Eb.P3[i])
+	end
+	-- F1: a -> b becomes A1 -> B1; F2: b -> a becomes BK -> AK
+	local function replaceIn(fi, v, with)
+		for _, loop in ipairs(M.faces[fi].loops) do
+			for k, id in ipairs(loop) do if id == v then loop[k] = with return true end end
+		end
+		return false
+	end
+	replaceIn(f1, a, ia[1]) replaceIn(f1, b, ib[1])
+	replaceIn(f2, a, ia[K]) replaceIn(f2, b, ib[K])
+	-- the end faces: v becomes the profile, from the x1 side to the x2 side (or back, as the loop runs)
+	local function endFace(E, v, list)
+		local g = M.faces[E.f3]
+		for _, loop in ipairs(g.loops) do
+			for k, id in ipairs(loop) do
+				if id == v then
+					local m = #loop
+					local prev = loop[(k - 2) % m + 1]
+					local seq = {}
+					if prev == E.x1 then for i = 1, K do seq[#seq + 1] = list[i] end
+					else for i = K, 1, -1 do seq[#seq + 1] = list[i] end end
+					table.remove(loop, k)
+					for i = #seq, 1, -1 do table.insert(loop, k, seq[i]) end
+					return true
+				end
+			end
+		end
+		return false
+	end
+	if not endFace(Ea, a, ia) or not endFace(Eb, b, ib) then return nil, "couldn't fit the end faces" end
+	-- (a point joined to its neighbour appears twice in a row: once is enough; a face left with under 3 corners goes)
+	for _, fi in ipairs({ f1, f2, Ea.f3, Eb.f3 }) do
+		local g = M.faces[fi]
+		g.changed = true
+		for li, loop in ipairs(g.loops) do
+			local o = {}
+			for _, id in ipairs(loop) do if o[#o] ~= id then o[#o + 1] = id end end
+			while #o > 1 and o[#o] == o[1] do table.remove(o) end
+			g.loops[li] = o
+		end
+	end
+
+	-- the strip of new faces
+	local out = n1 + n2
+	local g = (isRound and "fmR" or "fmC") .. tostring(f.id or "")
+	local newF = {}
+	for i = 1, K - 1 do
+		local ids = { ia[i], ia[i + 1], ib[i + 1], ib[i] }
+		local p0, p1, p2 = pos[ids[1]], pos[ids[2]], pos[ids[3]]
+		local n = unit((p1 - p0):Cross(p2 - p0))
+		if dot(n, out) < 0 then ids = { ids[4], ids[3], ids[2], ids[1] } n = -n end
+		newF[#newF + 1] = { loops = { ids }, n = n, w = dot(n, p0), g = isRound and g or (g .. ":" .. i) }
+	end
+	-- a fill (inside corner) adds material: it mustn't run into anything
+	if not convex then
+		local nt = {}
+		for _, h in ipairs(newF) do for _, t in ipairs(faceTris(M, h)) do nt[#nt + 1] = t end end
+		local others = {}
+		for i, h in ipairs(M.faces) do if i ~= f1 and i ~= f2 and i ~= Ea.f3 and i ~= Eb.f3 then others[#others + 1] = h end end
+		if clash(M, nt, others) then return nil, "the fill runs into another part of the shape" end
+	end
+	for i = #M.faces, 1, -1 do
+		if #M.faces[i].loops[1] < 3 then table.remove(M.faces, i) end
+	end
+	for _, h in ipairs(newF) do M.faces[#M.faces + 1] = h end
+	return FM.toPolys(M)
+end
+
+-- one step: the face way if it can, else nil + why
+function FM.step(A, f, L)
+	if f.kind == "edge" then return FM.edge(A, f, L) end
+	if f.kind == "shell" then return nil, "shells use the boolean engine" end
+	return FM.cut(A, f, L)
+end
+-- ===== end v4.02 FACE ENGINE =====
+
 -- v2.86 SHELL (Dylan: "shell is a good idea"): the inside shape to cut out so the solid becomes a wall t thick.
 -- Every face moves IN by t - the picked OPEN faces move OUT by t instead, so the hollow goes right through them - and
 -- each corner goes to where its faces' moved planes meet (worked out together, so any number of faces at a corner
@@ -15819,7 +16648,22 @@ function ENT.applyFeaturesRaw(baseTris, feats, base, L)
 			remember(key, msgs, 0)
 			continue
 		end
-		if f.kind == "edge" then
+		-- v4.02: the face engine first (ROBLEND's way: edit the faces); the boolean engine below when it can't
+		local fmA = nil
+		if CSG.FM and ENT.FM_OFF ~= true then
+			local okF, r1, w1 = pcall(CSG.FM.step, A, f, L)
+			if okF and r1 and #r1 >= 4 then
+				fmA = r1
+			else
+				ENT.fmWhy = ENT.fmWhy or {}
+				ENT.fmWhy[i] = okF and tostring(w1) or ("error: " .. tostring(r1))
+				if not okF then warn("PROTO face engine: " .. tostring(r1) .. " - the boolean engine does this step") end
+			end
+		end
+		if fmA then
+			A = fmA
+			ENT.fmDone = (ENT.fmDone or 0) + 1
+		elseif f.kind == "edge" then
 			local tris, open0 = CSG.toTris(A, base)
 			ENT.sweepSolid = tris   -- v3.29: what's solid now (an inside round's end runs on into it)
 			local T = ENT.topo(tris)
@@ -16391,9 +17235,11 @@ function ENT.eSelToggle(p, E)
 	local nm = (ENT.edgeTool == "fillet") and "ROUND" or "CHAMFER"
 	if #S.list == 0 then
 		ENT.liveHide()
-		setStatus(nm .. ": click edges to pick them (orange). Then drag the arrow or type Size - Enter = make it.")
-	else
+		setStatus(nm .. ": click edges to pick them (orange), set the Size, then ADD (or Enter).")
+	elseif ENT.EDGE_LIVE then
 		setStatus(("%s: %d edge(s) picked. Drag the arrow (or type Size) - you see it live. Enter = make it, Esc = drop the picks."):format(nm, #S.list))
+	else
+		setStatus(("%s: %d edge(s) picked. Pick more, set the Size, then ADD (or Enter). Esc = drop the picks."):format(nm, #S.list))
 	end
 	pcall(ENT.featRefresh, true)
 end
@@ -16408,6 +17254,7 @@ end
 function ENT.eSelHandle()
 	local S = ENT.eSel
 	if not (S and #S.list > 0) then if ENT.eSizeH then ENT.eSizeH.Adornee = nil end return end
+	if not ENT.EDGE_LIVE then return end   -- v4.02: pick + Add, no arrow
 	if not ENT.eSizeH then
 		local anc = Instance.new("Part")
 		anc.Name = "PROTO_Preview"
@@ -16592,6 +17439,7 @@ end
 -- once a frame at most: the picked edges at the size now -> the live preview
 function ENT.edgeLiveStep()
 	ENT.edgeLiveDirty = false
+	if not ENT.EDGE_LIVE then return end   -- v4.02: nothing built until Add
 	local S = ENT.eSel
 	if not (S and S.p and S.p.Parent and #S.list > 0 and ENT.edgeTool) then return end
 	local r = ENT.filletSize()
@@ -16617,7 +17465,10 @@ end
 -- ENTER: every picked edge in ONE change
 function ENT.eSelApply()
 	local S = ENT.eSel
-	if not (S and S.p and S.p.Parent and #S.list > 0) then return false end
+	if not (S and S.p and S.p.Parent and #S.list > 0) then
+		if ENT.edgeTool then setStatus(((ENT.edgeTool == "fillet") and "ROUND" or "CHAMFER") .. ": pick an edge first (click it - it goes orange), then Add.") end
+		return false
+	end
 	if not ENT.meshGate() then return true end
 	if ENT.rebuildBusy then setStatus("Still working on the last one - one moment.") return true end
 	local isF = ENT.edgeTool == "fillet"
@@ -16630,7 +17481,8 @@ function ENT.eSelApply()
 	ENT.rebuildBusy = true
 	setStatus(nm .. ": making it...")
 	-- v3.95: an edge that already has a round / chamfer gets this one INSTEAD; tried first, never stored if it can't be made
-	local newList, replaced = ENT.withEdgeSteps(ENT.cutsOf(p), steps, false)
+	ENT.lastEdgeMoved = nil
+	local newList, replaced = ENT.withEdgeSteps(ENT.cutsOf(p), steps, true)
 	local okT, whyT = ENT.edgeTryFirst(p, newList, steps)
 	if not okT then
 		ENT.rebuildBusy = false
@@ -23473,11 +24325,11 @@ function ENT.featRefresh(force)
 		-- v3.50: the picked edges, and make them
 		local nPick = (ENT.eSel and #ENT.eSel.list) or 0
 		r = line()
-		mkLabel(r, ENT.EDGE_OLD and "Click an edge - done at this Size" or (nPick > 0 and (nPick .. " edge(s) picked - drag the arrow or type Size") or "Click edges to pick them"), 190, { col = nPick > 0 and COL.head or COL.grey, size = 10 })
-		if nPick > 0 then
+		mkLabel(r, ENT.EDGE_OLD and "Click an edge - done at this Size" or (nPick > 0 and (nPick .. " edge(s) picked - set Size, then Add") or "Click edges to pick them, then Add"), 190, { col = nPick > 0 and COL.head or COL.grey, size = 10 })
+		if not ENT.EDGE_OLD then
 			r = line()
-			mkBtn(r, "Make it (Enter)", 110, function() ENT.eSelApply() end, COL.go)
-			mkBtn(r, "Drop picks (Esc)", 104, function() ENT.eSelClear() setStatus("Picks dropped.") end, COL.warn)
+			mkBtn(r, nPick > 0 and ("Add " .. nPick .. " (Enter)") or "Add (Enter)", 110, function() ENT.eSelApply() end, nPick > 0 and COL.go or nil)
+			if nPick > 0 then mkBtn(r, "Clear picks (Esc)", 104, function() ENT.eSelClear() setStatus("Picks dropped.") end, COL.warn) end
 		end
 		r = line()
 		mkBtn(r, ENT.edgeJoin and "Join parts: ON" or "Join parts: OFF", 120, function()
