@@ -24,9 +24,9 @@ if old then old:Destroy() end
 local s = Instance.new("Script")
 s.Name = "DIMPlugin"
 s.Source = [=====[
--- PROTO v4.02  (c) 2026 Giga_gad27 (Cruppnomics) - free + open source, GPL-3.0-or-later  (marker: DIM_V1)  - PROTO 4.0 - v4.02: the face engine (ROBLEND's way: cuts, rounds and chamfers edit the faces); rounds / chamfers: pick edges, then Add
+-- PROTO v4.06  (c) 2026 Giga_gad27 (Cruppnomics) - free + open source, GPL-3.0-or-later  (marker: DIM_V1)  - PROTO 4.0 - v4.06: text + images on any face (T), Pattern hidden, the face engine, pick edges then Add; store copies keep meshes in the place (MeshKeeper, ~8 per player); 4.04: the store copy keeps meshes in the place (MeshKeeper); 4.03: text + images on any face (T), Pattern hidden; 4.02: the face engine (ROBLEND's way), rounds / chamfers: pick edges, then Add
 -- =====================================================================================
--- PROTO (Sketch to Build) - Version 4.02.0 - Build 402
+-- PROTO (Sketch to Build) - Version 4.06.0 - Build 406
 -- Free and open source: https://github.com/CRUPPNOMICS/PROTO-  (Creator Store asset 124557362882102)
 -- Copyright (C) 2026 Giga_gad27 (Cruppnomics)
 -- This program is free software: you can redistribute it and/or modify it under the terms of the GNU General
@@ -349,10 +349,10 @@ local function mkBox(parent, default, w)
 end
 
 local U = { tools = {} }
-local DIM_VERSION = "v4.02"
+local DIM_VERSION = "v4.06"
 mkLabel(nil, "PROTO  " .. DIM_VERSION, nil, { bold = true, size = 16, col = COL.on })   -- v2.01: new name (Dylan)
-mkLabel(nil, "Version 4.02.0 - Build 402  |  (c) 2026 Giga_gad27 (Cruppnomics)", nil, { col = COL.grey, size = 10 })
-print("PROTO " .. DIM_VERSION .. " (Build 402) loaded")
+mkLabel(nil, "Version 4.06.0 - Build 406  |  (c) 2026 Giga_gad27 (Cruppnomics)", nil, { col = COL.grey, size = 10 })
+print("PROTO " .. DIM_VERSION .. " (Build 406) loaded")
 -- v2.14: "still in testing" warning (top + bottom of the panel)
 function ENT.warnBanner()
 	local f = Instance.new("Frame")
@@ -378,9 +378,12 @@ ENT.warnBanner()
 -- v4.00: PROTO is free and open source (GPL-3.0) - the old "official copy" check is gone: every copy is fine.
 ENT.OFFICIAL_ID = "124557362882102"   -- (the Creator Store listing)
 ENT.REPO = "github.com/CRUPPNOMICS/PROTO-"
-ENT.BUILD_NUMBER = 402
-ENT.RELEASE_SALT = "402"   -- (release number, for bug reports)
+ENT.BUILD_NUMBER = 406
+ENT.RELEASE_SALT = "406"   -- (release number, for bug reports)
 ENT.SNAP_EPS = 0.0002713
+-- v4.03 (Dylan: "there's enough pattern tools in base Studio - finish text + decal, then hide the pattern function"):
+-- Pattern / Linear / Copy round / Copy along / by plane are hidden from the ribbon + panel. Mirror stays.
+ENT.PATTERN_OFF = true
 ENT.MAX_COPIES = 500                   -- v2.36: pattern / copy-along limit (huge counts froze Studio)
 U.status = mkLabel(nil, "", nil, { col = Color3.fromRGB(240, 235, 220) })
 -- v2.40: the tool buttons live in the top ribbon AND (if you want) here too - your choice, remembered
@@ -486,11 +489,11 @@ U.brushSymBtn = mkBtn(r, "X sym: off", 74, function() ENT.brushSym = not ENT.bru
 U.brushClearBtn = mkBtn(r, "Clear brush", 80, function() ENT.brushClear() end)
 -- v3.13 (Dylan: "move that to the paint area"): an image / text on the face towards you, from here now
 r = pui(mkRow())
-mkLabel(r, "decal", 36)
+mkLabel(r, "on a face", 56)
 U.decalBox = mkBox(r, "", 110)
-pcall(function() U.decalBox.PlaceholderText = "image ID / text" end)
-U.decalImgBtn = mkBtn(r, "Add image", 70, function() ENT.decalAdd("img") end)
-U.decalTxtBtn = mkBtn(r, "Add text", 64, function() ENT.decalAdd("txt") end)
+U.decalBox.Visible = false   -- v4.03: the words / ID are typed in PROPERTIES now
+U.decalTxtBtn = mkBtn(r, "Text", 64, function() ENT.labStart("txt") end)
+U.decalImgBtn = mkBtn(r, "Image", 64, function() ENT.labStart("img") end)
 pui(mkLabel(nil, "ONE FACE = click a face to paint just that side (Shift-click a face = clear it). With MATERIAL on, the face gets a paper-thin skin in that material (Roblox gives a part only one material).", nil, { col = COL.grey, size = 11 }))
 U.matBtns = {}
 local MATS = { "SmoothPlastic", "Plastic", "Neon", "Glass", "ForceField", "Metal", "DiamondPlate", "CorrodedMetal", "Foil",
@@ -1025,7 +1028,7 @@ function ENT.setPanelFull(on)
 	pcall(function() plugin:SetSetting("PROTO_panelFull", ENT.panelFull) end)
 	for _, nm in ipairs(ENT.PANEL_SECTIONS) do
 		local g = ENT.heads and ENT.heads[nm]
-		if g then g.Visible = ENT.panelFull end
+		if g then g.Visible = ENT.panelFull and not (ENT.PATTERN_OFF and nm == "PATTERN selection") end
 	end
 	U.panelBtn.Text = ENT.panelFull and "Buttons here too: ON" or "Buttons here too: OFF"
 	U.panelBtn.BackgroundColor3 = ENT.panelFull and COL.on or COL.btn
@@ -7633,6 +7636,7 @@ function togglePlanes()
 	drawPlanes()
 end
 function setMode(m)
+	if ENT.labTool and ENT.labStop then pcall(ENT.labStop) end   -- v4.03
 	if ENT.brushRingOff then pcall(ENT.brushRingOff) end   -- v3.02
 	ENT.brushStroke = nil   -- v3.44 (paint check): a half-done brush stroke is dropped on a mode change
 	if ENT.arr then pcall(ENT.arrStop) end   -- v3.47: the live linear pattern ends on a mode change
@@ -8080,6 +8084,7 @@ function ENT.edgeStart(kind)
 	if sk then exitSketch() end
 	if mode ~= "planes" then setMode("planes") end
 	if ENT.shellTool then ENT.shellStop() end
+	if ENT.labTool then pcall(ENT.labStop) end   -- v4.03
 	ENT.edgeTool = kind
 	if ENT.eSelClear then pcall(ENT.eSelClear, true) end
 	setStatus((kind == "fillet" and "ROUND" or "CHAMFER") .. ": click edges to pick them (orange; click again to drop one), set the Size, then ADD (or Enter). Esc = drop picks / stop.")
@@ -9068,7 +9073,7 @@ ENT.MS = { api = nil, mesh = nil, solid = nil, store = false, upOK = false, busy
 pcall(function() ENT.MS.upOK = plugin:GetSetting("PROTO_meshUpOK") == true end)
 ENT.MS_BETA = "File > Beta Features > tick \"CreateAssetAsync Lua API\" > Save > close and reopen Studio."
 ENT.MS_API = "Game Settings > Security > turn on \"Allow Mesh / Image APIs\" (the place has to be published to Roblox first)."
-ENT.MS_STORE = "Roblox doesn't let plugins installed from the Creator Store save meshes yet, so Mesh mode stays off here. To save meshes, install PROTO from its file (github.com/CRUPPNOMICS/PROTO- > Releases) - it's free."
+ENT.MS_STORE = "Store copy: Roblox doesn't let store plugins upload meshes, so PROTO keeps them in the place (MeshKeeper) - turn on Game Settings > Security > Allow Mesh / Image APIs for the published game. (The file version from github.com/CRUPPNOMICS/PROTO- > Releases uploads real meshes.)"
 -- what's switched on? (deep = also test that Studio can cut with a mesh)
 function ENT.msCheck(deep)
 	local M = ENT.MS
@@ -9094,7 +9099,7 @@ function ENT.msReport()
 		row(M.api, "CreateAssetAsync beta is on", "CreateAssetAsync beta is off: " .. ENT.MS_BETA),
 	}
 	if M.solid ~= nil then table.insert(t, row(M.solid, "Studio can cut with meshes", "Studio couldn't cut with a mesh here (File > Beta Features > \"Solid Modeling On Meshes\", if you see it)")) end
-	if M.store then table.insert(t, "[X] " .. ENT.MS_STORE)
+	if M.store then table.insert(t, "[OK] " .. ENT.MS_STORE)
 	elseif M.upOK then table.insert(t, "[OK] Saving meshes to Roblox works") end
 	return table.concat(t, "\n")
 end
@@ -9161,6 +9166,7 @@ end
 -- is this a mesh that only lives in this Studio session (not uploaded yet)?
 function ENT.msUnsaved(p)
 	if not (p and p:IsA("MeshPart")) then return false end
+	if p:GetAttribute("PROTO_Kept") and p:FindFirstChild("MeshKeeperData") then return false end   -- v4.04: kept in the place
 	if ENT.msIsCSG(p) then return false end   -- v2.61: Roblox's own cut result - kept by Roblox
 	local saved = false
 	pcall(function()
@@ -9268,6 +9274,420 @@ end
 -- v3.41 (glitch sweep): split in two - the SLOW part (upload + loading the new MeshPart, seconds) runs with no undo
 -- recording open; the QUICK swap-in (ENT.msSwapSaved) is the only part inside the recording. (One recording per plugin
 -- at a time: holding it open during the upload left every other PROTO action in those seconds without one.)
+-- ===== v4.04 MESH KEEPER (Dylan 21 Oct: "can the store version work - can meshes work"). Roblox won't let a plugin
+-- installed from the Creator Store upload meshes ("CreateAssetAsync ... can not be used from store plugins yet"). So
+-- there, SAVE keeps each mesh IN THE PLACE as data instead (a MeshKeeperData folder in the part, tag "MeshKeeper"), and
+-- a small MeshKeeper script set - added to the game once: ReplicatedStorage.MeshKeeper + ServerScriptService.
+-- MeshKeeperServer + StarterPlayerScripts.MeshKeeperClient - builds the real mesh again when the game runs. Studio
+-- rebuilds them when the place opens. The file version still uploads real meshes. Same format + loader as ROBLEND.
+ENT.MK_SRC = [====[-- MeshKeeper v1 - made by PROTO / ROBLEND (CRUPPNOMICS). Free to use and change.
+-- Plugins installed from the Creator Store aren't allowed to upload meshes to Roblox. So instead, the plugin keeps each
+-- mesh IN THE PLACE as data (a "MeshKeeperData" folder inside the part, tagged "MeshKeeper"), and this module builds the
+-- real mesh again when the game runs (on the server for collisions, on each player for what they see) - and in Studio
+-- when the place is opened.
+-- Needs: Game Settings > Security > "Allow Mesh / Image APIs" ON (Creator Dashboard > Configure > Settings, "Enable
+-- Mesh / Image APIs"). Without it Roblox won't let the game build meshes.
+local AssetService = game:GetService("AssetService")
+local CollectionService = game:GetService("CollectionService")
+local RunService = game:GetService("RunService")
+
+local M = {}
+M.VERSION = 4
+M.TAG = "MeshKeeper"
+M.DATA = "MeshKeeperData"
+M.CHUNK = 100000   -- characters per StringValue
+
+-- ===== base64 (binary-safe text for the place file) =====
+local A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local ENC, DEC = {}, {}
+for i = 1, 64 do
+	local c = string.byte(A, i)
+	ENC[i - 1] = c
+	DEC[c] = i - 1
+end
+function M.toB64(b)
+	local n = buffer.len(b)
+	local out = buffer.create(math.ceil(n / 3) * 4)
+	local o = 0
+	local i = 0
+	while i + 2 < n do
+		local v = buffer.readu8(b, i) * 65536 + buffer.readu8(b, i + 1) * 256 + buffer.readu8(b, i + 2)
+		buffer.writeu8(out, o, ENC[bit32.rshift(v, 18)])
+		buffer.writeu8(out, o + 1, ENC[bit32.band(bit32.rshift(v, 12), 63)])
+		buffer.writeu8(out, o + 2, ENC[bit32.band(bit32.rshift(v, 6), 63)])
+		buffer.writeu8(out, o + 3, ENC[bit32.band(v, 63)])
+		i += 3
+		o += 4
+	end
+	local r = n - i
+	if r > 0 then
+		local v = buffer.readu8(b, i) * 65536 + ((r == 2) and buffer.readu8(b, i + 1) * 256 or 0)
+		buffer.writeu8(out, o, ENC[bit32.rshift(v, 18)])
+		buffer.writeu8(out, o + 1, ENC[bit32.band(bit32.rshift(v, 12), 63)])
+		buffer.writeu8(out, o + 2, (r == 2) and ENC[bit32.band(bit32.rshift(v, 6), 63)] or 61)
+		buffer.writeu8(out, o + 3, 61)
+	end
+	return buffer.tostring(out)
+end
+function M.fromB64(s)
+	local n = #s
+	local pad = 0
+	if n >= 1 and string.byte(s, n) == 61 then pad += 1 end
+	if n >= 2 and string.byte(s, n - 1) == 61 then pad += 1 end
+	local out = buffer.create(math.floor(n / 4) * 3 - pad)
+	local src = buffer.fromstring(s)
+	local o = 0
+	for i = 0, n - 4, 4 do
+		local a = DEC[buffer.readu8(src, i)] or 0
+		local b = DEC[buffer.readu8(src, i + 1)] or 0
+		local c = DEC[buffer.readu8(src, i + 2)] or 0
+		local d = DEC[buffer.readu8(src, i + 3)] or 0
+		local v = a * 262144 + b * 4096 + c * 64 + d
+		if o < buffer.len(out) then buffer.writeu8(out, o, bit32.rshift(v, 16)) end
+		if o + 1 < buffer.len(out) then buffer.writeu8(out, o + 1, bit32.band(bit32.rshift(v, 8), 255)) end
+		if o + 2 < buffer.len(out) then buffer.writeu8(out, o + 2, bit32.band(v, 255)) end
+		o += 3
+	end
+	return out
+end
+
+-- ===== mesh <-> data =====
+-- format 1: "MK1" | u32 nV, nUV, nN, nC, nF | nV x f32 xyz | nUV x f32 uv | nN x f32 xyz | nC x u8 rgba |
+--           nF x (u32 v1 v2 v3, u32 uv1 uv2 uv3, u32 n1 n2 n3, u32 c1 c2 c3)   (0 = none, else 1-based)
+local NONE = 0
+-- everything an EditableMesh holds that shows: points, UVs, normals, colours, triangles
+function M.pack(em)
+	local vIds, uvIds, nIds, cIds = {}, {}, {}, {}
+	local verts, uvs, nrms, cols = {}, {}, {}, {}
+	local function idx(map, list, id)
+		if id == nil then return NONE end
+		local k = map[id]
+		if not k then
+			list[#list + 1] = id
+			k = #list
+			map[id] = k
+		end
+		return k
+	end
+	local faces = {}
+	for _, f in ipairs(em:GetFaces()) do
+		local fv = em:GetFaceVertices(f)
+		if #fv == 3 then
+			local fu, fn, fc = {}, {}, {}
+			pcall(function() fu = em:GetFaceUVs(f) or {} end)
+			pcall(function() fn = em:GetFaceNormals(f) or {} end)
+			pcall(function() fc = em:GetFaceColors(f) or {} end)
+			faces[#faces + 1] = {
+				idx(vIds, verts, fv[1]), idx(vIds, verts, fv[2]), idx(vIds, verts, fv[3]),
+				idx(uvIds, uvs, fu[1]), idx(uvIds, uvs, fu[2]), idx(uvIds, uvs, fu[3]),
+				idx(nIds, nrms, fn[1]), idx(nIds, nrms, fn[2]), idx(nIds, nrms, fn[3]),
+				idx(cIds, cols, fc[1]), idx(cIds, cols, fc[2]), idx(cIds, cols, fc[3]),
+			}
+		end
+	end
+	local nV, nU, nN, nC, nF = #verts, #uvs, #nrms, #cols, #faces
+	local b = buffer.create(3 + 20 + nV * 12 + nU * 8 + nN * 12 + nC * 4 + nF * 48)
+	buffer.writestring(b, 0, "MK1")
+	local o = 3
+	for _, n in ipairs({ nV, nU, nN, nC, nF }) do buffer.writeu32(b, o, n) o += 4 end
+	for _, id in ipairs(verts) do
+		local p = em:GetPosition(id)
+		buffer.writef32(b, o, p.X) buffer.writef32(b, o + 4, p.Y) buffer.writef32(b, o + 8, p.Z)
+		o += 12
+	end
+	for _, id in ipairs(uvs) do
+		local u = em:GetUV(id)
+		buffer.writef32(b, o, u.X) buffer.writef32(b, o + 4, u.Y)
+		o += 8
+	end
+	for _, id in ipairs(nrms) do
+		local n = em:GetNormal(id)
+		buffer.writef32(b, o, n.X) buffer.writef32(b, o + 4, n.Y) buffer.writef32(b, o + 8, n.Z)
+		o += 12
+	end
+	for _, id in ipairs(cols) do
+		local c = em:GetColor(id)
+		local a = 1
+		pcall(function() a = em:GetColorAlpha(id) end)
+		buffer.writeu8(b, o, math.clamp(math.floor(c.R * 255 + 0.5), 0, 255))
+		buffer.writeu8(b, o + 1, math.clamp(math.floor(c.G * 255 + 0.5), 0, 255))
+		buffer.writeu8(b, o + 2, math.clamp(math.floor(c.B * 255 + 0.5), 0, 255))
+		buffer.writeu8(b, o + 3, math.clamp(math.floor(a * 255 + 0.5), 0, 255))
+		o += 4
+	end
+	for _, f in ipairs(faces) do
+		for k = 1, 12 do buffer.writeu32(b, o, f[k]) o += 4 end
+	end
+	return M.toB64(b), nF
+end
+-- data -> a new EditableMesh (nil, why if it can't)
+function M.build(s)
+	local b = M.fromB64(s)
+	if buffer.len(b) < 23 or buffer.readstring(b, 0, 3) ~= "MK1" then return nil, "not MeshKeeper data" end
+	local o = 3
+	local cnt = {}
+	for k = 1, 5 do cnt[k] = buffer.readu32(b, o) o += 4 end
+	local nV, nU, nN, nC, nF = cnt[1], cnt[2], cnt[3], cnt[4], cnt[5]
+	local em = AssetService:CreateEditableMesh()
+	if not em then return nil, "Roblox wouldn't make a mesh (Allow Mesh / Image APIs off, or out of mesh memory)" end
+	local V, Uv, N, C = {}, {}, {}, {}
+	for i = 1, nV do
+		V[i] = em:AddVertex(Vector3.new(buffer.readf32(b, o), buffer.readf32(b, o + 4), buffer.readf32(b, o + 8)))
+		o += 12
+	end
+	for i = 1, nU do
+		Uv[i] = em:AddUV(Vector2.new(buffer.readf32(b, o), buffer.readf32(b, o + 4)))
+		o += 8
+	end
+	for i = 1, nN do
+		N[i] = em:AddNormal(Vector3.new(buffer.readf32(b, o), buffer.readf32(b, o + 4), buffer.readf32(b, o + 8)))
+		o += 12
+	end
+	for i = 1, nC do
+		C[i] = em:AddColor(Color3.fromRGB(buffer.readu8(b, o), buffer.readu8(b, o + 1), buffer.readu8(b, o + 2)), buffer.readu8(b, o + 3) / 255)
+		o += 4
+	end
+	for _ = 1, nF do
+		local f = {}
+		for k = 1, 12 do f[k] = buffer.readu32(b, o) o += 4 end
+		local fid = em:AddTriangle(V[f[1]], V[f[2]], V[f[3]])
+		if f[4] ~= NONE and f[5] ~= NONE and f[6] ~= NONE then pcall(function() em:SetFaceUVs(fid, { Uv[f[4]], Uv[f[5]], Uv[f[6]] }) end) end
+		if f[7] ~= NONE and f[8] ~= NONE and f[9] ~= NONE then pcall(function() em:SetFaceNormals(fid, { N[f[7]], N[f[8]], N[f[9]] }) end) end
+		if f[10] ~= NONE and f[11] ~= NONE and f[12] ~= NONE then pcall(function() em:SetFaceColors(fid, { C[f[10]], C[f[11]], C[f[12]] }) end) end
+	end
+	return em
+end
+
+-- ===== kept in the place =====
+function M.read(part)
+	local f = part:FindFirstChild(M.DATA)
+	if not f then return nil end
+	local bits = {}
+	for _, v in ipairs(f:GetChildren()) do
+		if v:IsA("StringValue") then
+			local i = tonumber(v.Name)
+			if i then bits[i] = v.Value end
+		end
+	end
+	return table.concat(bits)
+end
+-- (plugins) keep this mesh on the part as data + tag it
+function M.write(part, s)
+	local old = part:FindFirstChild(M.DATA)
+	if old then old.Parent = nil end
+	local f = Instance.new("Folder")
+	f.Name = M.DATA
+	f:SetAttribute("v", M.VERSION)
+	local i = 0
+	for at = 1, #s, M.CHUNK do
+		i += 1
+		local v = Instance.new("StringValue")
+		v.Name = tostring(i)
+		v.Value = string.sub(s, at, at + M.CHUNK - 1)
+		v.Parent = f
+	end
+	f.Parent = part
+	CollectionService:AddTag(part, M.TAG)
+end
+-- (plugins) the part's mesh changed - forget the kept copy
+function M.forget(part)
+	local f = part:FindFirstChild(M.DATA)
+	if f then f.Parent = nil end
+	pcall(function() CollectionService:RemoveTag(part, M.TAG) end)
+end
+
+-- ===== putting the mesh on a part =====
+-- v2: each player may only hold ~8 live EditableMeshes (Roblox's client memory budget). So once a mesh is on its part,
+-- its EditableMesh is freed (FREE = true) - the part should keep the shape. If a game shows blank parts with this, set
+-- the module's attribute FreeAfterApply = false (then only ~8 meshes can show per player).
+M.FREE = false   -- (v4: freeing it loses the shape - tested 21 Oct; keep it, ~8 meshes per player)
+local cache = {}   -- same data + same collision = one mesh shared by every part that uses it (less memory)
+local warned = false
+function M.apply(part)
+	if not (part and part:IsA("MeshPart")) then return false end
+	local s = M.read(part)
+	if not s or s == "" then return false end
+	local fid = part.CollisionFidelity
+	local key = s .. "|" .. tostring(fid)
+	local free = M.FREE
+	pcall(function()
+		local mod = script
+		if mod and mod:GetAttribute("FreeAfterApply") ~= nil then free = mod:GetAttribute("FreeAfterApply") == true end
+	end)
+	if M.noShare then free = false end   -- (Studio: the plugins keep editing it)
+	local tpl = (not M.noShare and not free) and cache[key] or nil
+	if not tpl then
+		local em, why = M.build(s)
+		if not em then
+			if not warned then warned = true warn("MeshKeeper: " .. tostring(why) .. " - turn on Game Settings > Security > Allow Mesh / Image APIs.") end
+			return false
+		end
+		local ok, mp = pcall(function()
+			return AssetService:CreateMeshPartAsync(Content.fromObject(em), { CollisionFidelity = fid })
+		end)
+		if not ok or not mp then
+			if not warned then warned = true warn("MeshKeeper: couldn't make the mesh part - " .. tostring(mp)) end
+			return false
+		end
+		tpl = { em = em, mp = mp }
+		if not M.noShare and not free then cache[key] = tpl end
+	end
+	local okA, err = pcall(function() part:ApplyMesh(tpl.mp) end)
+	if okA then
+		if free then
+			-- the shape is on the part now: give the memory back so the next mesh fits in the budget
+			pcall(function() tpl.mp:Destroy() end)
+			pcall(function() tpl.em:Destroy() end)
+		end
+		return true
+	end
+	-- (no ApplyMesh: a copy of the built part takes this one's place - same look, place, children)
+	local okS, err2 = pcall(function()
+		local np = tpl.mp:Clone()
+		for _, k in ipairs({ "Name", "Size", "CFrame", "Color", "Material", "MaterialVariant", "Transparency", "Reflectance", "Anchored",
+			"CanCollide", "CanQuery", "CanTouch", "CastShadow", "Massless", "CollisionGroup", "Locked", "TextureID" }) do
+			pcall(function() np[k] = part[k] end)
+		end
+		for k, v in pairs(part:GetAttributes()) do np:SetAttribute(k, v) end
+		for _, ch in ipairs(part:GetChildren()) do ch.Parent = np end
+		np.Parent = part.Parent
+		part.Parent = nil
+	end)
+	if not okS then warn("MeshKeeper: couldn't put the mesh on " .. part:GetFullName() .. " - " .. tostring(err) .. " / " .. tostring(err2)) return false end
+	return true
+end
+-- every kept part now (onlyMissing = skip parts that already show a live mesh - Studio)
+function M.applyAll(onlyMissing)
+	local n = 0
+	for _, p in ipairs(CollectionService:GetTagged(M.TAG)) do
+		local skip = false
+		if onlyMissing then
+			pcall(function()
+				local mc = p.MeshContent
+				skip = mc.SourceType == Enum.ContentSourceType.Object
+			end)
+		end
+		if not skip and M.apply(p) then n += 1 end
+	end
+	return n
+end
+-- the game: every kept part, now and as they stream in. v3: ONE AT A TIME (a queue) and each part once - building
+-- several at the same time held several meshes in memory together and ran past the players' mesh budget.
+local started = false
+local queue, queued, done = {}, setmetatable({}, { __mode = "k" }), setmetatable({}, { __mode = "k" })
+local running = false
+local function pump()
+	if running then return end
+	running = true
+	task.spawn(function()
+		while #queue > 0 do
+			local p = table.remove(queue, 1)
+			queued[p] = nil
+			if p.Parent and not done[p] then
+				if not p:FindFirstChild(M.DATA) then p:WaitForChild(M.DATA, 10) end
+				local ok, applied = pcall(M.apply, p)
+				if ok and applied then done[p] = true end
+				task.wait()   -- (let Roblox take the freed memory back before the next one)
+			end
+		end
+		running = false
+	end)
+end
+function M.queue(p)
+	if not (p and p:IsA("MeshPart")) or queued[p] or done[p] then return end
+	queued[p] = true
+	table.insert(queue, p)
+	pump()
+end
+function M.start()
+	if started then return end
+	started = true
+	CollectionService:GetInstanceAddedSignal(M.TAG):Connect(M.queue)
+	for _, p in ipairs(CollectionService:GetTagged(M.TAG)) do M.queue(p) end
+end
+return M
+]====]
+ENT.MK_RUN = 'require(game:GetService("ReplicatedStorage"):WaitForChild("MeshKeeper")).start()'
+-- the MeshKeeper scripts in the game (added once; an older module is brought up to date). Call inside a recording.
+function ENT.mkInstall()
+	local RS = game:GetService("ReplicatedStorage")
+	local ver = tonumber(ENT.MK_SRC:match("M%.VERSION = (%d+)")) or 1
+	local mod = RS:FindFirstChild("MeshKeeper")
+	if not (mod and mod:IsA("ModuleScript")) then
+		mod = Instance.new("ModuleScript")
+		mod.Name = "MeshKeeper"
+		mod.Source = ENT.MK_SRC
+		mod:SetAttribute("Version", ver)
+		mod.Parent = RS
+	elseif (tonumber(mod:GetAttribute("Version")) or 0) < ver then
+		mod.Source = ENT.MK_SRC
+		mod:SetAttribute("Version", ver)
+	end
+	local SSS = game:GetService("ServerScriptService")
+	if not SSS:FindFirstChild("MeshKeeperServer") then
+		local sc = Instance.new("Script")
+		sc.Name = "MeshKeeperServer"
+		sc.Source = ENT.MK_RUN
+		sc.Parent = SSS
+	end
+	local SPS = game:GetService("StarterPlayer"):FindFirstChildOfClass("StarterPlayerScripts")
+	if SPS and not SPS:FindFirstChild("MeshKeeperClient") then
+		local sc = Instance.new("LocalScript")
+		sc.Name = "MeshKeeperClient"
+		sc.Source = ENT.MK_RUN
+		sc.Parent = SPS
+	end
+	return mod
+end
+function ENT.mkModule(install)
+	local mod = install and ENT.mkInstall() or game:GetService("ReplicatedStorage"):FindFirstChild("MeshKeeper")
+	if not (mod and mod:IsA("ModuleScript")) then return nil, "no MeshKeeper module" end
+	local ok, M = pcall(require, mod)
+	if ok and type(M) == "table" and M.pack then return M end
+	return nil, tostring(M)
+end
+-- keep part p's mesh in the place (store copy). Call inside a recording.
+function ENT.mkKeep(p)
+	local M, why = ENT.mkModule(true)
+	if not M then return false, "couldn't add the MeshKeeper script (" .. tostring(why) .. ")" end
+	local em, owned, err = ENT.msMeshOf(p)
+	if not em then return false, err end
+	local ok, data, nf = pcall(M.pack, em)
+	if owned then pcall(function() em:Destroy() end) end
+	if not ok then return false, "couldn't pack the mesh (" .. tostring(data) .. ")" end
+	M.write(p, data)
+	p:SetAttribute("PROTO_Kept", true)
+	p:SetAttribute("PROTO_MeshUnsaved", nil)
+	return true, nf, #data
+end
+-- the part's mesh changed (a rebuild / a real upload): the kept copy is old - forget it
+function ENT.mkForget(p)
+	if not p:GetAttribute("PROTO_Kept") and not p:FindFirstChild("MeshKeeperData") then return end
+	p:SetAttribute("PROTO_Kept", nil)
+	local d = p:FindFirstChild("MeshKeeperData")
+	if d then d.Parent = nil end
+	pcall(function() p:RemoveTag("MeshKeeper") end)
+end
+-- Studio opened a place with kept meshes: show them again (each its own mesh here - PROTO may change one in place)
+function ENT.mkStartup()
+	if game:GetService("RunService"):IsRunning() then return end
+	-- v4.05: an older MeshKeeper in this place is brought up to date (one undo step)
+	do
+		local mod = game:GetService("ReplicatedStorage"):FindFirstChild("MeshKeeper")
+		local ver = tonumber(ENT.MK_SRC:match("M%.VERSION = (%d+)")) or 1
+		if mod and mod:IsA("ModuleScript") and (tonumber(mod:GetAttribute("Version")) or 0) < ver then
+			if record("PROTO MeshKeeper update", function() ENT.mkInstall() end) then
+				print(("PROTO: MeshKeeper in this place updated to v%d."):format(ver))
+			end
+		end
+	end
+	if #game:GetService("CollectionService"):GetTagged("MeshKeeper") == 0 then return end
+	local M = ENT.mkModule(false)
+	if not M then return end
+	M.noShare = true
+	local n = M.applyAll(true)
+	if n > 0 then print(("PROTO: %d kept mesh part(s) shown again (MeshKeeper)."):format(n)) end
+end
 function ENT.msSavePart(p)
 	local np, id = ENT.msLoadPart(p)
 	if not np then return false, id end
@@ -9331,6 +9751,7 @@ function ENT.msSwapSaved(p, np, id)
 	for _, tg in ipairs(p:GetTags()) do pcall(function() np:AddTag(tg) end) end
 	for _, ch in ipairs(p:GetChildren()) do ch.Parent = np end
 	np.Parent = p.Parent
+	pcall(ENT.mkForget, np)   -- v4.04: a real uploaded mesh now - no kept copy needed
 	pcall(ENT.reweld, p, np, np)   -- v3.65: a skin's own weld (or a host's skins) hold the new part
 	-- v3.41 (glitch sweep): point at the new part BEFORE the old one goes (the old one leaving cleared the target).
 	-- (target is switched first, the full setTarget runs after - so it never sees old + new side by side in one group)
@@ -9375,10 +9796,18 @@ function ENT.msSaveList(list, quiet)
 				table.insert(notSaved, p)
 				warn(("PROTO mesh: couldn't save %s - %s"):format(p.Name, tostring(lastErr)))
 			end
+			local keep = {}   -- v4.04: store copy - kept in the place instead (MeshKeeper)
+			-- (test switch: workspace attribute MeshKeeperTest = true makes the file version act like the store copy)
+			local forceKeep = workspace:GetAttribute("MeshKeeperTest") == true
 			for _, p in ipairs(todo) do
-				local ok, np, id = pcall(ENT.msLoadPart, p)
-				if ok and np then table.insert(ready, { p = p, np = np, id = id })
-				else failed(p, ok and id or np) end
+				if M.store or forceKeep then
+					table.insert(keep, p)
+				else
+					local ok, np, id = pcall(ENT.msLoadPart, p)
+					if ok and np then table.insert(ready, { p = p, np = np, id = id })
+					elseif M.store then table.insert(keep, p)   -- (just found out it's the store copy)
+					else failed(p, ok and id or np) end
+				end
 			end
 			-- 2) then the quick swap-ins, inside one short recording (one undo step)
 			do
@@ -9401,6 +9830,18 @@ function ENT.msSaveList(list, quiet)
 						end
 					end
 				end
+				for _, p in ipairs(keep) do
+					if p.Parent then
+						local okK, a, b, c = pcall(ENT.mkKeep, p)
+						if okK and a then
+							good += 1
+							M.kept = (M.kept or 0) + 1
+							print(("PROTO mesh: kept %s in the place (%d triangles, %d KB) - MeshKeeper builds it in the published game."):format(p.Name, b or 0, (c or 0) // 1024))
+						else
+							failed(p, okK and b or a)
+						end
+					end
+				end
 				for _, p in ipairs(notSaved) do pcall(function() p:SetAttribute("PROTO_MeshUnsaved", true) end) end
 				if rec then pcall(function() CHS:FinishRecording(rec, Enum.FinishRecordingOperation.Commit) end)
 				else pcall(function() CHS:SetWaypoint("PROTO Save mesh") end) end
@@ -9410,7 +9851,11 @@ function ENT.msSaveList(list, quiet)
 	end
 	M.busy = false
 	if good > 0 and not M.upOK then M.upOK = true pcall(function() plugin:SetSetting("PROTO_meshUpOK", true) end) end
-	if M.store and ENT.meshCut then ENT.meshCut = false ENT.msButton() end
+	-- (v4.04: the store copy keeps building - its meshes are kept in the place by MeshKeeper)
+	if (M.store or workspace:GetAttribute("MeshKeeperTest") == true) and good > 0 and not M.keptTold then
+		M.keptTold = true
+		warn("PROTO (store copy): Roblox doesn't let store plugins upload meshes, so PROTO keeps them IN THE PLACE instead and added the MeshKeeper scripts (ReplicatedStorage / ServerScriptService / StarterPlayerScripts) that build them when the game runs. For the published game turn on Game Settings > Security > Allow Mesh / Image APIs. (The file version from GitHub uploads real meshes instead.)")
+	end
 	-- v3.48: parts whose new mesh Roblox hadn't got ready yet: tried again by themselves in 30 seconds (twice at most)
 	do
 		local again = {}
@@ -9440,7 +9885,8 @@ function ENT.msSaveList(list, quiet)
 		warn("PROTO mesh: " .. bad .. " part(s) are NOT saved - they'll show as checkered cubes in the published game. Fix the reason above, then press SAVE (top bar), or Ctrl+Z and do it again.")
 		if not quiet then setStatus("[MESH NOT SAVED] " .. bad .. " part(s): " .. tostring(lastErr) .. "  Ctrl+Z it, or fix it and press SAVE (top bar).") end
 	elseif good > 0 and not quiet then
-		setStatus("Saved " .. good .. " mesh part(s) to Roblox - they stay in the place and show in the published game.")
+		setStatus((M.store or (M.kept or 0) > 0) and ("Kept " .. good .. " mesh part(s) in the place - they show in the published game (turn on Game Settings > Security > Allow Mesh / Image APIs).")
+			or ("Saved " .. good .. " mesh part(s) to Roblox - they stay in the place and show in the published game."))
 	end
 	if #made > 0 then
 		local sw, any, sel = ENT.swappedTo or {}, false, {}
@@ -9667,6 +10113,10 @@ function ENT.meshStartup()
 	print(tag .. ": Mesh READY - every shape is ONE mesh, cuts are ONE cut, nothing is joined.")
 end
 task.delay(3, function() pcall(ENT.meshStartup) end)
+task.delay(4, function()   -- v4.04
+	local ok, e = pcall(ENT.mkStartup)
+	if not ok then warn("PROTO MeshKeeper: " .. tostring(e)) end
+end)
 -- ===== v2.48 ONE-PIECE MESH EXTRUDE (Dylan: "no more lines, no more constructed shapes - one whole thing") =====
 -- With mesh mode on, an extrude of any shape that isn't a plain rectangle / circle / ellipse (polygons, splines,
 -- slots, arcs, split areas, double-line walls, shapes with holes in them) is built as ONE sealed mesh: no wedge
@@ -11450,6 +11900,7 @@ function ENT.swapIn(p, np)
 		else ch.Parent = np end
 	end
 	np.Parent = p.Parent
+	pcall(ENT.mkForget, np)   -- v4.04: a new shape - the kept copy (store copy) is old
 	pcall(ENT.reweld, p, np, np)   -- v3.65: a face skin's weld holds the new part
 	-- v3.66: material-on-face rules are drawn again on the NEW shape (a cut goes through them)
 	if np:GetAttribute("PROTO_Skins") then
@@ -14698,6 +15149,638 @@ function ENT.reweld(old, new, root)
 	end
 end
 -- ===== end v3.65 MATERIAL ON ONE FACE =====
+-- ===== v4.03 TEXT + IMAGES ON A FACE (Dylan 21 Oct: "finish up the text and decal stuff" - the "boom, done" list:
+-- click the face -> type -> done). Works on ANY flat face of any part at any angle: PROTO's own faces too (cut walls,
+-- chamfer strips), not just the 6 sides of a box.
+-- A label = a RULE kept on the part (PROTO_Labels: its middle, which way the face points and which way is up - in the
+-- part's recipe frame - its size, the words / image ID, font, colour, bold) + a paper-thin see-through CARRIER part
+-- laid on the face, welded to the part, with a SurfaceGui on it (the words, or the picture). A rebuild (cut, chamfer)
+-- moves the carrier over to the new part with its weld, so it stays put. While one is being placed / changed: yellow
+-- arrows = move it on the face, green ball = size, blue ring = turn. Enter = done, Esc = cancel. Tool on + click one
+-- you made = change it (or Delete it).
+ENT.LAB_FONTS = { "Gotham", "Arial", "SourceSans", "Roboto", "Oswald", "Merriweather", "Bangers", "LuckiestGuy", "FredokaOne",
+	"PermanentMarker", "Arcade", "SciFi", "Fantasy", "Garamond", "Creepster" }
+ENT.LAB_COLS = { { 1, 1, 1 }, { 0.08, 0.08, 0.08 }, { 0.9, 0.15, 0.15 }, { 1, 0.77, 0 }, { 0.2, 0.75, 0.3 }, { 0.15, 0.45, 0.95 }, { 1, 0.5, 0.1 }, { 0.6, 0.3, 0.85 } }
+ENT.LAB_UP = 0.015   -- studs: the carrier's middle above the face (its top side - the one with the words - at 0.02)
+function ENT.labFrame(p) return ENT.paintBase(p) or p.CFrame end
+function ENT.labRules(p)
+	local list = {}
+	pcall(function() list = HttpService:JSONDecode(p:GetAttribute("PROTO_Labels") or "[]") end)
+	return type(list) == "table" and list or {}
+end
+function ENT.labV(t) return Vector3.new(t[1], t[2], t[3]) end
+function ENT.labT(v) return { v.X, v.Y, v.Z } end
+-- the carrier's CFrame (world): its Front side (the one the words are on) faces out of the part's face
+function ENT.labCF(r, F)
+	local P = F:PointToWorldSpace(ENT.labV(r.p))
+	local N = F:VectorToWorldSpace(ENT.labV(r.n)).Unit
+	local U = F:VectorToWorldSpace(ENT.labV(r.u))
+	U = U - N * U:Dot(N)
+	if U.Magnitude < 1e-6 then
+		U = (math.abs(N.Y) < 0.9) and Vector3.yAxis or Vector3.zAxis
+		U = U - N * U:Dot(N)
+	end
+	local c = P + N * ENT.LAB_UP
+	return CFrame.lookAt(c, c + N, U.Unit)
+end
+-- the words / the picture on a carrier (made fresh, or the live one refilled)
+function ENT.labFill(part, r)
+	local w, h = math.max(r.w or 1, 0.05), math.max(r.h or 1, 0.05)
+	part.Size = Vector3.new(w, h, 0.01)
+	local g = part:FindFirstChild("PROTO_LabelGui")
+	if not g then
+		g = Instance.new("SurfaceGui")
+		g.Name = "PROTO_LabelGui"
+		g.Face = Enum.NormalId.Front
+		g.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+		g.LightInfluence = 1
+		g.ClipsDescendants = true
+		g.Parent = part
+	end
+	g.PixelsPerStud = math.clamp(math.floor(1000 / math.max(w, h)), 4, 100)
+	local isT = r.k ~= "img"
+	local x = g:FindFirstChild("L")
+	if not x then
+		x = Instance.new(isT and "TextLabel" or "ImageLabel")
+		x.Name = "L"
+		x.Size = UDim2.fromScale(1, 1)
+		x.BorderSizePixel = 0
+		x.BackgroundTransparency = 1
+		x.Parent = g
+	end
+	if isT then
+		x.Text = tostring(r.txt or "")
+		x.TextScaled = true
+		x.TextWrapped = false
+		local c = type(r.c) == "table" and r.c or { 1, 1, 1 }
+		x.TextColor3 = Color3.new(c[1] or 1, c[2] or 1, c[3] or 1)
+		pcall(function()
+			local f = Font.fromEnum(Enum.Font[r.font or "Gotham"])
+			f.Weight = r.bold and Enum.FontWeight.Bold or Enum.FontWeight.Regular
+			x.FontFace = f
+		end)
+	else
+		local has = r.img ~= nil and r.img ~= ""
+		x.Image = has and ("rbxassetid://" .. tostring(r.img)) or ""
+		x.ScaleType = Enum.ScaleType.Stretch
+		x.BackgroundTransparency = has and 1 or 0.4
+		x.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+	end
+end
+-- one carrier. temp = the live one while placing (not saved, not in Ctrl+Z, not welded)
+function ENT.labMake(p, r, F, temp)
+	local part = Instance.new("Part")
+	part.Name = (r.k == "img") and "PROTO_Image" or "PROTO_Text"
+	part.Transparency = 1
+	part.CanCollide, part.CanQuery, part.CanTouch, part.CastShadow = false, false, false, false
+	part.Massless = true
+	part.Locked = true
+	part.TopSurface, part.BottomSurface = Enum.SurfaceType.Smooth, Enum.SurfaceType.Smooth
+	ENT.labFill(part, r)
+	part.CFrame = ENT.labCF(r, F)
+	if temp then
+		part.Name = "PROTO_Preview"
+		part.Anchored = true
+		part.Archivable = false
+		part.Parent = workspace
+	else
+		part.Anchored = false
+		part:SetAttribute("PROTO_LabelKey", r.id)
+		local w = Instance.new("WeldConstraint")
+		w.Name = "PROTO_LabelWeld"
+		w.Part0, w.Part1 = p, part
+		w.Parent = part
+		part.Parent = p
+	end
+	return part
+end
+-- every label rule on part p drawn again (the old carriers out). Call inside a recording.
+function ENT.labelsRedraw(p)
+	for _, c in ipairs(p:GetChildren()) do
+		if c:IsA("BasePart") and c:GetAttribute("PROTO_LabelKey") ~= nil then c.Parent = nil end   -- (never Destroy: Ctrl+Z)
+	end
+	local F = ENT.labFrame(p)
+	local n = 0
+	for _, r in ipairs(ENT.labRules(p)) do
+		local ok, e = pcall(ENT.labMake, p, r, F)
+		if ok then n += 1 else warn("PROTO text / image: " .. tostring(e)) end
+	end
+	return n
+end
+-- the face under the mouse on part p, from its REAL triangles (a mesh's collision box would be wrong): point, outward
+-- normal, the triangles
+function ENT.labFaceHit(p, ray)
+	local tris = ENT.partTris(p)
+	if not tris or #tris == 0 then return nil end
+	local o, d = ray.Origin, ray.Direction.Unit
+	local ti, tt = ENT.rayTris(tris, o, d)
+	if not ti then return nil end
+	local t = tris[ti]
+	local vol = 0
+	for _, q in ipairs(tris) do vol += q[1]:Dot(q[2]:Cross(q[3])) end
+	local cr = (t[2] - t[1]):Cross(t[3] - t[1]) * (vol >= 0 and 1 or -1)
+	if cr.Magnitude < 1e-12 then return nil end
+	local N = cr.Unit
+	if N:Dot(d) > 0 then N = -N end
+	return o + d * tt, N, tris
+end
+-- the label (rule) on part p at world point P (the smallest, if they overlap)
+function ENT.labAt(p, P)
+	local F = ENT.labFrame(p)
+	local best, bi, ba
+	for i, r in ipairs(ENT.labRules(p)) do
+		local ok, cf = pcall(ENT.labCF, r, F)
+		if ok and r.w and r.h then
+			local l = cf:PointToObjectSpace(P)
+			if math.abs(l.Z) < 0.12 and math.abs(l.X) <= r.w / 2 + 0.05 and math.abs(l.Y) <= r.h / 2 + 0.05 then
+				local a = r.w * r.h
+				if not ba or a < ba then best, bi, ba = r, i, a end
+			end
+		end
+	end
+	return best, bi
+end
+-- which way is up for a new label: the camera's up, laid on the face - lined up with the part's own sides when one is
+-- close (neat on a box, and the right way up on a wall)
+function ENT.labUpFor(p, N)
+	local cam = workspace.CurrentCamera
+	local cu = cam and cam.CFrame.UpVector or Vector3.yAxis
+	cu = cu - N * cu:Dot(N)
+	if cu.Magnitude < 1e-4 then cu = Vector3.yAxis - N * N.Y end
+	if cu.Magnitude < 1e-4 then cu = Vector3.zAxis - N * N.Z end
+	cu = cu.Unit
+	local cf = p.CFrame
+	local best, bd = nil, 0.5
+	for _, a in ipairs({ cf.XVector, cf.YVector, cf.ZVector, -cf.XVector, -cf.YVector, -cf.ZVector }) do
+		local q = a - N * a:Dot(N)
+		if q.Magnitude > 0.7 then
+			local dd = q.Unit:Dot(cu)
+			if dd > bd then best, bd = q.Unit, dd end
+		end
+	end
+	return best or cu
+end
+-- how far the face reaches from P along R (sideways) and U (up): x0, x1, y0, y1
+function ENT.labFaceBox(tris, P, N, U, R)
+	local sel = tris and ENT.skinFaceTris(tris, P, N)
+	if not sel or #sel == 0 then return nil end
+	local x0, x1, y0, y1 = math.huge, -math.huge, math.huge, -math.huge
+	for _, t in ipairs(sel) do
+		for k = 1, 3 do
+			local v = t[k] - P
+			local x, y = v:Dot(R), v:Dot(U)
+			x0, x1, y0, y1 = math.min(x0, x), math.max(x1, x), math.min(y0, y), math.max(y1, y)
+		end
+	end
+	if x1 - x0 < 1e-3 or y1 - y0 < 1e-3 then return nil end
+	return x0, x1, y0, y1
+end
+-- width / height of the words
+function ENT.labTextAspect(r)
+	local s = tostring(r.txt or "")
+	if s:gsub("%s", "") == "" then s = "Text" end
+	local ok, sz = pcall(function()
+		return game:GetService("TextService"):GetTextSize(s, 100, Enum.Font[r.font or "Gotham"], Vector2.new(1e6, 1e6))
+	end)
+	if ok and sz and sz.Y > 0 then return math.max(0.2, sz.X / sz.Y) * (r.bold and 1.12 or 1.06) end
+	return math.max(1, #s * 0.6)
+end
+-- width / height of a picture (an Image ID; a Decal's ID is turned into its image first). cb(aspect, failed, imageId)
+ENT.labAspCache = {}
+function ENT.labImgAspect(id, cb)
+	if not id or id == "" then return end
+	local c = ENT.labAspCache[id]
+	if c then cb(c.a, c.bad, c.id) return end
+	task.spawn(function()
+		local function size(iid)
+			local asp
+			pcall(function()
+				local img
+				local okC, r1 = pcall(function() return AssetService:CreateEditableImageAsync(Content.fromUri("rbxassetid://" .. iid)) end)
+				if okC then img = r1 else img = AssetService:CreateEditableImageAsync("rbxassetid://" .. iid) end
+				if img then
+					local s = img.Size
+					if s.Y > 0 then asp = s.X / s.Y end
+					pcall(function() img:Destroy() end)
+				end
+			end)
+			return asp
+		end
+		local real, asp = id, size(id)
+		if not asp then
+			-- a Decal's ID (its page number): the decal holds the real image ID
+			pcall(function()
+				local objs = game:GetObjects("rbxassetid://" .. id)
+				for _, o in ipairs(objs or {}) do
+					local tex = (o:IsA("Decal") and o.Texture) or (o:FindFirstChildWhichIsA("Decal", true) and o:FindFirstChildWhichIsA("Decal", true).Texture)
+					local iid = tex and tostring(tex):match("(%d%d%d+)")
+					if iid then real = iid break end
+				end
+			end)
+			if real ~= id then asp = size(real) end
+		end
+		ENT.labAspCache[id] = { a = asp or 1, bad = asp == nil, id = real }
+		cb(asp or 1, asp == nil, real)
+	end)
+end
+-- the ribbon / panel buttons light up while the tool is on
+function ENT.labBtns()
+	if U.decalTxtBtn then U.decalTxtBtn.BackgroundColor3 = (ENT.labTool == "txt") and COL.on or COL.btn end
+	if U.decalImgBtn then U.decalImgBtn.BackgroundColor3 = (ENT.labTool == "img") and COL.on or COL.btn end
+	if ENT.ribPaint then pcall(ENT.ribPaint) end
+end
+function ENT.labStart(kind)
+	if ENT.labTool == kind and not ENT.lab then ENT.labStop() return end   -- (pressed again = off)
+	if ENT.lab then ENT.labCancel(true) end
+	if sk then exitSketch() end
+	if ENT.edgeTool then ENT.edgeStop() end
+	if ENT.shellTool then ENT.shellStop() end
+	if ENT.arr then pcall(ENT.arrStop) end
+	ENT.linMode, ENT.pp = false, nil
+	ENT.labTool = kind
+	setStatus(kind == "img" and "IMAGE: click the face to put a picture on (or click one you made, to change it). Esc = stop."
+		or "TEXT: click the face to write on (or click text you made, to change it). Esc = stop.")
+	pcall(ENT.featRefresh, true)
+	ENT.labBtns()
+end
+function ENT.labStop()
+	if ENT.lab then ENT.labCancel(true) end
+	ENT.labTool = nil
+	pcall(ENT.drawTopoFaces, nil)
+	dimTag.Enabled = false
+	pcall(ENT.featRefresh, true)
+	ENT.labBtns()
+	refreshStatus()
+end
+function ENT.labHover()
+	if ENT.labDragging or ENT.labOnHandle then return end
+	local hit = ENT.directHit()
+	local p = hit and hit.Instance
+	if not (p and p:IsA("BasePart") and p ~= TERRAIN) then pcall(ENT.drawTopoFaces, nil) dimTag.Enabled = false return end
+	local at = hit.Position
+	local T = ENT.detailKind(p) and ENT.partTopo(p)
+	if T then
+		local o, d = mouse.UnitRay.Origin, mouse.UnitRay.Direction.Unit
+		local ti, tt = ENT.rayTris(T.tris, o, d)
+		if ti then
+			at = o + d * tt
+			pcall(ENT.drawTopoFaces, T, nil, T.faces[T.faceOf[ti]])
+		else
+			pcall(ENT.drawTopoFaces, nil)
+		end
+	else
+		pcall(ENT.drawTopoFaces, nil)
+	end
+	local r = ENT.labAt(p, at)
+	dimTag.StudsOffsetWorldSpace = at
+	dimTag.T.Text = (ENT.lab and "click = done") or (r and ("click = change this " .. ((r.k == "img") and "image" or "text")))
+		or ("click = " .. ((ENT.labTool == "img") and "picture" or "text") .. " here")
+	dimTag.Enabled = true
+end
+function ENT.labClick()
+	if ENT.labOnHandle or ENT.labDragging then return end
+	if ENT.lab then ENT.labCommit() return end   -- (clicking away = the one you were placing is done)
+	local hit = ENT.directHit()
+	local p = hit and hit.Instance
+	if not (p and p:IsA("BasePart")) or p == TERRAIN or ENT.isBox(p.Name) or ENT.isPrev(p.Name) then
+		setStatus(((ENT.labTool == "img") and "IMAGE" or "TEXT") .. ": click a part's face.")
+		return
+	end
+	local P, N, tris
+	local okF, a, b, c = pcall(ENT.labFaceHit, p, mouse.UnitRay)
+	if okF and a then P, N, tris = a, b, c else P, N = hit.Position, hit.Normal end
+	local r, idx = ENT.labAt(p, P)
+	if r then
+		ENT.labBegin(p, table.clone(r), idx)
+		return
+	end
+	ENT.labNew(p, P, N, tris)
+end
+-- a new one where you clicked, sized to fit the face (most of its width, at most half its height)
+function ENT.labNew(p, P, N, tris)
+	local kind = ENT.labTool or "txt"
+	local F = ENT.labFrame(p)
+	local U = ENT.labUpFor(p, N)
+	local R = U:Cross(N).Unit
+	local r = { id = string.sub(HttpService:GenerateGUID(false), 1, 8), k = kind }
+	if kind == "img" then
+		r.img = ENT.labLastImg or ""
+		r.w, r.h = 1, 1
+	else
+		r.txt = ENT.labLastTxt or "TEXT"
+		r.font = ENT.labLastFont or "Gotham"
+		r.bold = ENT.labLastBold ~= false
+		r.c = ENT.labLastCol or { 1, 1, 1 }
+		r.h = 1
+		r.w = ENT.labTextAspect(r)
+	end
+	local x0, x1, y0, y1
+	pcall(function() x0, x1, y0, y1 = ENT.labFaceBox(tris or ENT.partTris(p), P, N, U, R) end)
+	local fit = x0 and { fw = x1 - x0, fh = y1 - y0 } or { fw = 8, fh = 4 }
+	ENT.labFit(r, fit)
+	-- (kept on the face: the middle moves in so it doesn't hang over the edge)
+	local C = P
+	if x0 then
+		local function mid(lo, hi) if lo > hi then return (lo + hi) / 2 end return math.clamp(0, lo, hi) end
+		local cx = mid(x0 + r.w / 2, x1 - r.w / 2)
+		local cy = mid(y0 + r.h / 2, y1 - r.h / 2)
+		C = P + R * cx + U * cy
+	end
+	r.p = ENT.labT(F:PointToObjectSpace(C))
+	r.n = ENT.labT(F:VectorToObjectSpace(N))
+	r.u = ENT.labT(F:VectorToObjectSpace(U))
+	ENT.labBegin(p, r, nil, fit)
+end
+-- size to fit the face (until you size it yourself)
+function ENT.labFit(r, fit)
+	local asp = math.max(0.05, (r.w or 1) / math.max(r.h or 1, 1e-3))
+	local h
+	if r.k == "img" then h = math.min(fit.fh * 0.8, fit.fw * 0.8 / asp)
+	else h = math.min(fit.fh * 0.5, fit.fw * 0.85 / asp) end
+	h = math.max(h, 0.05)
+	r.h, r.w = h, h * asp
+end
+function ENT.labBegin(p, r, idx, fit)
+	local F = ENT.labFrame(p)
+	local L = { p = p, r = r, idx = idx, fit = fit }
+	-- (changing one you made: the real one hides while you work on it - put back on Done / Cancel)
+	if idx then
+		for _, c in ipairs(p:GetChildren()) do
+			if c:IsA("BasePart") and c:GetAttribute("PROTO_LabelKey") == r.id then
+				local g = c:FindFirstChild("PROTO_LabelGui")
+				if g and g.Enabled then g.Enabled = false L.hid = L.hid or {} table.insert(L.hid, g) end
+			end
+		end
+	end
+	L.temp = ENT.labMake(p, r, F, true)
+	ENT.lab = L
+	ENT.labHandles()
+	pcall(ENT.drawTopoFaces, nil)
+	dimTag.Enabled = false
+	pcall(ENT.featRefresh, true)
+	local isImg = r.k == "img"
+	setStatus((isImg and "IMAGE: paste the Image ID in PROPERTIES" or "TEXT: type the words (PROPERTIES)")
+		.. ". Yellow arrows = move, green ball = size, blue ring = turn. Enter = done, Esc = cancel.")
+	-- type straight away
+	task.defer(function()
+		local b = U.labTxt
+		if b and b.Parent and ENT.lab == L then
+			pcall(function()
+				b:CaptureFocus()
+				b.CursorPosition = #b.Text + 1
+				b.SelectionStart = 1
+			end)
+		end
+	end)
+	if isImg and r.img and r.img ~= "" then ENT.labSetImg(r.img) end
+end
+-- the live one shows the rule as it is now
+function ENT.labLive()
+	local L = ENT.lab
+	if not (L and L.temp and L.p and L.p.Parent) then return end
+	local F = ENT.labFrame(L.p)
+	pcall(ENT.labFill, L.temp, L.r)
+	pcall(function() L.temp.CFrame = ENT.labCF(L.r, F) end)
+	ENT.labHandlesPlace()
+	if U.labSize and U.labSize.Parent and not U.labSize:IsFocused() then U.labSize.Text = fmt(math.floor(L.r.h * 1000 + 0.5) / 1000) end
+end
+function ENT.labSetImg(id)
+	local L = ENT.lab
+	if not L then return end
+	L.r.img = id
+	ENT.labLastImg = id
+	ENT.labLive()
+	ENT.labImgAspect(id, function(asp, failed, realId)
+		local L2 = ENT.lab
+		if not (L2 and L2 == L and (L2.r.img == id or L2.r.img == realId)) then return end
+		if realId and realId ~= "" then L2.r.img = realId ENT.labLastImg = realId end
+		L2.r.w = L2.r.h * asp
+		if L2.fit and not L2.touched then ENT.labFit(L2.r, L2.fit) end
+		ENT.labLive()
+		if failed then
+			setStatus("IMAGE: that ID didn't load as a picture. Use the image's ID (Creator Hub > Images, or the Toolbox > right-click > Copy Asset ID).")
+		elseif realId ~= id then
+			setStatus("IMAGE: that was a Decal's ID - PROTO used the picture inside it (" .. tostring(realId) .. "). Enter = done.")
+		end
+	end)
+end
+-- the move arrows, the size ball and the turn ring (made once, moved onto whichever one you're placing)
+function ENT.labHandles()
+	if not ENT.labH then
+		local function hov(x)
+			x.MouseEnter:Connect(function() ENT.labOnHandle = true end)
+			x.MouseLeave:Connect(function() ENT.labOnHandle = false end)
+		end
+		local mv = Instance.new("Handles")
+		mv.Style = Enum.HandlesStyle.Movement
+		mv.Faces = Faces.new(Enum.NormalId.Top, Enum.NormalId.Bottom, Enum.NormalId.Left, Enum.NormalId.Right)
+		mv.Color3 = Color3.fromRGB(255, 196, 0)
+		mv.Parent = adornRoot
+		local sz = Instance.new("Handles")
+		sz.Style = Enum.HandlesStyle.Resize
+		sz.Faces = Faces.new(Enum.NormalId.Front)
+		sz.Color3 = Color3.fromRGB(80, 230, 120)
+		sz.Parent = adornRoot
+		local rt = Instance.new("ArcHandles")
+		rt.Axes = Axes.new(Enum.Axis.Z)
+		pcall(function() rt.Color3 = Color3.fromRGB(80, 170, 255) end)
+		rt.Parent = adornRoot
+		hov(mv) hov(sz) hov(rt)
+		local s0
+		local function begin()
+			local L = ENT.lab
+			if not (L and L.temp) then return end
+			ENT.labDragging = true
+			L.touched = true
+			s0 = { cf = L.temp.CFrame, w = L.r.w, h = L.r.h, F = ENT.labFrame(L.p) }
+		end
+		local function done() ENT.labDragging = false s0 = nil end
+		local function grid() return ctrlDown() and 0 or (shiftDown() and 0.01 or 0.1) end
+		local function snap(x, g) if g > 0 then return math.floor(x / g + 0.5) * g end return x end
+		for _, x in ipairs({ mv, sz, rt }) do
+			x.MouseButton1Down:Connect(begin)
+			x.MouseButton1Up:Connect(done)
+		end
+		mv.MouseDrag:Connect(function(face, dist)
+			local L = ENT.lab
+			if not (L and s0) then return end
+			dist = snap(dist, grid())
+			local dir = s0.cf:VectorToWorldSpace(Vector3.FromNormalId(face))
+			local c = s0.cf.Position + dir * dist - s0.cf.LookVector * ENT.LAB_UP   -- (back down onto the face)
+			L.r.p = ENT.labT(s0.F:PointToObjectSpace(c))
+			ENT.labLive()
+		end)
+		sz.MouseDrag:Connect(function(_, dist)
+			local L = ENT.lab
+			if not (L and s0) then return end
+			local h = math.max(0.05, snap(s0.h + dist, grid()))
+			L.r.h, L.r.w = h, s0.w * h / s0.h
+			ENT.labLive()
+		end)
+		rt.MouseDrag:Connect(function(_, ang)
+			local L = ENT.lab
+			if not (L and s0) then return end
+			local st = ctrlDown() and 0 or math.rad(shiftDown() and 1 or 15)
+			if st > 0 then ang = math.floor(ang / st + 0.5) * st end
+			local Uw = CFrame.fromAxisAngle(s0.cf.LookVector, ang):VectorToWorldSpace(s0.cf.UpVector)
+			L.r.u = ENT.labT(s0.F:VectorToObjectSpace(Uw))
+			ENT.labLive()
+		end)
+		ENT.labH = { mv = mv, sz = sz, rt = rt }
+	end
+	ENT.labHandlesPlace()
+end
+function ENT.labHandlesPlace()
+	local H, L = ENT.labH, ENT.lab
+	if not H then return end
+	local a = (L and L.temp and L.temp.Parent) and L.temp or nil
+	H.mv.Adornee, H.sz.Adornee, H.rt.Adornee = a, a, a
+end
+-- the live one goes, the hidden real one comes back (nothing changed yet)
+function ENT.labEnd()
+	local L = ENT.lab
+	ENT.lab = nil
+	ENT.labDragging, ENT.labOnHandle = false, false
+	if L then
+		for _, g in ipairs(L.hid or {}) do pcall(function() g.Enabled = true end) end
+		if L.temp then pcall(function() L.temp:Destroy() end) end
+	end
+	ENT.labHandlesPlace()
+	U.labTxt, U.labSize = nil, nil
+end
+function ENT.labCancel(quiet)
+	ENT.labEnd()
+	pcall(ENT.featRefresh, true)
+	if not quiet then setStatus("Cancelled - nothing changed." .. (ENT.labTool and " Click another face, or Esc = stop." or "")) end
+end
+-- ENTER: it goes on the part (one Ctrl+Z)
+function ENT.labCommit()
+	local L = ENT.lab
+	if not L then return end
+	local p, r = L.p, L.r
+	local isImg = r.k == "img"
+	if not isImg and tostring(r.txt or ""):gsub("%s", "") == "" then ENT.labCancel(true) setStatus("TEXT: no words - nothing added.") return end
+	if isImg and (not r.img or r.img == "") then ENT.labCancel(true) setStatus("IMAGE: no image ID - nothing added.") return end
+	ENT.labEnd()
+	if not (p and p.Parent) then pcall(ENT.featRefresh, true) return end
+	local rules = ENT.labRules(p)
+	local put = false
+	for i, q in ipairs(rules) do if q.id == r.id then rules[i] = r put = true end end
+	if not put then table.insert(rules, r) end
+	if isImg then ENT.labLastImg = r.img
+	else ENT.labLastTxt, ENT.labLastFont, ENT.labLastBold, ENT.labLastCol = r.txt, r.font, r.bold, r.c end
+	local ok = record(isImg and "PROTO Image on face" or "PROTO Text on face", function()
+		p:SetAttribute("PROTO_Labels", HttpService:JSONEncode(rules))
+		ENT.labelsRedraw(p)
+	end)
+	pcall(ENT.featRefresh, true)
+	if ok then
+		setStatus((isImg and "Image" or "Text") .. " done - it's stuck to that face (cuts / chamfers keep it). Tool on + click it = change it. Ctrl+Z undoes it.")
+	else
+		setStatus("Couldn't put it on - see Output.")
+	end
+end
+function ENT.labDelete()
+	local L = ENT.lab
+	if not L then return end
+	local p, r, idx = L.p, L.r, L.idx
+	ENT.labEnd()
+	if not (idx and p and p.Parent) then pcall(ENT.featRefresh, true) setStatus("Dropped.") return end
+	local keep = {}
+	for _, q in ipairs(ENT.labRules(p)) do if q.id ~= r.id then keep[#keep + 1] = q end end
+	local ok = record("PROTO Take text / image off", function()
+		p:SetAttribute("PROTO_Labels", (#keep > 0) and HttpService:JSONEncode(keep) or nil)
+		ENT.labelsRedraw(p)
+	end)
+	pcall(ENT.featRefresh, true)
+	setStatus(ok and "Taken off. Ctrl+Z puts it back." or "Couldn't take it off - see Output.")
+end
+-- PROPERTIES while the tool is on (title / line = the card's own helpers)
+function ENT.labCardFill(title, line)
+	local L = ENT.lab
+	local isImg = (L and L.r.k == "img") or (not L and ENT.labTool == "img")
+	title(isImg and "Image on a face" or "Text on a face")
+	U.labTxt, U.labSize = nil, nil
+	if not L then
+		local r = line()
+		r.Size = UDim2.new(1, 0, 0, 30)
+		mkLabel(r, isImg and "Click a face to put a picture on it. Click one you made to change it." or "Click a face to write on it. Click text you made to change it.", 200, { col = COL.grey, size = 10 })
+		r = line()
+		mkBtn(r, "Stop (Esc)", 90, function() ENT.labStop() end, COL.warn)
+		return
+	end
+	local R = L.r
+	local r = line()
+	mkLabel(r, isImg and "Image ID" or "Words", 50)
+	local b = mkBox(r, isImg and tostring(R.img or "") or tostring(R.txt or ""), 140)
+	pcall(function() b.PlaceholderText = isImg and "paste the image ID" or "type the words" end)
+	U.labTxt = b
+	table.insert(ENT.featConns, b:GetPropertyChangedSignal("Text"):Connect(function()
+		local L2 = ENT.lab
+		if not L2 then return end
+		if isImg then
+			local id = b.Text:match("(%d%d%d+)")
+			if id and id ~= L2.r.img then ENT.labSetImg(id) end
+		else
+			L2.r.txt = b.Text
+			L2.r.w = L2.r.h * ENT.labTextAspect(L2.r)
+			if L2.fit and not L2.touched then ENT.labFit(L2.r, L2.fit) end
+			ENT.labLive()
+		end
+	end))
+	b.FocusLost:Connect(function(enter) if enter and ENT.lab == L then ENT.labCommit() end end)
+	r = line()
+	mkLabel(r, "Size", 50)
+	local sb = mkBox(r, fmt(math.floor(R.h * 1000 + 0.5) / 1000), 56)
+	U.labSize = sb
+	sb.FocusLost:Connect(function(enter)
+		local L2 = ENT.lab
+		local v = tonumber(sb.Text)
+		if L2 and v and v > 0 then
+			L2.r.w = L2.r.w * v / L2.r.h
+			L2.r.h = v
+			L2.touched = true
+			ENT.labLive()
+		end
+		if L2 then sb.Text = fmt(math.floor(L2.r.h * 1000 + 0.5) / 1000) end
+		if enter and ENT.lab == L then ENT.labCommit() end
+	end)
+	mkLabel(r, "studs high", 80, { col = COL.grey, size = 10 })
+	local function restyle()
+		R.w = R.h * ENT.labTextAspect(R)
+		ENT.labLive()
+		pcall(ENT.featRefresh, true)
+	end
+	if not isImg then
+		r = line()
+		mkBtn(r, "Font: " .. tostring(R.font or "Gotham"), 136, function()
+			local i = table.find(ENT.LAB_FONTS, R.font or "Gotham") or 0
+			R.font = ENT.LAB_FONTS[i % #ENT.LAB_FONTS + 1]
+			restyle()
+		end)
+		mkBtn(r, R.bold and "Bold: ON" or "Bold: OFF", 74, function() R.bold = not R.bold restyle() end, R.bold and COL.on or nil)
+		r = line()
+		for _, c in ipairs(ENT.LAB_COLS) do
+			local cc = type(R.c) == "table" and R.c or { 1, 1, 1 }
+			local same = math.abs(cc[1] - c[1]) + math.abs(cc[2] - c[2]) + math.abs(cc[3] - c[3]) < 0.02
+			local sw = mkBtn(r, same and "X" or "", 18, function() R.c = c restyle() end)
+			sw.BackgroundColor3 = Color3.new(c[1], c[2], c[3])
+			sw.TextColor3 = (c[1] + c[2] + c[3] > 1.6) and Color3.new(0, 0, 0) or Color3.new(1, 1, 1)
+		end
+		mkBtn(r, "Paint", 44, function()
+			local pc = ENT.paintCol
+			if typeof(pc) == "Color3" then R.c = { pc.R, pc.G, pc.B } restyle() end
+		end)
+	end
+	r = line()
+	mkBtn(r, "Done (Enter)", 92, function() ENT.labCommit() end, COL.go)
+	if L.idx then mkBtn(r, "Delete", 56, function() ENT.labDelete() end, COL.warn) end
+	mkBtn(r, "Cancel (Esc)", 86, function() ENT.labCancel() end)
+	r = line()
+	r.Size = UDim2.new(1, 0, 0, 30)
+	mkLabel(r, "Yellow arrows = move on the face, green ball = size, blue ring = turn. Shift = fine, Ctrl = free.", 210, { col = COL.grey, size = 10 })
+end
+-- ===== end v4.03 TEXT + IMAGES ON A FACE =====
 -- v3.44 (paint check): Pick on a PROTO part with colour in its mesh: the colour of the face under the mouse (read from
 -- the mesh itself), else the part's own colour (kept in PROTO_PaintBase - its Color is white while painted)
 function ENT.pickMeshColour(t, ray)
@@ -17883,6 +18966,7 @@ end
 -- thick. It's a step in the part's recipe (STEPS: change the wall, or take it out). No faces picked = hollow inside.
 function ENT.shellWall() return tonumber(U.shellT and U.shellT.Text) end
 function ENT.shellStart()
+	if ENT.labTool then pcall(ENT.labStop) end   -- v4.03
 	if sk then exitSketch() end
 	if ENT.edgeTool then ENT.edgeStop() end
 	if mode ~= "planes" then setMode("planes") end
@@ -22045,6 +23129,7 @@ end
 -- v3.50 (smoother): Studio can send several mouse moves in one frame - the work runs once a frame (below)
 ENT.onMouseMove = (function()
 	if not active then return end
+	if ENT.labTool then pcall(ENT.labHover) return end   -- v4.03
 	if ENT.arr and ENT.arr.pick then pcall(ENT.arrPickHover) return end   -- v3.72
 	if ENT.linMode and not ENT.arr then   -- v3.78: Linear mode, waiting for a part: light the one under the mouse
 		pcall(function()
@@ -22206,6 +23291,11 @@ mouse.Button1Down:Connect(function()
 	if not active then return end
 	if ENT.moveDirty then ENT.moveDirty = false pcall(ENT.onMouseMove) end   -- v3.50: catch up the hover first
 	if ENT.overHud then return end   -- v2.37: a click on the ribbon isn't a click in the world
+	if ENT.labTool then   -- v4.03 text / image on a face
+		local ok, err = pcall(ENT.labClick)
+		if not ok then warn("PROTO text / image: " .. tostring(err)) setStatus("Error: " .. tostring(err)) end
+		return
+	end
 	if ENT.arr then   -- v3.47: the live linear pattern - only its arrows take clicks (Enter / Esc to finish)
 		if ENT.arr.pick then pcall(ENT.arrPickClick)   -- v3.72: ...or the plane / face that sets its direction
 		elseif shiftDown() and not ENT.hxHover and not ENT.hxDrag then pcall(ENT.linClick) end   -- v3.93: Shift-click = add / take off a part
@@ -22471,7 +23561,7 @@ UIS.InputBegan:Connect(function(input, gp)
 	-- Studio flags Esc as "used" when it clears the part selection; only typing in a box should block DIM's keys
 	-- v3.93 (Dylan: "the extrude was selected so I can't press Enter"): with a part selected Studio marks Enter as used -
 	-- while Linear / the live pattern is on, Enter is PROTO's (Place)
-	local enterOurs = (input.KeyCode == Enum.KeyCode.Return or input.KeyCode == Enum.KeyCode.KeypadEnter) and (ENT.arr or ENT.linMode)
+	local enterOurs = (input.KeyCode == Enum.KeyCode.Return or input.KeyCode == Enum.KeyCode.KeypadEnter) and (ENT.arr or ENT.linMode or ENT.lab)
 	if gp and not enterOurs and ((input.KeyCode ~= Enum.KeyCode.Escape and input.KeyCode ~= Enum.KeyCode.Delete and input.KeyCode ~= Enum.KeyCode.Backspace) or UIS:GetFocusedTextBox()) then return end
 	local k = input.KeyCode
 	-- v3.41 (glitch sweep): typing in a box never triggers PROTO's keys (the box deals with its own Enter)
@@ -22480,7 +23570,9 @@ UIS.InputBegan:Connect(function(input, gp)
 	-- picked drawing as well as Studio's selection, Space swung the camera, Enter extruded
 	if not active and k ~= Enum.KeyCode.Escape then return end
 	if k == Enum.KeyCode.Escape then
-		if ENT.pp then
+		if ENT.lab then ENT.labCancel()   -- v4.03
+		elseif ENT.labTool then ENT.labStop()
+		elseif ENT.pp then
 			ENT.pp = nil   -- v3.74
 			setStatus("Pattern cancelled.")
 		elseif ENT.arr then
@@ -22541,8 +23633,11 @@ UIS.InputBegan:Connect(function(input, gp)
 		-- Space = look at the sketch from the other side
 		sk.flip = not sk.flip
 		view("Normal")
+	elseif k == Enum.KeyCode.T and not sk and not ex and not ctrlDown() and not shiftDown() and not ENT.lab then
+		ENT.labStart("txt")   -- v4.03: T = text on a face
 	elseif k == Enum.KeyCode.Return or k == Enum.KeyCode.KeypadEnter then
-		if ENT.arr then ENT.arrGo()   -- v3.47
+		if ENT.lab then ENT.labCommit()   -- v4.03
+		elseif ENT.arr then ENT.arrGo()   -- v3.47
 		elseif ENT.linMode and #Selection:Get() > 0 then ENT.arrStart()   -- v3.93: Shift-picked parts -> Enter = start
 		elseif ENT.edgeTool and ENT.eSel and #ENT.eSel.list > 0 then ENT.eSelApply()   -- v3.50
 		elseif ex then acceptExtrude()
@@ -22656,6 +23751,8 @@ function ENT.icons()
 		iso = { { "p", { 6, 10, 14, 5, 22, 10, 22, 20, 14, 25, 6, 20, 6, 10 }, C.B }, { "p", { 6, 10, 14, 15, 22, 10 }, C.B }, { "l", 14, 15, 14, 25, C.B } },
 		normal = { { "b", 6, 6, 16, 16, C.B }, { "d", 14, 14, C.O } },
 		panel = { { "b", 4, 4, 20, 20, C.D }, { "f", 16, 4, 8, 20, C.B } },
+		textface = { { "b", 3, 5, 22, 18 }, { "l", 8, 9, 20, 9, C.O }, { "l", 14, 9, 14, 20, C.O } },   -- v4.03
+		imageface = { { "b", 3, 5, 22, 18 }, { "p", { 5, 21, 11, 13, 15, 18, 18, 15, 23, 21 }, C.B }, { "d", 19, 10, C.O } },
 	}
 end
 -- draw one icon into a 28 x 28 frame
@@ -22871,10 +23968,9 @@ function ENT.ribDef()
 				{ proxy = "paintColBtn", "What gets painted: COLOUR + MATERIAL / COLOUR / MATERIAL (click to switch)" },
 				{ proxy = "paintFaceBtn", "Whole part / one face / brush (click to switch)" },
 			} },
-			{ "Decal", {
-				{ box = "decalBox", "Image / text", "An image ID (the number) or the words to write - goes on the face of the selected part that's towards you" },
-				{ proxy = "decalImgBtn", "Put the image on the selected part's face towards you" },
-				{ proxy = "decalTxtBtn", "Write the text on the selected part's face towards you" },
+			{ "Text + image", {
+				{ "textface", "Text", "ON = click any face to write on it (T). Type the words, drag to move / size / turn, Enter = done. Click text you made = change it", function() ENT.labStart("txt") end, "&labtxt" },
+				{ "imageface", "Image", "ON = click any face to put a picture on it: paste the image ID, drag to move / size / turn, Enter = done. Click one you made = change it", function() ENT.labStart("img") end, "&labimg" },
 			} },
 			{ "Brush", {
 				{ box = "brushR", "Radius", "Brush size (studs)" },
@@ -22914,6 +24010,21 @@ function ENT.ribDef()
 			} },
 		} },
 	}
+end
+-- v4.03: Pattern hidden - the PATTERN tab keeps only Mirror (and is called MIRROR)
+ENT.ribDefAll = ENT.ribDef
+function ENT.ribDef()
+	local D = ENT.ribDefAll()
+	if not ENT.PATTERN_OFF then return D end
+	for _, tab in ipairs(D) do
+		if tab[1] == "PATTERN" then
+			tab[1] = "MIRROR"
+			local keep = {}
+			for _, grp in ipairs(tab[2]) do if grp[1] == "Mirror" then keep[#keep + 1] = grp end end
+			tab[2] = keep
+		end
+	end
+	return D
 end
 function ENT.buildRibbon()
 	if ENT.hud then return end
@@ -23436,7 +24547,7 @@ function ENT.ribTabMode(name)
 		if mode ~= "paint" then setMode("paint") end
 	elseif name == "VIEW" or name == "HELP" then
 		return
-	elseif mode == "paint" or (mode == "mirror" and name ~= "PATTERN") then
+	elseif mode == "paint" or (mode == "mirror" and name ~= "PATTERN" and name ~= "MIRROR") then
 		setMode("planes")
 	end
 end
@@ -23474,6 +24585,8 @@ function ENT.ribPaint()
 			elseif k == "&efillet" then on = ENT.edgeTool == "fillet"
 			elseif k == "&echamfer" then on = ENT.edgeTool == "chamfer"
 			elseif k == "&shell" then on = ENT.shellTool ~= nil
+			elseif k == "&labtxt" then on = ENT.labTool == "txt"   -- v4.03
+			elseif k == "&labimg" then on = ENT.labTool == "img"
 			elseif k == "&linear" then on = ENT.linMode == true or ENT.arr ~= nil   -- v3.76 / v3.78
 			elseif k == "&pick" then on = mode == "paint" and ENT.paintPicking == true   -- v3.61
 			elseif k == "#paint" then on = mode == "paint" and not ENT.paintPicking
@@ -23647,7 +24760,7 @@ ENT.HELP.tools = {
 		{ "Colour", "Opens the hex colour picker.", "Click a colour. Click outside to close.", "" },
 		{ "WHOLE PART / ONE FACE / BRUSH", "What a click paints.", "Click to switch. ONE FACE: Shift-click = clear. BRUSH: drag over a PROTO part, Shift = paint back.", "Details, worn edges, two-tone parts.", "One face can only change colour (Roblox can't give one face its own material)." },
 		{ "Brush settings", "Radius, Strength, X sym, Clear brush.", "Set them before brushing. Clear brush takes all brush paint off the picked part.", "" },
-		{ "Image / text decal", "Puts an image ID or words on the face of the selected part that's towards you.", "Type the ID or text, press Add image / Add text.", "Signs, posters, labels." },
+		{ "Text / Image on a face", "Words or a picture on ANY flat face (PROTO faces too: cut walls, chamfers). Stays on through cuts.", "Press Text (T) or Image, click the face, type the words / paste the image ID, drag the arrows / ball / ring, Enter.", "Signs, posters, labels, numbers. Tool on + click one you made = change it." },
 	} },
 	{ g = "VIEW tab", items = {
 		{ "Front / Back / Left / Right / Top / Bottom / Iso", "Turns the camera to look from that side of the clicked part.", "", "" },
@@ -24086,6 +25199,7 @@ function turnOff()
 	active = false
 	mainBtn:SetActive(false)
 	if sk then pcall(exitSketch) end
+	if ENT.labTool then pcall(ENT.labStop) end   -- v4.03
 	pcall(setTarget, nil)
 	pcall(faceUnlock)
 	faceHover.Adornee = nil
@@ -24232,6 +25346,7 @@ end
 -- clicked"): Extrude / Cut = depth, start, both ways, flip...  Revolve = angle, sides.  Fillet / Chamfer = size,
 -- join parts.  Shell = wall, Hollow. Each box here IS the panel's box (typing here = typing there). =====
 function ENT.featKey()
+	if ENT.labTool then return "lab" end   -- v4.03
 	if ENT.arr then return "arr" end   -- v3.47
 	if ENT.shellTool then return "shell" end
 	if mode == "face" then return "face" end   -- v3.22
@@ -24344,6 +25459,8 @@ function ENT.featRefresh(force)
 		r = line()
 		twin(r, U.facePlus, 80)
 		twin(r, U.faceMinus, 80)
+	elseif k == "lab" then
+		ENT.labCardFill(title, line)   -- v4.03
 	elseif k == "shell" then
 		title("Shell")
 		local r = line()
@@ -25207,6 +26324,7 @@ ENT.hbConn = game:GetService("RunService").Heartbeat:Connect(function()
 end)
 if U.filletR then U.filletR:GetPropertyChangedSignal("Text"):Connect(function() ENT.edgeLiveDirty = true end) end
 plugin.Unloading:Connect(function()
+	pcall(function() if ENT.labEnd then ENT.labEnd() end end)   -- v4.03: a half-placed text / image goes, a hidden one comes back
 	pcall(function() if ENT.hbConn then ENT.hbConn:Disconnect() end end)   -- v3.50
 	pcall(function() ENT.liveHide() end)
 	if ex and ex.carrier then pcall(function() ex.carrier:Destroy() end) end
